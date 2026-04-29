@@ -115,6 +115,12 @@ class Game {
   // (input rate ~30 Hz, alors que la frame tourne à 60 Hz). Sans ça, un
   // appui dans la frame de gap entre deux sends se perd.
   private throwLatched = false;
+  // Rayon d'audibilité des SFX spatialisés (clash, lancer, impact, pickup
+  // distant…). En deçà de NEAR le son joue à plein volume, au-delà de FAR il
+  // est muet, entre les deux on atténue linéairement. Sans ce gating, les
+  // bruits de toute la map deviennent un brouhaha illisible.
+  private readonly HEAR_NEAR = 22;
+  private readonly HEAR_FAR = 55;
 
   constructor() {
     this.canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -206,6 +212,21 @@ class Game {
     this.setupRoom();
   }
 
+  // Atténue un son selon sa distance au joueur local : 1 si <= HEAR_NEAR,
+  // 0 si >= HEAR_FAR, fade linéaire entre les deux. Si on ne connaît pas
+  // encore notre position (juste avant le premier patch d'état), on retourne
+  // 0 plutôt que 1 — mieux vaut un son raté qu'un brouhaha global.
+  private audibleGain(x: number, y: number): number {
+    const me = this.players.get(this.myId);
+    if (!me) return 0;
+    const dx = x - me.renderX;
+    const dy = y - me.renderY;
+    const d = Math.hypot(dx, dy);
+    if (d <= this.HEAR_NEAR) return 1;
+    if (d >= this.HEAR_FAR) return 0;
+    return 1 - (d - this.HEAR_NEAR) / (this.HEAR_FAR - this.HEAR_NEAR);
+  }
+
   private setupRoom(): void {
     const room = this.room;
     const $ = getStateCallbacks(room);
@@ -287,7 +308,7 @@ class Game {
     room.onMessage("bladeDestroyed", (msg: BladeDestroyedEvent) => {
       this.particles.spawnSparks(msg.x, 0.9, msg.y, RARITY_COLOR[msg.rarity], 24, 7.5);
       if (msg.ownerId === this.myId) this.camera.shake.add(0.18);
-      this.sound.hit(msg.rarity);
+      this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
     });
     room.onMessage("pickup", (msg: PickupEvent) => {
       if (msg.playerId === this.myId) {
@@ -302,13 +323,15 @@ class Game {
     });
     room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => {
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, 0xff2ea8, 28);
-      this.sound.kill();
+      this.sound.kill(this.audibleGain(msg.x, msg.y));
     });
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
       // Effet visuel coloré selon le type + son de pickup satisfaisant.
       const color = POWERUP_COLOR[msg.type as PowerUpType] ?? 0xffffff;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 22);
-      this.sound.pickup(msg.rarity as BladeRarity);
+      // Le son est plein volume si c'est moi qui ramasse, atténué sinon.
+      const g = msg.playerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
+      this.sound.pickup(msg.rarity as BladeRarity, g);
       // Pour le joueur local, on retient la durée pour afficher la barre.
       if (msg.playerId === this.myId) {
         const durMs = POWERUP_DURATION[msg.rarity as BladeRarity] * 1000;
@@ -329,27 +352,23 @@ class Game {
       const count = 6 + msg.tier * 6;
       const speed = 4 + msg.tier * 2.5;
       this.particles.spawnSparks(msg.x, 0.95, msg.y, 0xb14bff, count, speed);
+      const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
+        : msg.tier === 1 ? BladeRarity.Rare
+        : BladeRarity.Epic;
       // Screen shake : intensité tier-aware, mais SEULEMENT si le joueur
       // local est l'un des deux protagonistes (sinon l'écran tremble pour
       // chaque clash sur la map = nausée garantie).
       if (msg.aId === this.myId || msg.bId === this.myId) {
         this.camera.shake.add(tierClashShake(msg.tier));
-        // Son de hit : on réutilise le hit() existant, en biaisant la rareté
-        // sur le tier (plus de rareté → son plus grave/lourd).
-        const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
-          : msg.tier === 1 ? BladeRarity.Rare
-          : BladeRarity.Epic;
         this.sound.hit(r);
-      } else if (msg.destroyed > 0) {
-        // Clash distant qui a cassé une lame : petit shake si proche, sinon
-        // juste le son discret.
-        const me = this.players.get(this.myId);
-        if (me) {
-          const dx = me.renderX - msg.x;
-          const dy = me.renderY - msg.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < 30 * 30) this.camera.shake.add(tierClashShake(msg.tier) * 0.25);
+      } else {
+        // Clash distant : son atténué selon distance, et petit shake si
+        // une lame a été cassée tout près de nous.
+        const gain = this.audibleGain(msg.x, msg.y);
+        if (msg.destroyed > 0 && gain > 0.6) {
+          this.camera.shake.add(tierClashShake(msg.tier) * 0.25);
         }
+        this.sound.hit(r, gain);
       }
     });
     room.onMessage("bladeThrown", (msg: BladeThrownEvent) => {
@@ -357,7 +376,9 @@ class Game {
       // son court (basé sur le synth pickup pour rester satisfaisant).
       const color = RARITY_COLOR[msg.rarity];
       this.particles.spawnSparks(msg.x, 1.0, msg.y, color, 14, 6);
-      this.sound.throwBlade(msg.rarity);
+      // Plein volume pour mon propre lancer, atténué sinon.
+      const gain = msg.thrownBy === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
+      this.sound.throwBlade(msg.rarity, gain);
       // Si c'est moi qui lance, petit shake et confirme audio.
       if (msg.thrownBy === this.myId) {
         this.camera.shake.add(0.12);
@@ -370,7 +391,7 @@ class Game {
       const count = msg.destroyed ? 22 : 10;
       const speed = msg.destroyed ? 7 : 4;
       this.particles.spawnSparks(msg.x, 0.95, msg.y, color, count, speed);
-      this.sound.hit(msg.rarity);
+      this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
     });
     room.onMessage("tierUp", (msg: TierUpEvent) => {
       // Tier-up VFX : ring d'étincelles autour du joueur + shake si local.
