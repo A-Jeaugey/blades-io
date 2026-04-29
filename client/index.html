@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Blade.io</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+
+      <div id="hud" class="hidden">
+        <div id="top-right">
+          <canvas id="minimap" width="170" height="170"></canvas>
+          <div id="leaderboard"></div>
+        </div>
+        <div id="bottom-center">
+          <div id="rank-badge"></div>
+          <div id="blade-counter">
+            <span id="blade-count">0</span>
+            <span id="blade-label">BLADES</span>
+          </div>
+          <div id="boost-bar"><div id="boost-fill"></div></div>
+        </div>
+        <div id="joystick" class="hidden">
+          <div id="joystick-base"><div id="joystick-thumb"></div></div>
+        </div>
+        <div id="boost-btn" class="hidden">BOOST</div>
+        <div id="throw-btn" class="hidden">THROW</div>
+        <div id="settings-icon">⚙</div>
+        <div id="fps"></div>
+        <div id="room-badge" class="hidden" title="Click to copy invite link">
+          <span class="room-label">ROOM</span>
+          <span id="room-code">—</span>
+        </div>
+        <div id="effects"></div>
+        <div id="king-crown" class="hidden">👑</div>
+      </div>
+
+      <div id="login-screen" class="bio2-screen">
+        <div class="bio2-scan"></div>
+        <div class="bio2-bracket bio2-tl"></div>
+        <div class="bio2-bracket bio2-tr"></div>
+        <div class="bio2-bracket bio2-bl"></div>
+        <div class="bio2-bracket bio2-br"></div>
+
+        <div class="bio2-topbar">
+          <div class="bio2-tb-left">
+            <span class="bio2-tb-dot"></span>
+            <span class="bio2-tb-key">SYS</span>
+            <span class="bio2-tb-val">BLADE_GRID//v0.1</span>
+            <span class="bio2-tb-sep">·</span>
+            <span class="bio2-tb-key">NODE</span>
+            <span class="bio2-tb-val">EU-WEST</span>
+            <span class="bio2-tb-sep">·</span>
+            <span class="bio2-tb-key">PING</span>
+            <span class="bio2-tb-val" id="bio2-ping">34ms</span>
+          </div>
+          <div class="bio2-tb-right">
+            <span class="bio2-tb-key">ONLINE</span>
+            <span class="bio2-tb-val bio2-tb-online" id="bio2-online">1,247</span>
+            <span class="bio2-pulse"></span>
+            <span id="login-settings-icon" style="cursor: pointer; font-size: 16px; margin-left: 10px; color: #89bacf;" title="Settings">⚙</span>
+          </div>
+        </div>
+
+        <aside class="bio2-rail bio2-rail-l">
+          <div class="bio2-rail-head">
+            <span class="bio2-rail-tag">// 02</span>
+            <span class="bio2-rail-title">PATCH&nbsp;NOTES</span>
+          </div>
+          <ul class="bio2-rail-list">
+            <li><b>+25</b> bots / room — denser swarms</li>
+            <li><b>NEW</b> bushes hide players · enter to vanish</li>
+            <li><b>FIX</b> bot flee deadlock</li>
+            <li><b>TUNE</b> tier-2 rotation curve</li>
+          </ul>
+          <div class="bio2-rail-foot">
+            <span class="bio2-tb-key">BUILD</span>
+            <span class="bio2-tb-val">2026.04.27</span>
+          </div>
+        </aside>
+
+        <aside class="bio2-rail bio2-rail-r">
+          <div class="bio2-rail-head">
+            <span class="bio2-rail-tag">// 03</span>
+            <span class="bio2-rail-title">TOP&nbsp;OPS</span>
+          </div>
+          <ol class="bio2-lb">
+            <li class="bio2-lb-row bio2-tier-lg"><span class="bio2-lb-rank">01</span><span class="bio2-lb-name">Razor</span><span class="bio2-lb-score">12450</span></li>
+            <li class="bio2-lb-row bio2-tier-ep"><span class="bio2-lb-rank">02</span><span class="bio2-lb-name">Vyper</span><span class="bio2-lb-score">10821</span></li>
+            <li class="bio2-lb-row bio2-tier-ep"><span class="bio2-lb-rank">03</span><span class="bio2-lb-name">Onyx</span><span class="bio2-lb-score">&nbsp;9304</span></li>
+            <li class="bio2-lb-row bio2-tier-ra"><span class="bio2-lb-rank">04</span><span class="bio2-lb-name">Glitch</span><span class="bio2-lb-score">&nbsp;7180</span></li>
+            <li class="bio2-lb-row bio2-tier-ra"><span class="bio2-lb-rank">05</span><span class="bio2-lb-name">Kira</span><span class="bio2-lb-score">&nbsp;6022</span></li>
+          </ol>
+          <div class="bio2-rail-foot">
+            <span class="bio2-tb-key">SEASON</span>
+            <span class="bio2-tb-val">04 · 12d&nbsp;left</span>
+          </div>
+        </aside>
+
+        <main class="bio2-center">
+          <div class="bio2-mark">
+            <div class="bio2-mark-bracket bio2-l">[</div>
+            <h1 class="bio2-title">
+              <span class="bio2-title-cyan">BLADE</span><span class="bio2-title-pink">.IO</span>
+              <span class="bio2-title-ghost bio2-ghost-c">BLADE.IO</span>
+              <span class="bio2-title-ghost bio2-ghost-p">BLADE.IO</span>
+            </h1>
+            <div class="bio2-mark-bracket bio2-r">]</div>
+          </div>
+          <div class="bio2-tagline">
+            <span class="bio2-bullet"></span>
+            <span id="bio2-tagline-text">SPIN TO SURVIVE</span>
+            <span class="bio2-bullet"></span>
+          </div>
+
+          <div class="bio2-rarity-strip">
+            <span class="bio2-rarity-dot" style="--c: #ffffff"></span>
+            <span class="bio2-rarity-dot" style="--c: #00e5ff"></span>
+            <span class="bio2-rarity-dot" style="--c: #b14bff"></span>
+            <span class="bio2-rarity-dot" style="--c: #ff2ea8"></span>
+            <span class="bio2-rarity-label">COMMON · RARE · EPIC · LEGENDARY</span>
+          </div>
+
+          <section class="bio2-console">
+            <header class="bio2-console-head">
+              <span class="bio2-led"></span>
+              <span class="bio2-console-tag">// 01 · OPERATOR&nbsp;ID</span>
+              <span class="bio2-console-spacer"></span>
+              <span class="bio2-console-meta" id="bio2-tick">0000</span>
+            </header>
+
+            <div class="bio2-field">
+              <label class="bio2-field-label" for="name-input">CALLSIGN</label>
+              <input
+                id="name-input"
+                class="bio2-input"
+                type="text"
+                placeholder="ENTER NAME"
+                maxlength="16"
+                autocomplete="off"
+              />
+              <span class="bio2-field-cnt" id="bio2-name-cnt">0/16</span>
+            </div>
+
+            <div class="bio2-field">
+              <label class="bio2-field-label">DEPLOY MODE</label>
+              <div id="mode-tabs" class="bio2-modes">
+                <button class="bio2-mode mode-tab bio2-mode-on active" data-mode="public">
+                  <span class="bio2-mode-arrow">▸</span>
+                  <span class="bio2-mode-label">QUICK PLAY</span>
+                  <span class="bio2-mode-hint">open arena · bots fill</span>
+                </button>
+                <button class="bio2-mode mode-tab" data-mode="create">
+                  <span class="bio2-mode-arrow">·</span>
+                  <span class="bio2-mode-label">CREATE ROOM</span>
+                  <span class="bio2-mode-hint">private lobby + invite</span>
+                </button>
+                <button class="bio2-mode mode-tab" data-mode="join">
+                  <span class="bio2-mode-arrow">·</span>
+                  <span class="bio2-mode-label">JOIN CODE</span>
+                  <span class="bio2-mode-hint">use a 5-char code</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="mode-public" class="mode-panel active"></div>
+            <div id="mode-create" class="bio2-field mode-panel hidden">
+              <label class="bio2-toggle">
+                <input type="checkbox" id="create-bots" />
+                <span class="bio2-toggle-track"><span class="bio2-toggle-thumb"></span></span>
+                <span>FILL WITH BOTS</span>
+              </label>
+            </div>
+            <div id="mode-join" class="bio2-field mode-panel hidden">
+              <label class="bio2-field-label">ROOM CODE</label>
+              <div class="bio2-code-row">
+                <span class="bio2-code-cell" data-i="0"><span class="bio2-code-ph">_</span></span>
+                <span class="bio2-code-cell" data-i="1"><span class="bio2-code-ph">_</span></span>
+                <span class="bio2-code-cell" data-i="2"><span class="bio2-code-ph">_</span></span>
+                <span class="bio2-code-cell" data-i="3"><span class="bio2-code-ph">_</span></span>
+                <span class="bio2-code-cell" data-i="4"><span class="bio2-code-ph">_</span></span>
+                <input
+                  id="code-input"
+                  class="bio2-code-input"
+                  type="text"
+                  maxlength="5"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                />
+              </div>
+            </div>
+
+            <button id="enter-btn" class="bio2-cta">
+              <span class="bio2-cta-bracket">[</span>
+              <span class="bio2-cta-label">ENTER&nbsp;THE&nbsp;GRID</span>
+              <span class="bio2-cta-arrow">→</span>
+              <span class="bio2-cta-bracket">]</span>
+            </button>
+          </section>
+
+          <div class="bio2-marquee">
+            <div class="bio2-marquee-track">
+              <span>TIER · 0 ARROW   //   TIER · 1 SWORD   //   TIER · 2 SCYTHE   //   FUSION · 4C → 1R · 3R → 1E · 2E → 1L   //   BORDER KILLS   //   BOOST DRAINS 1B / 0.5s   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   </span>
+              <span>TIER · 0 ARROW   //   TIER · 1 SWORD   //   TIER · 2 SCYTHE   //   FUSION · 4C → 1R · 3R → 1E · 2E → 1L   //   BORDER KILLS   //   BOOST DRAINS 1B / 0.5s   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   </span>
+            </div>
+          </div>
+          <div class="login-footer"><span id="login-fps"></span></div>
+        </main>
+      </div>
+
+      <div id="death-screen" class="hidden">
+        <div class="death-card">
+          <h2>YOU WERE SHREDDED</h2>
+          <div id="death-stats"></div>
+          <button id="respawn-btn">RESPAWN</button>
+          <button id="back-menu-btn">BACK TO MENU</button>
+        </div>
+      </div>
+
+      <div id="settings-panel" class="hidden">
+        <div class="settings-card">
+          <h3>SETTINGS</h3>
+          <label>Master <input type="range" id="vol-master" min="0" max="1" step="0.01" value="0.7" /></label>
+          <label>Music <input type="range" id="vol-music" min="0" max="1" step="0.01" value="0.5" /></label>
+          <label>SFX <input type="range" id="vol-sfx" min="0" max="1" step="0.01" value="0.8" /></label>
+          <label>Quality
+            <select id="quality-select">
+              <option value="auto">Auto (recommandé)</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="ultra">Potato (max FPS)</option>
+            </select>
+          </label>
+          <label>Joystick sensitivity <input type="range" id="joy-sens" min="0.5" max="2" step="0.05" value="1" /></label>
+          <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
+            <button id="close-settings">CLOSE</button>
+            <button id="quit-match-btn" class="hidden" style="border-color: var(--pink); color: var(--pink);">QUIT MATCH</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

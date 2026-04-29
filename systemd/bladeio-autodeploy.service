@@ -1,0 +1,10 @@
+[Unit]
+Description=Blade.io auto-deploy poll
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Remplace YOURUSER par ton utilisateur Linux (ex: para_bellum)
+User=YOURUSER
+WorkingDirectory=/home/YOURUSER/bladeio
+ExecStart=/home/YOURUSER/bladeio/auto-deploy.sh

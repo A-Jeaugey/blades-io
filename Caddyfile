@@ -1,0 +1,16 @@
+## Config Caddy pour blade.io sur son propre sous-domaine.
+## Le jeu est servi à https://game.arthurjeaugey.com
+##
+## Prérequis :
+## - game.arthurjeaugey.com doit pointer (A record) vers l'IP publique du serveur
+## - ports 80 et 443 forwardés vers ce serveur
+##
+## Place ce fichier à /etc/caddy/Caddyfile et redémarre Caddy.
+
+game.arthurjeaugey.com {
+    # Proxy HTTP + WebSocket vers le serveur Node qui écoute en local sur 2567.
+    # Caddy gère l'upgrade WebSocket automatiquement.
+    reverse_proxy localhost:2567
+
+    encode zstd gzip
+}

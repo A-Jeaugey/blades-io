@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+.vite/
+coverage/
+# Généré par client/scripts sync-music (copie de Hardline_Pursuit.mp4)
+client/public/

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for blade.io updates every 30s
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=30
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
