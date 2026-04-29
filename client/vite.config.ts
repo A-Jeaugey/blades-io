@@ -7,6 +7,8 @@ const base = process.env.VITE_BASE_PATH ?? "/";
 
 export default defineConfig({
   base,
+  // Le .env vit à la racine du monorepo (partagé avec le serveur), pas dans client/.
+  envDir: "..",
   resolve: {
     alias: {
       "@bladeio/shared": path.resolve(__dirname, "../shared/src/index.ts"),
