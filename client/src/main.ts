@@ -49,6 +49,7 @@ import { Minimap } from "./ui/Minimap";
 import { SettingsPanel } from "./ui/Settings";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
+import { auth } from "./auth/supabase";
 
 const RENDER_DELAY = 150;
 
@@ -181,13 +182,18 @@ class Game {
     this.settings.setInGame(true);
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
     try {
-      const joinOpts: { code?: string; bots?: boolean } = {};
+      const joinOpts: { code?: string; bots?: boolean; token?: string } = {};
       if (res.mode === "create") {
         joinOpts.code = res.code;
         joinOpts.bots = res.bots;
       } else if (res.mode === "join") {
         joinOpts.code = res.code;
       }
+      // Joueurs authentifiés → JWT passé au join, le serveur valide via
+      // onAuth puis stocke userId sur le Player → score persisté à la mort.
+      // Mode invité (pas de token) → no-op côté serveur, gameplay inchangé.
+      const token = auth.getAccessToken();
+      if (token) joinOpts.token = token;
       this.room = await this.conn.join(res.name, joinOpts);
     } catch (e) {
       console.error("could not join", e);
@@ -525,6 +531,10 @@ class Game {
       cratesDestroyed: me.cratesDestroyed ?? 0,
       powerupsCollected: me.powerupsCollected ?? 0,
       killerName,
+      // Le serveur persiste seulement si le joueur a fourni un token au
+      // join. Côté client, le state d'auth au moment de la mort est la
+      // meilleure approximation.
+      scorePersisted: auth.getAccessToken() !== null,
     });
   }
 

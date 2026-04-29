@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@bladeio/shared": "0.1.0",
+    "@supabase/supabase-js": "^2.45.4",
     "colyseus.js": "^0.16.17",
     "three": "^0.163.0",
     "tone": "^14.7.77"
