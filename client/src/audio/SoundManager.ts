@@ -103,31 +103,31 @@ export class SoundManager {
     if (this.music) this.music.volume = master * music;
   }
 
-  pickup(rarity: BladeRarity): void {
-    if (!this.started) return;
+  pickup(rarity: BladeRarity, gain = 1): void {
+    if (!this.started || gain <= 0) return;
     const notes = ["C5", "E5", "G5", "B5"];
     const n = notes[Math.min(3, rarity)];
-    this.pickupSynth.triggerAttackRelease(n, 0.12);
+    this.pickupSynth.triggerAttackRelease(n, 0.12, undefined, gain);
   }
 
-  hit(rarity: BladeRarity): void {
-    if (!this.started) return;
+  hit(rarity: BladeRarity, gain = 1): void {
+    if (!this.started || gain <= 0) return;
     const freq = [200, 260, 340, 440][Math.min(3, rarity)];
-    this.hitSynth.triggerAttackRelease(freq, 0.06);
+    this.hitSynth.triggerAttackRelease(freq, 0.06, undefined, gain);
   }
 
   // Son de lancer de lame : note glissante aiguë → grave pour suggérer le
   // "swoosh" du projectile. Hauteur de départ ↑ avec la rareté.
-  throwBlade(rarity: BladeRarity): void {
-    if (!this.started) return;
+  throwBlade(rarity: BladeRarity, gain = 1): void {
+    if (!this.started || gain <= 0) return;
     const note = ["A4", "C5", "E5", "G5"][Math.min(3, rarity)];
-    this.pickupSynth.triggerAttackRelease(note, 0.18);
-    this.hitSynth.triggerAttackRelease([180, 220, 280, 360][Math.min(3, rarity)], 0.05);
+    this.pickupSynth.triggerAttackRelease(note, 0.18, undefined, gain);
+    this.hitSynth.triggerAttackRelease([180, 220, 280, 360][Math.min(3, rarity)], 0.05, undefined, gain);
   }
 
-  kill(): void {
-    if (!this.started) return;
-    this.killSynth.triggerAttackRelease("C2", 0.25);
+  kill(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.killSynth.triggerAttackRelease("C2", 0.25, undefined, gain);
   }
 
   death(): void {
