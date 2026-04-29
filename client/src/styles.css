@@ -988,6 +988,18 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Quand le form est déplié, on plafonne la hauteur et on scrolle à
+     l'intérieur du panneau — ça évite de pousser CALLSIGN / ENTER THE
+     GRID hors écran sur les petits viewports. */
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+/* En mode replié et signed-in, pas besoin de plafond ni de scroll. */
+.bio2-auth.bio2-auth-mini,
+.bio2-auth:has(.bio2-auth-summary) {
+  max-height: none;
+  overflow: visible;
 }
 /* Mode replié : juste un trigger inline, padding réduit. */
 .bio2-auth.bio2-auth-mini {
