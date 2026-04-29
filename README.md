@@ -79,6 +79,10 @@ This starts:
 
 Open several tabs to test multiplayer.
 
+> **Without Supabase configured**, the game runs in guest-only mode: anyone
+> can play, but scores aren't saved and the all-time leaderboard stays empty.
+> See **[Accounts & leaderboard (Supabase setup)](#accounts--leaderboard-supabase-setup)** below.
+
 ### Useful scripts
 
 ```bash
@@ -106,6 +110,66 @@ Input mode is auto-detected. Keyboard takes priority over mouse if both are acti
 - Throwing eats your **outermost** blade, so a Legendary on the outside ring is a 3-pierce missile.
 - Shield power-up halves incoming blade damage; combine with Spin for an oppressive wall.
 - Bushes hide you AND your blades on the map for opponents — perfect for ambushes.
+
+---
+
+## Accounts & leaderboard (Supabase setup)
+
+The game can persist scores per-user and surface an all-time top-100
+leaderboard. It uses [Supabase](https://supabase.com) for auth (email +
+Discord + Google OAuth) and Postgres. Without it, the game falls back to
+guest-only mode.
+
+### 1. Create the project
+
+1. Sign up on [supabase.com](https://supabase.com), create a new project.
+2. From **Project Settings → API**, copy:
+   - `Project URL` → `SUPABASE_URL` (and `VITE_SUPABASE_URL`)
+   - `anon public` key → `SUPABASE_ANON_KEY` (and `VITE_SUPABASE_ANON_KEY`)
+   - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY` (server only — **never** expose this in client code)
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+# fill in the keys you just copied
+```
+
+### 3. Apply the schema
+
+Open the **SQL editor** in your Supabase dashboard, paste the contents of
+[`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql),
+and run it. This creates:
+
+- `profiles` table — usernames, 1-to-1 with `auth.users`
+- `matches` table — one row per finished game (server-only writes via service role)
+- `leaderboard_top` view — best score per user, joined with profile
+- Row-level security policies + a trigger that auto-creates a profile on signup
+
+### 4. Enable OAuth providers
+
+In **Authentication → Providers**, enable:
+
+- **Discord** — create an app on [discord.com/developers](https://discord.com/developers), add the redirect URL Supabase shows (`https://<project>.supabase.co/auth/v1/callback`), paste client ID + secret.
+- **Google** — create OAuth credentials on [Google Cloud Console](https://console.cloud.google.com), same redirect URL.
+
+For email auth, the default settings work out of the box. Configure SMTP
+or use Supabase's built-in email if you want verification mails styled.
+
+### 5. Verify
+
+Restart the dev server (`npm run dev`) and:
+
+- The login screen shows an `// AUTH` panel with sign-in / sign-up tabs.
+- After signing up, choose a username (3–16 chars).
+- Play a game to the death — the result should appear in `matches` (Table editor in Supabase).
+- The right rail of the login screen ("TOP OPS") populates from `/api/leaderboard`.
+
+### Mode invité
+
+Players can keep playing without an account. The CALLSIGN field stays
+editable when signed-out and the death screen explicitly says scores
+aren't saved. Authentication is purely opt-in.
 
 ---
 

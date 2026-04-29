@@ -57,6 +57,10 @@ export class Player extends Schema {
   @type("float64") throwCooldownUntil: number = 0;
 
   // Champs non synchronisés (gestion serveur)
+  // ID Supabase auth.users du joueur authentifié ; null pour les invités et
+  // les bots. Utilisé à la mort pour persister le score dans la table
+  // matches (via le service role).
+  userId: string | null = null;
   inputDx: number = 0;
   inputDy: number = 0;
   inputBoost: boolean = false;

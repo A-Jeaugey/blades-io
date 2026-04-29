@@ -16,15 +16,19 @@ export class Connection {
   // LA room privée avec ce code.
   // opts.bots : override bots enabled (sinon default serveur : true en
   // public, false en privé).
+  // opts.token : JWT Supabase. Si présent, la room appelle onAuth, valide
+  // le token, et stocke userId sur le Player → score persisté à la mort.
+  // Sans token, le joueur entre en mode invité.
   async join(
     name: string,
-    opts: { code?: string; bots?: boolean } = {},
+    opts: { code?: string; bots?: boolean; token?: string } = {},
   ): Promise<Room<RoomState>> {
     const maxAttempts = 3;
     let backoff = 500;
     const joinOpts: any = { name };
     if (opts.code !== undefined) joinOpts.code = opts.code.toUpperCase();
     if (opts.bots !== undefined) joinOpts.bots = opts.bots;
+    if (opts.token) joinOpts.token = opts.token;
     while (this.reconnectAttempts < maxAttempts) {
       try {
         const room = await this.client.joinOrCreate<RoomState>("arena", joinOpts);

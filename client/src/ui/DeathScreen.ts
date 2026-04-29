@@ -16,6 +16,10 @@ export interface DeathStats {
   cratesDestroyed: number;
   powerupsCollected: number;
   killerName?: string | null;
+  // True si le joueur est authentifié → le serveur a persisté ce score
+  // dans la table matches. False = mode invité, score perdu après cette
+  // partie.
+  scorePersisted?: boolean;
 }
 
 export class DeathScreen {
@@ -40,6 +44,9 @@ export class DeathScreen {
 
   show(s: DeathStats): void {
     const killedBy = s.killerName ? `<div class="row"><span class="label">killed by</span><span>${escapeHtml(s.killerName)}</span></div>` : "";
+    const persisted = s.scorePersisted
+      ? `<div class="row death-saved"><span class="label">score</span><span>saved to leaderboard</span></div>`
+      : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to save scores</span></div>`;
 
     this.stats.innerHTML = `
       <div class="score-total-container">
@@ -48,6 +55,7 @@ export class DeathScreen {
       </div>
       <div class="row rank-row"><span class="label">rank</span><span>#${s.rank}</span></div>
       ${killedBy}
+      ${persisted}
     `;
     this.root.classList.remove("hidden");
   }

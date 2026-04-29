@@ -592,6 +592,16 @@ button:hover {
   color: var(--pink);
   text-shadow: 0 0 8px var(--pink);
 }
+#death-stats .death-saved span:last-child {
+  color: var(--cyan);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+#death-stats .death-guest span:last-child {
+  color: var(--fg-muted);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
 
 .settings-card {
   min-width: 320px;
@@ -957,4 +967,232 @@ button:hover {
   .bio2-screen { grid-template-columns: 0 1fr 0; }
   .bio2-rail { display: none; }
   .bio2-bracket { display: none; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Auth panel (login screen)                                        */
+/* ---------------------------------------------------------------- */
+
+.bio2-auth {
+  margin: 0 0 14px 0;
+  padding: 10px 12px;
+  background: rgba(0, 229, 255, 0.04);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bio2-auth-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+.bio2-auth-tag {
+  color: var(--cyan);
+  font-weight: 700;
+}
+.bio2-auth-title {
+  color: var(--fg-bright);
+  font-weight: 700;
+}
+.bio2-auth-spacer { flex: 1; }
+.bio2-auth-tabs { display: flex; gap: 4px; }
+.bio2-auth-tab {
+  background: transparent;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: var(--fg-muted);
+  padding: 4px 8px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color 0.12s, border-color 0.12s;
+}
+.bio2-auth-tab:hover {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+.bio2-auth-tab.active {
+  color: var(--cyan);
+  border-color: var(--cyan);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.bio2-auth-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bio2-auth-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bio2-auth-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.6px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s;
+}
+.bio2-auth-provider:hover {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: var(--cyan);
+}
+.bio2-auth-provider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.bio2-auth-provider-ic {
+  font-size: 16px;
+  color: var(--cyan);
+}
+.bio2-auth-discord:hover { border-color: #5865f2; }
+.bio2-auth-discord .bio2-auth-provider-ic { color: #5865f2; }
+.bio2-auth-google:hover { border-color: #ea4335; }
+.bio2-auth-google .bio2-auth-provider-ic { color: #ea4335; }
+
+.bio2-auth-sep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  margin: 4px 0 0 0;
+}
+.bio2-auth-sep::before,
+.bio2-auth-sep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 229, 255, 0.15);
+}
+
+.bio2-auth-cta {
+  margin-top: 4px;
+  padding: 8px 12px;
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.15), rgba(255, 46, 168, 0.15));
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: box-shadow 0.12s;
+}
+.bio2-auth-cta:hover {
+  box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
+}
+.bio2-auth-cta:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bio2-auth-link {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: center;
+}
+.bio2-auth-link:hover {
+  color: var(--cyan);
+}
+.bio2-auth-inline {
+  display: inline;
+  padding: 0;
+  text-transform: none;
+  text-decoration: underline;
+}
+
+.bio2-auth-foot {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+.bio2-auth-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.bio2-auth-msg {
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--pink);
+  color: var(--pink);
+  background: rgba(255, 46, 168, 0.08);
+}
+.bio2-auth-msg[data-kind="info"] {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.08);
+}
+
+.bio2-auth-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.bio2-auth-summary-l {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.bio2-auth-status {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+.bio2-auth-status.bio2-auth-on {
+  color: var(--cyan);
+}
+.bio2-auth-user {
+  font-size: 14px;
+  color: var(--fg-bright);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.bio2-auth-email {
+  font-size: 11px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bio2-input-locked {
+  opacity: 0.7;
+  cursor: not-allowed;
 }

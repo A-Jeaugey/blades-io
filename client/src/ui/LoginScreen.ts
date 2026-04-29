@@ -1,4 +1,6 @@
 import { NAME_MAX_LENGTH, NAME_MIN_LENGTH } from "@bladeio/shared";
+import { AuthPanel } from "./AuthPanel";
+import { auth } from "../auth/supabase";
 
 export type LoginMode = "public" | "create" | "join";
 export interface LoginResult {
@@ -55,6 +57,8 @@ export class LoginScreen {
   private pingEl: HTMLElement | null;
   private onlineEl: HTMLElement | null;
   private taglineEl: HTMLElement | null;
+  private nameLabel: HTMLElement | null;
+  private authPanel: AuthPanel | null = null;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private mode: LoginMode = "public";
 
@@ -73,6 +77,13 @@ export class LoginScreen {
     this.pingEl = document.getElementById("bio2-ping");
     this.onlineEl = document.getElementById("bio2-online");
     this.taglineEl = document.getElementById("bio2-tagline-text");
+    this.nameLabel = document.querySelector('label[for="name-input"]');
+    const authRoot = document.getElementById("auth-panel");
+    if (authRoot) {
+      this.authPanel = new AuthPanel(authRoot);
+      // Quand l'état d'auth change, mettre à jour le champ CALLSIGN.
+      auth.subscribe(() => this.applyAuthState());
+    }
 
     // Cellules code (5) — les arrows mettent à jour leur contenu en lisant
     // l'input invisible posé en overlay. UX inspirée du design v2 : on tape
@@ -108,10 +119,14 @@ export class LoginScreen {
     });
 
     const submit = () => {
-      let name = this.input.value.trim();
+      // Si l'utilisateur est authentifié et a un username, c'est lui qui sert
+      // de pseudo en jeu (le champ CALLSIGN est en lecture seule). Sinon
+      // on lit la valeur tapée (mode invité).
+      const lockedName = this.authPanel?.isLockedToUsername() ? this.authPanel?.getDisplayName() ?? "" : "";
+      let name = lockedName ? lockedName : this.input.value.trim();
       if (name.length < NAME_MIN_LENGTH) name = "Anon" + Math.floor(Math.random() * 1000);
       if (name.length > NAME_MAX_LENGTH) name = name.slice(0, NAME_MAX_LENGTH);
-      localStorage.setItem("blade.name", name);
+      if (!lockedName) localStorage.setItem("blade.name", name);
       const res: LoginResult = { name, mode: this.mode };
       if (this.mode === "create") {
         res.code = randomCode(5);
@@ -133,6 +148,60 @@ export class LoginScreen {
 
     this.startReadouts();
     if (this.taglineEl) runGlitchReveal(this.taglineEl, "SPIN TO SURVIVE");
+    this.applyAuthState();
+    this.refreshTopOps();
+  }
+
+  // Fetch /api/leaderboard et remplit le panneau de droite "TOP OPS". On
+  // fait ça en best-effort : si l'API n'est pas dispo (Supabase pas
+  // configuré, route 503), on garde le placeholder html et on log juste.
+  private async refreshTopOps(): Promise<void> {
+    const list = this.root.querySelector<HTMLOListElement>(".bio2-rail-r .bio2-lb");
+    if (!list) return;
+    try {
+      const r = await fetch("/api/leaderboard?limit=10");
+      if (!r.ok) return;
+      const j = await r.json();
+      const entries: Array<{ user_id: string; username: string; score: number }> = j.entries ?? [];
+      if (entries.length === 0) {
+        list.innerHTML = `<li class="bio2-lb-row"><span class="bio2-lb-rank">--</span><span class="bio2-lb-name">no scores yet</span><span class="bio2-lb-score"></span></li>`;
+        return;
+      }
+      list.innerHTML = entries
+        .map((e, i) => {
+          const tier = i === 0 ? "lg" : i < 3 ? "ep" : i < 5 ? "ra" : "co";
+          const rank = String(i + 1).padStart(2, "0");
+          return `<li class="bio2-lb-row bio2-tier-${tier}">
+            <span class="bio2-lb-rank">${rank}</span>
+            <span class="bio2-lb-name">${escapeHtml(e.username ?? "?")}</span>
+            <span class="bio2-lb-score">${formatScore(e.score)}</span>
+          </li>`;
+        })
+        .join("");
+    } catch (e) {
+      // Silencieux : laisse le placeholder.
+      console.warn("[blade.io] top ops fetch failed", e);
+    }
+  }
+
+  // Verrouille / déverrouille le champ CALLSIGN selon l'état d'auth.
+  // Authed avec username → champ readonly pré-rempli, label change.
+  // Sinon → comportement classique (mode invité).
+  private applyAuthState(): void {
+    const username = this.authPanel?.isLockedToUsername() ? this.authPanel?.getDisplayName() ?? "" : "";
+    if (username) {
+      this.input.value = username;
+      this.input.readOnly = true;
+      this.input.classList.add("bio2-input-locked");
+      if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN (FROM PROFILE)";
+    } else {
+      this.input.readOnly = false;
+      this.input.classList.remove("bio2-input-locked");
+      if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN";
+      const saved = localStorage.getItem("blade.name");
+      if (saved && this.input.value === "") this.input.value = saved;
+    }
+    this.updateNameCount();
   }
 
   private updateNameCount(): void {
@@ -209,9 +278,28 @@ export class LoginScreen {
   show(): void {
     this.root.classList.remove("hidden");
     if (this.tickInterval === null) this.startReadouts();
+    // Re-fetch à chaque retour au menu : le joueur vient de finir une partie,
+    // son score peut être dans le top maintenant.
+    this.refreshTopOps();
   }
   hide(): void {
     this.root.classList.add("hidden");
     this.stopReadouts();
   }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatScore(n: number): string {
+  // Right-aligns the number to the same visual width as the maquette
+  // ("12450", " 9304"). Up to 5 digits, padded with non-breaking spaces.
+  const s = String(Math.max(0, Math.floor(n)));
+  if (s.length >= 5) return s;
+  return " ".repeat(5 - s.length) + s;
 }

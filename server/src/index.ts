@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import express from "express";
@@ -6,15 +7,21 @@ import { createServer } from "http";
 import path from "path";
 import fs from "fs";
 import { ArenaRoom } from "./rooms/ArenaRoom";
+import { initSupabase } from "./auth/supabase";
+import { buildAuthRouter } from "./auth/routes";
+
+initSupabase();
 
 const PORT = Number(process.env.PORT ?? 2567);
 
 const app = express();
 app.use(cors());
+app.use(express.json({ limit: "32kb" }));
 app.get("/healthz", (_req, res) => res.status(200).send("ok"));
 app.get("/api", (_req, res) => {
   res.json({ name: "blade.io server", status: "ok" });
 });
+app.use("/api", buildAuthRouter());
 
 // Sert le client statique si dispo (déploiement all-in-one)
 const clientDist = [
@@ -26,6 +33,7 @@ if (clientDist) {
   app.use(express.static(clientDist));
   app.get("*", (req, res, next) => {
     if (path.extname(req.path)) return next();
+    if (req.path.startsWith("/api")) return next();
     res.sendFile(path.join(clientDist, "index.html"));
   });
 }

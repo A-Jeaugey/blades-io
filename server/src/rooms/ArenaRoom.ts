@@ -59,6 +59,8 @@ import { BladeThrownEvent, ProjectileImpactEvent } from "@bladeio/shared";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
+import { verifyAccessToken } from "../auth/supabase";
+import { recordMatch } from "../auth/matches";
 
 function sanitizeName(raw: string): string {
   const cleaned = (raw ?? "")
@@ -141,10 +143,44 @@ export class ArenaRoom extends Room<ArenaState> {
     this.onMessage("ping", (client) => client.send("pong", { t: Date.now() }));
   }
 
-  onJoin(client: Client, options: { name?: string }): void {
+  // Hook officiel Colyseus : exécuté AVANT onJoin. Si on rejette ici, le
+  // client reçoit une erreur 4xx et n'entre jamais dans la room. On
+  // n'utilise pas ça pour gating l'accès (mode invité possible) — juste
+  // pour valider le token Supabase et stocker l'identité authentifiée que
+  // onJoin pourra consommer via auth.userId.
+  async onAuth(_client: Client, options: { token?: string; name?: string }): Promise<{
+    userId: string | null;
+    username: string | null;
+    name: string;
+  }> {
+    const token = typeof options?.token === "string" && options.token.length > 0 ? options.token : null;
+    const requestedName = sanitizeName(options?.name ?? "");
+    if (!token) {
+      // Mode invité : on accepte, juste pas d'identité authentifiée.
+      return { userId: null, username: null, name: requestedName };
+    }
+    const user = await verifyAccessToken(token);
+    if (!user) {
+      // Token présent mais invalide/expiré → on dégrade en invité plutôt que
+      // de refuser l'accès (l'UX coté client reflasher le token est plus
+      // douce qu'un pop d'erreur). Le client peut détecter ça via /api/auth/me.
+      return { userId: null, username: null, name: requestedName };
+    }
+    // Si l'utilisateur a un username officiel, on l'utilise comme nom in-game,
+    // sinon on garde celui demandé au join (ou le random d'invité).
+    const finalName = user.username && user.username.length > 0 ? user.username : requestedName;
+    return { userId: user.id, username: user.username, name: finalName };
+  }
+
+  onJoin(
+    client: Client,
+    _options: { name?: string; token?: string },
+    auth: { userId: string | null; username: string | null; name: string },
+  ): void {
     const p = new Player();
     p.id = client.sessionId;
-    p.name = sanitizeName(options?.name ?? "");
+    p.userId = auth?.userId ?? null;
+    p.name = sanitizeName(auth?.name ?? "");
     const spawn = randomSpawnPoint(this.state);
     p.x = spawn.x; p.y = spawn.y;
     p.alive = true;
@@ -172,6 +208,10 @@ export class ArenaRoom extends Room<ArenaState> {
     if (!p) return;
     // Leave volontaire : cleanup immédiat.
     if (consented) {
+      // Si le joueur était encore en vie (quit via menu), on persiste son
+      // score actuel — sinon il aurait fait une "vraie" partie sans la voir
+      // comptée au leaderboard.
+      if (p.alive) this.persistMatchIfAuthed(p);
       this.cleanupPlayer(client.sessionId);
       return;
     }
@@ -181,6 +221,8 @@ export class ArenaRoom extends Room<ArenaState> {
     try {
       await this.allowReconnection(client, 20);
     } catch {
+      const stale = this.state.players.get(client.sessionId);
+      if (stale && stale.alive) this.persistMatchIfAuthed(stale);
       this.cleanupPlayer(client.sessionId);
     }
   }
@@ -192,6 +234,26 @@ export class ArenaRoom extends Room<ArenaState> {
     });
     for (const id of toRemove) this.state.blades.delete(id);
     this.state.players.delete(sessionId);
+  }
+
+  // Persiste le match courant pour les joueurs authentifiés. No-op pour les
+  // bots, les invités et si Supabase n'est pas configuré. Idempotent par
+  // appelant — on ne déduplique pas côté serveur, c'est l'appelant qui doit
+  // n'appeler qu'une fois (à la mort, au leave, ou au respawn).
+  private persistMatchIfAuthed(p: Player): void {
+    if (p.isBot) return;
+    if (!p.userId) return;
+    const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
+    void recordMatch({
+      userId: p.userId,
+      score: p.score,
+      kills: p.kills,
+      maxBlades: p.maxBladeCount,
+      survivalSeconds: survival,
+      cratesDestroyed: p.cratesDestroyed,
+      powerupsCollected: p.powerupsCollected,
+      roomCode: this.roomCode || undefined,
+    });
   }
 
   private handleInput(client: Client, msg: InputMessage): void {
@@ -413,6 +475,11 @@ export class ArenaRoom extends Room<ArenaState> {
   private killPlayer(victim: Player, killer: Player | null, _reason: string): void {
     if (!victim.alive) return;
     victim.alive = false;
+    // Persiste le match juste après le passage à mort (avant le drop, mais
+    // après que tous les compteurs de session ont été incrémentés au cours
+    // de la vie). Pas de await : recordMatch gère ses propres erreurs et on
+    // ne veut pas bloquer la game loop.
+    this.persistMatchIfAuthed(victim);
     const bladeIds = [...victim.bladeIds];
     const dropCount = Math.floor(bladeIds.length * DEATH_DROP_RATIO);
     const droppedRarities: BladeRarity[] = [];
