@@ -744,7 +744,9 @@ button:hover {
   /* overflow: auto pour que sur petits écrans (laptop 720p, fenêtre réduite)
      le bouton ENTER THE GRID reste accessible — fallback honnête. */
   overflow-y: auto; overflow-x: hidden;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  /* "safe center" : centre quand le contenu rentre, scrolle depuis le haut
+     quand il déborde — sinon les items du haut deviennent inaccessibles. */
+  display: flex; flex-direction: column; align-items: center; justify-content: safe center;
   padding: 12px 40px; gap: 14px; position: relative; z-index: 3;
 }
 
@@ -983,6 +985,56 @@ button:hover {
   flex-direction: column;
   gap: 8px;
 }
+/* Mode replié : juste un trigger inline, padding réduit. */
+.bio2-auth.bio2-auth-mini {
+  padding: 0;
+  background: transparent;
+  border: none;
+  margin: 0 0 10px 0;
+}
+.bio2-auth-trigger {
+  width: 100%;
+  background: rgba(0, 229, 255, 0.04);
+  border: 1px dashed rgba(0, 229, 255, 0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--cyan);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.bio2-auth-trigger:hover {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: rgba(0, 229, 255, 0.5);
+  border-style: solid;
+}
+.bio2-auth-trigger-arrow { font-weight: 700; }
+.bio2-auth-trigger-label { font-weight: 700; }
+.bio2-auth-trigger-hint {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+.bio2-auth-close {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+.bio2-auth-close:hover { color: var(--cyan); }
 
 .bio2-auth-head {
   display: flex;

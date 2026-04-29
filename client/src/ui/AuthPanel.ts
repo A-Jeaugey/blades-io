@@ -15,6 +15,9 @@ export class AuthPanel {
   private unsubscribe: () => void;
   private mode: Mode = "signin";
   private busy = false;
+  // Le form signed-out est replié par défaut pour ne pas saturer l'écran de
+  // login. L'utilisateur clique le trigger pour le déplier.
+  private expanded = false;
   private message: { kind: "error" | "info"; text: string } | null = null;
 
   constructor(root: HTMLElement) {
@@ -87,11 +90,33 @@ export class AuthPanel {
     }
     // signed_out
     if (this.mode === "username") this.mode = "signin";
+    if (!this.expanded) {
+      this.renderCollapsed();
+      return;
+    }
     this.renderSignedOut();
+  }
+
+  private renderCollapsed(): void {
+    this.root.classList.remove("hidden");
+    this.root.classList.add("bio2-auth-mini");
+    this.root.innerHTML = `
+      <button type="button" class="bio2-auth-trigger" data-action="expand">
+        <span class="bio2-auth-trigger-arrow">▸</span>
+        <span class="bio2-auth-trigger-label">SIGN IN OR CREATE ACCOUNT</span>
+        <span class="bio2-auth-trigger-hint">save your scores</span>
+      </button>
+    `;
+    this.root.querySelector<HTMLButtonElement>("[data-action=expand]")?.addEventListener("click", () => {
+      this.expanded = true;
+      this.clearMessage();
+      this.render(auth.getState());
+    });
   }
 
   private renderSignedIn(username: string, email: string): void {
     this.root.classList.remove("hidden");
+    this.root.classList.remove("bio2-auth-mini");
     this.root.innerHTML = `
       <div class="bio2-auth-summary">
         <div class="bio2-auth-summary-l">
@@ -107,6 +132,7 @@ export class AuthPanel {
 
   private renderUsernamePicker(): void {
     this.root.classList.remove("hidden");
+    this.root.classList.remove("bio2-auth-mini");
     this.root.innerHTML = `
       <div class="bio2-auth-head">
         <span class="bio2-auth-tag">// AUTH</span>
@@ -129,6 +155,7 @@ export class AuthPanel {
 
   private renderSignedOut(): void {
     this.root.classList.remove("hidden");
+    this.root.classList.remove("bio2-auth-mini");
     const isSignup = this.mode === "signup";
     this.root.innerHTML = `
       <div class="bio2-auth-head">
@@ -139,6 +166,7 @@ export class AuthPanel {
           <button type="button" class="bio2-auth-tab ${!isSignup ? "active" : ""}" data-mode="signin">SIGN&nbsp;IN</button>
           <button type="button" class="bio2-auth-tab ${isSignup ? "active" : ""}" data-mode="signup">SIGN&nbsp;UP</button>
         </span>
+        <button type="button" class="bio2-auth-close" data-action="collapse" title="Hide">×</button>
       </div>
       <div class="bio2-auth-body">
         <div class="bio2-auth-providers">
@@ -214,6 +242,11 @@ export class AuthPanel {
   }
 
   private bindSignedOut(): void {
+    this.root.querySelector<HTMLButtonElement>("[data-action=collapse]")?.addEventListener("click", () => {
+      this.expanded = false;
+      this.clearMessage();
+      this.render(auth.getState());
+    });
     this.root.querySelectorAll<HTMLButtonElement>(".bio2-auth-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
         const m = tab.dataset.mode as Mode;
