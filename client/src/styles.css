@@ -799,15 +799,19 @@ button:hover {
   position: relative;
   box-shadow: 0 0 60px rgba(0,229,255,.2), inset 0 0 30px rgba(0,229,255,.05);
   backdrop-filter: blur(10px);
-  /* Scroll INTERNE quand le contenu déborde (auth panel déplié) :
-     on plafonne la console à 65vh et on scrolle dedans. Le reste du
-     login screen (logo, marquee, etc.) ne bouge pas. */
-  max-height: 65vh;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* Scrollbar stylée cyan-discrète (Firefox + standard). */
+  overflow: hidden;
+  /* Scrollbar stylée cyan-discrète (Firefox + standard) — appliquée
+     uniquement quand le scroll est activé (state déplié, voir plus bas). */
   scrollbar-width: thin;
   scrollbar-color: rgba(0,229,255,.4) transparent;
+}
+/* Plafond + scroll INTERNE uniquement quand l'auth panel est déplié.
+   Détection via :has() de .bio2-auth-providers qui n'existe que dans
+   le form complet (signin/signup). Le reste du temps : console au
+   naturel, pas de scrollbar parasite. */
+.bio2-console:has(.bio2-auth-providers) {
+  max-height: 65vh;
+  overflow-y: auto;
 }
 /* Scrollbar Webkit (Chrome / Edge / Safari) — même look. */
 .bio2-console::-webkit-scrollbar {
