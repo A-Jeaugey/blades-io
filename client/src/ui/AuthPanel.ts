@@ -248,11 +248,15 @@ export class AuthPanel {
                 <path id="bio2-google-p2" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
                 <path id="bio2-google-p3" d="M5.84 14.09a6.6 6.6 0 0 1-.34-2.09c0-.72.12-1.43.34-2.09V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.84z" />
                 <path id="bio2-google-p4" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
-                <!-- Path "outline" combiné = les 4 sous-paths bout à bout.
-                     animateMotion saute entre eux (z + nouveau M) mais visuellement
-                     le point réapparaît sur chaque quadrant successivement → fait
-                     bien le tour complet du G. -->
-                <path id="bio2-google-outline" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09zM12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23zM5.84 14.09a6.6 6.6 0 0 1-.34-2.09c0-.72.12-1.43.34-2.09V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.84zM12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+                <!-- Path "outline" du G en un seul tracé continu : commence
+                     en haut-extérieur de la fourche (22.36, 10), rentre dans la
+                     barre du G vers la gauche puis ressort en bas-droite, puis
+                     fait le grand arc extérieur (rayon 11, large + horaire) qui
+                     boucle de (19.28, 20.34) à (19.36, 3.87), et ferme par la
+                     diagonale de l'encoche supérieure. Sert au bandeau et à
+                     animateMotion → un seul cycle = tour complet du G, sans
+                     saut entre quadrants. -->
+                <path id="bio2-google-outline" d="M 22.36 10 H 12 V 14.26 H 17.92 C 17.66 15.63 16.88 16.79 15.71 17.57 V 20.34 H 19.28 A 11 11 0 1 1 19.36 3.87 L 22.36 10 Z" />
                 <filter id="bio2-google-glow" x="-100%" y="-100%" width="300%" height="300%">
                   <feGaussianBlur stdDeviation="0.45" result="b1" />
                   <feMerge>
@@ -275,12 +279,7 @@ export class AuthPanel {
                 <use href="#bio2-google-p3" fill="url(#bio2-google-yellow)" />
                 <use href="#bio2-google-p4" fill="url(#bio2-google-red)" />
               </g>
-              <g fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.3" filter="url(#bio2-google-glow)">
-                <use href="#bio2-google-p1" />
-                <use href="#bio2-google-p2" />
-                <use href="#bio2-google-p3" />
-                <use href="#bio2-google-p4" />
-              </g>
+              <use href="#bio2-google-outline" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.3" filter="url(#bio2-google-glow)" />
               <circle r="0.7" fill="#ffffff" filter="url(#bio2-google-spark)">
                 <animateMotion dur="3.4s" repeatCount="indefinite" rotate="auto">
                   <mpath href="#bio2-google-outline" />
