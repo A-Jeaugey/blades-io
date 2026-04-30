@@ -25,8 +25,11 @@ export class Connection {
   ): Promise<Room<RoomState>> {
     const maxAttempts = 3;
     let backoff = 500;
-    const joinOpts: any = { name };
-    if (opts.code !== undefined) joinOpts.code = opts.code.toUpperCase();
+    // code TOUJOURS envoyé (string vide = public). Si on l'omet, filterBy
+    // l'ignore dans la requête matchmaker → un client public peut
+    // matcher une room privée (et vice-versa). En forçant code = "" pour
+    // le public, l'égalité stricte du filtre garantit l'isolation.
+    const joinOpts: any = { name, code: (opts.code ?? "").toUpperCase() };
     if (opts.bots !== undefined) joinOpts.bots = opts.bots;
     if (opts.token) joinOpts.token = opts.token;
     while (this.reconnectAttempts < maxAttempts) {

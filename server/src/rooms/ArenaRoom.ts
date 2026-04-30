@@ -130,8 +130,11 @@ export class ArenaRoom extends Room<ArenaState> {
     state.isPrivate = this.isPrivate;
     state.botsEnabled = this.botsEnabled;
     this.setState(state);
-    // Les rooms privées ne sont pas exposées à la matchmaking public.
-    if (this.isPrivate) this.setPrivate(true);
+    // NB: pas de setPrivate(true) sur les rooms à code. Colyseus exclut
+    // hardcoded les rooms privées de joinOrCreate (private:false dans la
+    // requête matchmaker), donc setPrivate casserait le rejoin par code.
+    // L'isolation public/privé est assurée côté filterBy : public envoie
+    // code="", privé envoie le code à 5 chars, jamais de cross-match.
     this.setPatchRate(1000 / SERVER_TICKRATE);
     this.setSimulationInterval((dtMs) => this.tick(dtMs / 1000), 1000 / SERVER_TICKRATE);
     this.onMessage<InputMessage>("input", (client, msg) => this.handleInput(client, msg));
