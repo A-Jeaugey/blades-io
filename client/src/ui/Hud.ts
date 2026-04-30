@@ -1,5 +1,6 @@
 export class Hud {
   private bladeCount: HTMLElement;
+  private bladeLabel: HTMLElement;
   private boostFill: HTMLElement;
   private fps: HTMLElement;
   private loginFps: HTMLElement;
@@ -13,6 +14,7 @@ export class Hud {
 
   constructor() {
     this.bladeCount = document.getElementById("blade-count")!;
+    this.bladeLabel = document.getElementById("blade-label")!;
     this.boostFill = document.getElementById("boost-fill")!;
     this.fps = document.getElementById("fps")!;
     this.loginFps = document.getElementById("login-fps")!;
@@ -72,7 +74,10 @@ export class Hud {
 
   show(): void { this.hud.classList.remove("hidden"); }
   hide(): void { this.hud.classList.add("hidden"); }
-  setBladeCount(n: number): void { this.bladeCount.textContent = String(n); }
+  setBladeCount(n: number): void {
+    this.bladeCount.textContent = String(n);
+    this.bladeLabel.textContent = n === 1 ? "BLADE" : "BLADES";
+  }
   setBoost(ratio: number): void {
     this.boostFill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
   }

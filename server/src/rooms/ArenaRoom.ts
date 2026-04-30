@@ -472,7 +472,7 @@ export class ArenaRoom extends Room<ArenaState> {
     }
   }
 
-  private killPlayer(victim: Player, killer: Player | null, _reason: string): void {
+  private killPlayer(victim: Player, killer: Player | null, reason: string): void {
     if (!victim.alive) return;
     victim.alive = false;
     // Persiste le match juste après le passage à mort (avant le drop, mais
@@ -526,11 +526,16 @@ export class ArenaRoom extends Room<ArenaState> {
       killer.kills++;
       updateScore(killer);
     }
+    // Pas de killer humain → on étiquette la cause (border = "wall") pour que
+    // le death screen affiche quand même un "killed by". Sinon la ligne
+    // disparaît et le joueur ne sait pas pourquoi il est mort.
+    const killerLabel =
+      killer?.name ?? (reason === "wall" ? "GRID BORDER" : null);
     this.broadcast("playerKilled", {
       victimId: victim.id,
       killerId: killer?.id ?? null,
       victimName: victim.name,
-      killerName: killer?.name ?? null,
+      killerName: killerLabel,
     });
   }
 }

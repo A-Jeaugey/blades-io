@@ -25,6 +25,12 @@ export class SoundManager {
   private musicVol = 0.5;
   private music: HTMLAudioElement | null = null;
 
+  // Tone.js exige des `start()` strictement croissants par voix (sinon
+  // FMOscillator throw "Start time must be strictly greater..."). Plusieurs
+  // collisions/throws dans la même frame déclenchent des appels back-to-back
+  // → on planifie chaque trigger à `max(now, lastTime + epsilon)`.
+  private lastTriggerTime = new WeakMap<object, number>();
+
   async init(): Promise<void> {
     if (this.started) return;
     await Tone.start();
@@ -95,6 +101,18 @@ export class SoundManager {
     }
   }
 
+  // Renvoie un temps strictement > au précédent trigger sur ce synth, en
+  // partant de Tone.now(). Espacement minimum : 1 ms — assez pour Tone, et
+  // imperceptible (les triggers reviennent ensuite en temps réel dès que le
+  // burst est passé).
+  private nextTime(synth: object): number {
+    const now = Tone.now();
+    const last = this.lastTriggerTime.get(synth) ?? 0;
+    const t = Math.max(now, last + 0.001);
+    this.lastTriggerTime.set(synth, t);
+    return t;
+  }
+
   setVolumes(master: number, music: number, sfx: number): void {
     this.masterVol = master;
     this.musicVol = music;
@@ -107,13 +125,13 @@ export class SoundManager {
     if (!this.started || gain <= 0) return;
     const notes = ["C5", "E5", "G5", "B5"];
     const n = notes[Math.min(3, rarity)];
-    this.pickupSynth.triggerAttackRelease(n, 0.12, undefined, gain);
+    this.pickupSynth.triggerAttackRelease(n, 0.12, this.nextTime(this.pickupSynth), gain);
   }
 
   hit(rarity: BladeRarity, gain = 1): void {
     if (!this.started || gain <= 0) return;
     const freq = [200, 260, 340, 440][Math.min(3, rarity)];
-    this.hitSynth.triggerAttackRelease(freq, 0.06, undefined, gain);
+    this.hitSynth.triggerAttackRelease(freq, 0.06, this.nextTime(this.hitSynth), gain);
   }
 
   // Son de lancer de lame : note glissante aiguë → grave pour suggérer le
@@ -121,24 +139,24 @@ export class SoundManager {
   throwBlade(rarity: BladeRarity, gain = 1): void {
     if (!this.started || gain <= 0) return;
     const note = ["A4", "C5", "E5", "G5"][Math.min(3, rarity)];
-    this.pickupSynth.triggerAttackRelease(note, 0.18, undefined, gain);
-    this.hitSynth.triggerAttackRelease([180, 220, 280, 360][Math.min(3, rarity)], 0.05, undefined, gain);
+    this.pickupSynth.triggerAttackRelease(note, 0.18, this.nextTime(this.pickupSynth), gain);
+    this.hitSynth.triggerAttackRelease([180, 220, 280, 360][Math.min(3, rarity)], 0.05, this.nextTime(this.hitSynth), gain);
   }
 
   kill(gain = 1): void {
     if (!this.started || gain <= 0) return;
-    this.killSynth.triggerAttackRelease("C2", 0.25, undefined, gain);
+    this.killSynth.triggerAttackRelease("C2", 0.25, this.nextTime(this.killSynth), gain);
   }
 
   death(): void {
     if (!this.started) return;
-    this.deathSynth.triggerAttackRelease(0.4);
-    this.killSynth.triggerAttackRelease("A1", 0.4, undefined, 0.9);
+    this.deathSynth.triggerAttackRelease(0.4, this.nextTime(this.deathSynth));
+    this.killSynth.triggerAttackRelease("A1", 0.4, this.nextTime(this.killSynth), 0.9);
   }
 
   lowBlades(): void {
     if (!this.started) return;
-    this.lowSynth.triggerAttackRelease("E4", 0.08);
+    this.lowSynth.triggerAttackRelease("E4", 0.08, this.nextTime(this.lowSynth));
   }
 
   setBoost(on: boolean): void {

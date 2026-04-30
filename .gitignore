@@ -8,3 +8,6 @@ dist/
 coverage/
 # Généré par client/scripts sync-music (copie de Hardline_Pursuit.mp4)
 client/public/
+# Sorties d'outils MCP (Playwright captures/snapshots à la racine)
+.playwright-mcp/
+/*.png
