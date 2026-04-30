@@ -171,6 +171,7 @@ export class AuthPanel {
       <div class="bio2-auth-body">
         <div class="bio2-auth-providers">
           <button type="button" class="bio2-auth-provider bio2-auth-discord" data-provider="discord">
+            <span class="bio2-auth-provider-orb">
             <svg class="bio2-auth-provider-logo" viewBox="0 0 24 24" aria-hidden="true">
               <defs>
                 <linearGradient id="bio2-discord-glass" x1="20%" y1="0%" x2="80%" y2="100%">
@@ -196,9 +197,11 @@ export class AuthPanel {
                 opacity="0.55"
               />
             </svg>
+            </span>
             <span>Continue with Discord</span>
           </button>
           <button type="button" class="bio2-auth-provider bio2-auth-google" data-provider="google">
+            <span class="bio2-auth-provider-orb">
             <svg class="bio2-auth-provider-logo" viewBox="0 0 24 24" aria-hidden="true">
               <defs>
                 <linearGradient id="bio2-google-blue" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -225,6 +228,7 @@ export class AuthPanel {
                 <path fill="url(#bio2-google-red)" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
               </g>
             </svg>
+            </span>
             <span>Continue with Google</span>
           </button>
         </div>
