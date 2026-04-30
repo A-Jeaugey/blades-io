@@ -805,6 +805,23 @@ button:hover {
   max-height: 65vh;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Scrollbar stylée cyan-discrète (Firefox + standard). */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,229,255,.4) transparent;
+}
+/* Scrollbar Webkit (Chrome / Edge / Safari) — même look. */
+.bio2-console::-webkit-scrollbar {
+  width: 6px;
+}
+.bio2-console::-webkit-scrollbar-track {
+  background: transparent;
+}
+.bio2-console::-webkit-scrollbar-thumb {
+  background: rgba(0,229,255,.3);
+  border-radius: 3px;
+}
+.bio2-console::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,229,255,.55);
 }
 .bio2-console::before {
   content:""; position:absolute; left:-1px; top:-1px; right:-1px; bottom:-1px;
