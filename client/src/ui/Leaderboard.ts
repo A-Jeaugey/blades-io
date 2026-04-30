@@ -19,7 +19,10 @@ export class Leaderboard {
     if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
     const sorted = [...entries].sort((a, b) => b.score - a.score);
-    const top = sorted.slice(0, 10);
+    // Sur petit écran, on tronque à 5 entrées : la liste à 10 lignes occupait
+    // près de la moitié de la zone de jeu en portrait.
+    const maxRows = window.innerWidth <= 600 ? 5 : 10;
+    const top = sorted.slice(0, maxRows);
     const rows = document.getElementById("lb-rows")!;
     let html = "";
     for (let i = 0; i < top.length; i++) {
@@ -34,7 +37,7 @@ export class Leaderboard {
       </div>`;
     }
     const myRank = sorted.findIndex((e) => e.id === myId);
-    if (myRank >= 10) {
+    if (myRank >= maxRows) {
       const me = sorted[myRank];
       html += `<div class="lb-row me">
         <span class="name">${myRank + 1}. ${escapeHtml(me.name)}</span>
