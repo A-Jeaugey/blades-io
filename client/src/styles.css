@@ -650,10 +650,17 @@ button:hover {
     right: 10px;
     gap: 8px;
   }
+  /* Sur mobile, on sort le leaderboard du bloc top-right pour le centrer
+   * en haut de l'écran : la minimap reste seule à droite, plus de stack
+   * vertical qui empiète sur la zone de jeu. */
   #leaderboard {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
     font-size: 10px;
     min-width: 0;
-    max-width: 200px;
+    max-width: 70vw;
     padding: 6px 8px;
   }
   #leaderboard h4 {
