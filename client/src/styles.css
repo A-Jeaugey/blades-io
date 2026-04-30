@@ -753,6 +753,10 @@ button:hover {
 }
 .bio2-center > :first-child { margin-top: auto; }
 .bio2-center > :last-child { margin-bottom: auto; }
+/* Empêche flexbox de réduire les enfants pour faire rentrer le contenu :
+   sans ça, .bio2-console (overflow:hidden) se fait écraser et enter-btn
+   se retrouve clippé hors écran sans déclencher le scroll. */
+.bio2-center > * { flex-shrink: 0; }
 
 .bio2-mark { display:flex; align-items:center; gap: 14px; position: relative; }
 .bio2-mark-bracket { font-size: 56px; font-weight: 200; color: var(--cyan); opacity: .35; line-height: 1; }
