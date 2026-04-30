@@ -248,23 +248,22 @@ export class AuthPanel {
                 <path id="bio2-google-p2" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
                 <path id="bio2-google-p3" d="M5.84 14.09a6.6 6.6 0 0 1-.34-2.09c0-.72.12-1.43.34-2.09V7.07H2.18a11 11 0 0 0 0 9.86l3.66-2.84z" />
                 <path id="bio2-google-p4" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
-                <!-- Path "outline" du G : un seul tracé OUVERT qui suit
-                     fidèlement chaque bord visible, dans l'ordre :
-                       (22.36, 10) → bord sup barre → gauche → bas barre →
-                       cubic patte-barre → gauche, bas patte →
-                       cubic vert inv (correctes : controls (17.46, 22.02) et
-                       (14.97, 23) — le bug précédent les mettait à (17.45, 22)
-                       et (14.97, 22.05), ce qui faisait gondoler la cubic
-                       à travers le quart vert) →
-                       arcs vert+jaune (sweep=1 = sens horaire inverse) →
-                       cubics rouge → (19.36, 3.87).
-                     Pas de Z, pas de ligne de fermeture : le G a une
-                     ouverture naturelle en haut-droite (l'encoche), donc
-                     le bandeau y a aussi un manque — c'est cohérent avec
-                     la forme. animateMotion saute du point final (19.36,
-                     3.87) au point initial (22.36, 10) à chaque cycle
-                     (~7 unités, dans la zone vide de l'encoche). -->
-                <path id="bio2-google-outline" d="M 22.36 10 H 12 V 14.26 H 17.92 C 17.66 15.63 16.88 16.79 15.71 17.57 V 20.34 H 19.28 C 17.46 22.02 14.97 23 12 23 A 11 11 0 0 1 2.18 16.93 A 11 11 0 0 1 2.18 7.07 C 3.99 3.47 7.7 1 12 1 C 14.97 1 17.45 2.09 19.36 3.87" />
+                <!-- Path "outline" du G : 2 subpaths ouverts. On évite les
+                     V+H de la patte (gauche+bas) qui tombent visuellement
+                     dans le quart vert — la patte bleue et le quart vert
+                     se chevauchent dans le triangle (15.71,17.57)-(15.71,
+                     20.34)-(19.28,20.34) parce que le bord droit du vert
+                     est la diagonale l-3.57-2.77 (pas en équerre). Tracer
+                     V+H y crée une "L" lumineuse parasite.
+                     Subpath 1 : tour extérieur complet (cubics bleus pour
+                       le bord ext droit + cubic vert + arcs + cubics rouge).
+                       Démarre (22.36, 10), termine (19.36, 3.87).
+                     Subpath 2 : intérieur de la barre + cubic patte-barre.
+                       Démarre (22.36, 10), termine (15.71, 17.57).
+                     animateMotion fait 2 sauts par cycle (~7 unités chacun)
+                     mais ne trace plus aucune ligne dans une zone colorée
+                     ni dans le vide. -->
+                <path id="bio2-google-outline" d="M 22.36 10 C 22.49 10.72 22.56 11.47 22.56 12.25 C 22.56 15.6 21.36 18.42 19.28 20.34 C 17.46 22.02 14.97 23 12 23 A 11 11 0 0 1 2.18 16.93 A 11 11 0 0 1 2.18 7.07 C 3.99 3.47 7.7 1 12 1 C 14.97 1 17.45 2.09 19.36 3.87 M 22.36 10 H 12 V 14.26 H 17.92 C 17.66 15.63 16.88 16.79 15.71 17.57" />
                 <filter id="bio2-google-glow" x="-100%" y="-100%" width="300%" height="300%">
                   <feGaussianBlur stdDeviation="0.45" result="b1" />
                   <feMerge>
