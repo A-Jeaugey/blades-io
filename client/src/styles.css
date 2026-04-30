@@ -642,27 +642,27 @@ button:hover {
     gap: 4px;
   }
   #minimap {
-    width: 96px;
-    height: 96px;
+    width: 78px;
+    height: 78px;
   }
   #top-right {
     top: 10px;
     right: 10px;
     gap: 8px;
   }
-  /* Sur mobile, on sort le leaderboard du bloc top-right pour le placer
-   * en haut entre l'icône paramètres (gauche) et la minimap (droite).
-   * left/right ancrent les deux bords avec une marge cohérente vis-à-vis
-   * de l'icône params (~50px de large) et de la minimap (96px + offset). */
+  /* Sur mobile, leaderboard centré horizontalement sur le viewport (et non
+   * dans la bande libre entre params et minimap, qui est asymétrique et
+   * tirait visuellement vers la gauche). max-width laisse de la marge à
+   * droite pour que le bord ne touche pas la minimap. */
   #leaderboard {
     position: fixed;
     top: 10px;
-    left: 60px;
-    right: 112px;
-    transform: none;
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
     font-size: 10px;
     min-width: 0;
-    max-width: none;
+    max-width: calc(100vw - 190px);
     padding: 6px 8px;
   }
   #leaderboard h4 {
