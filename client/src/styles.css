@@ -753,10 +753,6 @@ button:hover {
 }
 .bio2-center > :first-child { margin-top: auto; }
 .bio2-center > :last-child { margin-bottom: auto; }
-/* Empêche flexbox de réduire les enfants pour faire rentrer le contenu :
-   sans ça, .bio2-console (overflow:hidden) se fait écraser et enter-btn
-   se retrouve clippé hors écran sans déclencher le scroll. */
-.bio2-center > * { flex-shrink: 0; }
 
 .bio2-mark { display:flex; align-items:center; gap: 14px; position: relative; }
 .bio2-mark-bracket { font-size: 56px; font-weight: 200; color: var(--cyan); opacity: .35; line-height: 1; }
@@ -803,7 +799,12 @@ button:hover {
   position: relative;
   box-shadow: 0 0 60px rgba(0,229,255,.2), inset 0 0 30px rgba(0,229,255,.05);
   backdrop-filter: blur(10px);
-  overflow: hidden;
+  /* Scroll INTERNE quand le contenu déborde (auth panel déplié) :
+     on plafonne la console à 65vh et on scrolle dedans. Le reste du
+     login screen (logo, marquee, etc.) ne bouge pas. */
+  max-height: 65vh;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .bio2-console::before {
   content:""; position:absolute; left:-1px; top:-1px; right:-1px; bottom:-1px;
@@ -992,18 +993,6 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  /* Quand le form est déplié, on plafonne la hauteur et on scrolle à
-     l'intérieur du panneau — ça évite de pousser CALLSIGN / ENTER THE
-     GRID hors écran sur les petits viewports. */
-  max-height: min(60vh, 460px);
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-/* En mode replié et signed-in, pas besoin de plafond ni de scroll. */
-.bio2-auth.bio2-auth-mini,
-.bio2-auth:has(.bio2-auth-summary) {
-  max-height: none;
-  overflow: visible;
 }
 /* Mode replié : juste un trigger inline, padding réduit. */
 .bio2-auth.bio2-auth-mini {
