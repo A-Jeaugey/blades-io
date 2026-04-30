@@ -1118,11 +1118,13 @@ button:hover {
   flex-direction: column;
   gap: 6px;
 }
+/* Bouton : sobre, cohérent avec le reste de la console cyber (rectangulaire,
+   bordure cyan discrète). Le glassmorphism est porté par le LOGO. */
 .bio2-auth-provider {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(0, 229, 255, 0.3);
@@ -1142,14 +1144,27 @@ button:hover {
   opacity: 0.5;
   cursor: not-allowed;
 }
-.bio2-auth-provider-ic {
-  font-size: 16px;
-  color: var(--cyan);
+/* Logo en verre : ombre portée pour le détacher du fond + drop-shadow blanc
+   très diffus pour suggérer la lumière qui traverse le glass. Le SVG lui-même
+   utilise des gradients translucides white→brand pour l'effet réfraction. */
+.bio2-auth-provider-logo {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  filter:
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.18));
 }
-.bio2-auth-discord:hover { border-color: #5865f2; }
-.bio2-auth-discord .bio2-auth-provider-ic { color: #5865f2; }
-.bio2-auth-google:hover { border-color: #ea4335; }
-.bio2-auth-google .bio2-auth-provider-ic { color: #ea4335; }
+/* Hover par marque : la bordure et un léger glow rappellent le provider, sans
+   toucher au logo qui garde son look verre. */
+.bio2-auth-discord:hover {
+  border-color: #5865f2;
+  box-shadow: 0 0 14px rgba(88, 101, 242, 0.25);
+}
+.bio2-auth-google:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 14px rgba(234, 67, 53, 0.18);
+}
 
 .bio2-auth-sep {
   display: flex;
