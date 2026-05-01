@@ -119,9 +119,15 @@ export function buildAuthRouter(): Router {
   // GET /api/leaderboards/coins  ?limit=100
   // GET /api/leaderboard         (legacy alias = score)
   // --------------------------------------------------------------------- //
-  const fetchLb = async (
+  const parseLimit = (q: any) =>
+    Math.min(Math.max(parseInt((q as string) ?? "100", 10) || 100, 1), 200);
+
+  // Try views in order. If a view doesn't exist (migration 0002 not yet
+  // applied) Supabase returns "relation does not exist" → fall back to the
+  // next view. Any other error bubbles up as a 500. Empty result is OK.
+  const fetchFromViews = async (
     res: Response,
-    view: "leaderboard_top_score" | "leaderboard_top_coins",
+    views: string[],
     cols: string,
     limit: number,
   ) => {
@@ -134,42 +140,56 @@ export function buildAuthRouter(): Router {
       res.json({ entries: [] });
       return;
     }
-    const { data, error } = await admin.from(view).select(cols).limit(limit);
-    if (error) {
-      console.warn(`[blade.io] ${view} fetch failed`, error.message);
-      res.status(500).json({ error: "leaderboard_failed" });
-      return;
+    let lastErrorMsg = "";
+    for (const view of views) {
+      const { data, error } = await admin.from(view).select(cols).limit(limit);
+      if (!error) {
+        res.json({ entries: data ?? [] });
+        return;
+      }
+      lastErrorMsg = error.message;
+      // PostgREST exposes "relation \"public.X\" does not exist" or PGRST205
+      // when a view/table is missing — try the next fallback in that case.
+      const code = (error as any).code as string | undefined;
+      const missing =
+        code === "PGRST205" ||
+        code === "42P01" ||
+        /does not exist/i.test(error.message);
+      if (!missing) {
+        console.warn(`[blade.io] ${view} fetch failed`, error.message);
+        res.status(500).json({ error: "leaderboard_failed" });
+        return;
+      }
+      console.warn(`[blade.io] ${view} missing, trying fallback`, error.message);
     }
-    res.json({ entries: data ?? [] });
+    // None of the views existed — return empty so the UI degrades gracefully.
+    console.warn(`[blade.io] all leaderboard views missing (${lastErrorMsg})`);
+    res.json({ entries: [] });
   };
 
-  const parseLimit = (q: any) =>
-    Math.min(Math.max(parseInt((q as string) ?? "100", 10) || 100, 1), 200);
-
   router.get("/leaderboards/score", (req, res) =>
-    fetchLb(
+    fetchFromViews(
       res,
-      "leaderboard_top_score",
+      ["leaderboard_top_score", "leaderboard_top"],
       "user_id, username, score, kills, max_blades, survival_seconds, games_played",
       parseLimit(req.query.limit),
     ),
   );
 
   router.get("/leaderboards/coins", (req, res) =>
-    fetchLb(
+    fetchFromViews(
       res,
-      "leaderboard_top_coins",
+      ["leaderboard_top_coins"],
       "user_id, username, balance, total_earned",
       parseLimit(req.query.limit),
     ),
   );
 
-  // Legacy: keep /api/leaderboard pointing at the score view so the existing
-  // login screen panel keeps working without a client redeploy.
+  // Legacy alias used by the login screen "TOP OPS" rail.
   router.get("/leaderboard", (req, res) =>
-    fetchLb(
+    fetchFromViews(
       res,
-      "leaderboard_top_score",
+      ["leaderboard_top_score", "leaderboard_top"],
       "user_id, username, score, kills, max_blades, survival_seconds, games_played",
       parseLimit(req.query.limit),
     ),
