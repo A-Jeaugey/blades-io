@@ -1370,3 +1370,182 @@ button:hover {
   opacity: 0.7;
   cursor: not-allowed;
 }
+
+/* ─── HUD coin badge ─────────────────────────────────────────────────── */
+#coin-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(10, 14, 26, 0.78);
+  border: 1px solid rgba(255, 200, 60, 0.55);
+  border-radius: 999px;
+  color: #ffd566;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(255, 213, 102, 0.5);
+  box-shadow: 0 0 16px rgba(255, 213, 102, 0.18);
+  pointer-events: none;
+  z-index: 5;
+}
+#coin-badge.hidden { display: none; }
+#coin-badge .coin-icon { font-size: 16px; }
+@media (max-width: 600px) {
+  #coin-badge { top: 10px; left: 10px; font-size: 12px; padding: 4px 9px; }
+}
+
+/* ─── Death screen coins row ─────────────────────────────────────────── */
+.death-coins {
+  color: #ffd566;
+  font-weight: 700;
+}
+
+/* ─── Login menu : "view all leaderboards" CTA ───────────────────────── */
+.bio2-rail-cta {
+  margin-top: 10px;
+  background: transparent;
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  color: #00e5ff;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background .2s, color .2s, transform .15s;
+}
+.bio2-rail-cta:hover {
+  background: rgba(0, 229, 255, 0.12);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+/* ─── Leaderboards modal ─────────────────────────────────────────────── */
+#leaderboards-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 18, 0.82);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+#leaderboards-modal.hidden { display: none; }
+.lb-modal-card {
+  width: min(820px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0c1326 0%, #07101e 100%);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 40px rgba(0, 229, 255, 0.18);
+  border-radius: 6px;
+  font-family: "JetBrains Mono", monospace;
+}
+.lb-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  border-bottom: 1px dashed rgba(0, 229, 255, 0.25);
+}
+.lb-modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 4px;
+  color: #00e5ff;
+}
+#lb-modal-close {
+  background: none;
+  border: none;
+  color: #89bacf;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+#lb-modal-close:hover { color: #ff2ea8; }
+.lb-modal-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 12px 22px 0;
+}
+.lb-tab {
+  flex: 1;
+  background: transparent;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  color: #89bacf;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.lb-tab:hover { color: #fff; border-color: rgba(0, 229, 255, 0.55); }
+.lb-tab.active {
+  background: rgba(0, 229, 255, 0.14);
+  color: #00e5ff;
+  border-color: rgba(0, 229, 255, 0.65);
+}
+.lb-modal-body {
+  overflow-y: auto;
+  padding: 16px 22px 22px;
+  flex: 1;
+}
+.lb-modal-empty {
+  text-align: center;
+  color: #89bacf;
+  padding: 60px 0;
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+.lb-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.lb-modal-table thead th {
+  text-align: left;
+  color: #89bacf;
+  font-weight: 500;
+  letter-spacing: 2px;
+  font-size: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.18);
+}
+.lb-modal-table tbody td {
+  padding: 9px 10px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+  color: #d8e6ee;
+}
+.lb-modal-table .lb-rank {
+  font-weight: 700;
+  color: #89bacf;
+  width: 38px;
+}
+.lb-modal-table .lb-name { font-weight: 600; }
+.lb-modal-table .lb-num { text-align: right; font-variant-numeric: tabular-nums; }
+.lb-modal-table .lb-sub { color: #89bacf; }
+.lb-modal-table tr.bio2-tier-lg .lb-name { color: #ffd566; text-shadow: 0 0 8px rgba(255,213,102,0.4); }
+.lb-modal-table tr.bio2-tier-ep .lb-name { color: #ff2ea8; }
+.lb-modal-table tr.bio2-tier-ra .lb-name { color: #b14bff; }
+@media (max-width: 600px) {
+  .lb-modal-card { max-height: 92vh; }
+  .lb-modal-head h2 { font-size: 14px; letter-spacing: 2px; }
+  .lb-modal-tabs { padding: 10px 12px 0; }
+  .lb-tab { font-size: 10px; letter-spacing: 1px; padding: 8px 6px; }
+  .lb-modal-body { padding: 12px; }
+  .lb-modal-table { font-size: 11px; }
+  .lb-modal-table thead th, .lb-modal-table tbody td { padding: 7px 5px; }
+}

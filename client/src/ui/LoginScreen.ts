@@ -1,6 +1,7 @@
 import { NAME_MAX_LENGTH, NAME_MIN_LENGTH } from "@bladeio/shared";
 import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
+import { LeaderboardsModal } from "./LeaderboardsModal";
 
 export type LoginMode = "public" | "create" | "join";
 export interface LoginResult {
@@ -150,6 +151,18 @@ export class LoginScreen {
     if (this.taglineEl) runGlitchReveal(this.taglineEl, "SPIN TO SURVIVE");
     this.applyAuthState();
     this.refreshTopOps();
+
+    // Bouton "VIEW ALL LEADERBOARDS" → ouvre la modale avec les onglets
+    // Best Score / Richest. Lazy-construit pour ne pas charger inutilement
+    // les éléments si l'utilisateur n'ouvre jamais la modale.
+    const lbBtn = document.getElementById("open-leaderboards-btn");
+    if (lbBtn) {
+      let modal: LeaderboardsModal | null = null;
+      lbBtn.addEventListener("click", () => {
+        if (!modal) modal = new LeaderboardsModal();
+        modal.show();
+      });
+    }
   }
 
   // Fetch /api/leaderboard et remplit le panneau de droite "TOP OPS". On

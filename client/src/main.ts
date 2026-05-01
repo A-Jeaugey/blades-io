@@ -50,6 +50,7 @@ import { SettingsPanel } from "./ui/Settings";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { auth } from "./auth/supabase";
+import { setGuestCoinsToken, claimGuestCoins } from "./auth/guestCoins";
 
 const RENDER_DELAY = 150;
 
@@ -112,6 +113,11 @@ class Game {
   private predInit = false;
   private inputSeq = 0;
   private topPlayerId: string | null = null;
+  // Solde de coins gagnés en mode invité (tient à travers les morts d'une
+  // même session, écrasé à chaque coinsUpdate du serveur). Sert à afficher
+  // dans le DeathScreen pour les invités, où Player.coins n'est pas
+  // forcément refletté instantanément.
+  private lastGuestEarned = 0;
   // Edge-trigger throw : on stocke un appui détecté entre deux sendInput()
   // (input rate ~30 Hz, alors que la frame tourne à 60 Hz). Sans ça, un
   // appui dans la frame de gap entre deux sends se perd.
@@ -172,6 +178,18 @@ class Game {
     });
     this.conn = new Connection(resolveServerEndpoint());
     window.addEventListener("beforeunload", () => { this.conn.leave(); });
+    // Si le joueur se signe-in pendant qu'on a des coins d'invité en
+    // attente, on les transfère vers son wallet (1 fois, le token est
+    // consommé). Le claim est silencieux en cas d'échec — c'est best-effort,
+    // le solde de session reste affiché tant qu'il n'est pas claim.
+    auth.subscribe(async (state) => {
+      if (state.status !== "signed_in") return;
+      const token = state.session.access_token;
+      const result = await claimGuestCoins(token);
+      if (result && result.credited > 0) {
+        console.log(`[blade.io] claimed ${result.credited} guest coins → balance ${result.balance}`);
+      }
+    });
     this.loop();
   }
 
@@ -399,6 +417,15 @@ class Game {
       this.particles.spawnSparks(msg.x, 0.95, msg.y, color, count, speed);
       this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
     });
+    // Solde de pièces : envoyé par le serveur à chaque mort d'invité (avec
+    // un token signé pour réclamer les coins après signup). Pour les
+    // authentifiés, le solde live arrive via Player.coins (sync state) —
+    // on conserve aussi ce hook au cas où le serveur veuille pousser un
+    // delta hors-cycle (futurs achats).
+    room.onMessage("coinsUpdate", (msg: { coins: number; guestToken?: string }) => {
+      this.lastGuestEarned = msg.coins;
+      if (msg.guestToken) setGuestCoinsToken(msg.guestToken);
+    });
     room.onMessage("tierUp", (msg: TierUpEvent) => {
       // Tier-up VFX : ring d'étincelles autour du joueur + shake si local.
       // On utilise une explosion bien dense pour signaler le palier passé.
@@ -535,6 +562,8 @@ class Game {
       // join. Côté client, le state d'auth au moment de la mort est la
       // meilleure approximation.
       scorePersisted: auth.getAccessToken() !== null,
+      coinsEarned: me.score,
+      coinBalance: typeof me.coins === "number" ? me.coins : undefined,
     });
   }
 
@@ -561,6 +590,7 @@ class Game {
     this.hud.hide();
     this.hud.setRoomCode("");
     this.hud.clearEffects();
+    this.hud.hideCoins();
     this.effectDurations.clear();
     this.settings.setInGame(false);
     // Détache d'abord les listeners (élimine les callbacks fantômes), puis
@@ -683,6 +713,9 @@ class Game {
     this.lastBladeCountShown = me.bladeCount;
     this.hud.setBladeCount(me.bladeCount);
     this.hud.setBoost(me.bladeCount / MAX_BLADES_PER_PLAYER);
+    // Solde live : Player.coins est sync depuis le serveur (baseline
+    // wallet + score courant + earned-en-session-pour-les-invités).
+    if (typeof me.coins === "number") this.hud.setCoins(me.coins);
     // Effets actifs : on relit les *Until du joueur local et on met à jour
     // les badges HUD avec leur temps restant. Durée base conservée dans
     // effectDurations pour normaliser la barre.
