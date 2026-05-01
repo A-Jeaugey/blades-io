@@ -1372,10 +1372,13 @@ button:hover {
 }
 
 /* ─── HUD coin badge ─────────────────────────────────────────────────── */
+/* Placé À DROITE du bouton settings (qui est top:16/left:16, ~46px de large)
+   pour ne pas le recouvrir. Le solde est figé pendant la partie ; il ne saute
+   qu'à la mort, quand le serveur crédite (1 point = 1 coin). */
 #coin-badge {
   position: absolute;
   top: 16px;
-  left: 16px;
+  left: 70px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1396,8 +1399,32 @@ button:hover {
 #coin-badge.hidden { display: none; }
 #coin-badge .coin-icon { font-size: 16px; }
 @media (max-width: 600px) {
-  #coin-badge { top: 10px; left: 10px; font-size: 12px; padding: 4px 9px; }
+  #coin-badge { top: 10px; left: 56px; font-size: 12px; padding: 4px 9px; }
 }
+
+/* Coin chip dans le menu (login) — affiché juste sous le panneau d'auth
+   quand l'utilisateur est signé. Permet de vérifier son solde sans entrer
+   en partie. */
+.menu-coins {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px auto 0;
+  padding: 8px 16px;
+  background: rgba(10, 14, 26, 0.6);
+  border: 1px solid rgba(255, 200, 60, 0.45);
+  border-radius: 999px;
+  color: #ffd566;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(255, 213, 102, 0.4);
+  width: fit-content;
+}
+.menu-coins.hidden { display: none; }
+.menu-coins .menu-coins-label { color: #89bacf; font-weight: 500; letter-spacing: 1.5px; }
 
 /* ─── Death screen coins row ─────────────────────────────────────────── */
 .death-coins {

@@ -206,7 +206,7 @@ export class ArenaRoom extends Room<ArenaState> {
         const player = this.state.players.get(client.sessionId);
         if (!player || player.userId !== userId) return;
         player.walletBaseline = w.balance;
-        player.coins = w.balance + player.score;
+        player.coins = w.balance;
       });
     }
   }
@@ -284,8 +284,9 @@ export class ArenaRoom extends Room<ArenaState> {
         const baseline =
           newBalance != null ? newBalance : player.walletBaseline + earned;
         player.walletBaseline = baseline;
-        // p.score sera remis à 0 au respawn — ici, juste avant ce reset,
-        // coins = baseline + 0 + 0 = nouveau solde net.
+        // Pousse le solde fraîchement crédité dans le state synchronisé →
+        // le HUD client (DeathScreen + coin-badge) reflète le gain.
+        player.coins = baseline;
       });
       return;
     }
@@ -295,6 +296,7 @@ export class ArenaRoom extends Room<ArenaState> {
     const earned = Math.floor(p.score);
     if (earned <= 0) return;
     p.guestCoinsEarned += earned;
+    p.coins = p.guestCoinsEarned;
     const client = this.clients.find((c) => c.sessionId === p.id);
     if (client) {
       const token = signGuestCoins(p.id, p.guestCoinsEarned);
@@ -419,14 +421,10 @@ export class ArenaRoom extends Room<ArenaState> {
     this.powerups.update(dt, this.state, (player, pu) => this.handlePowerUpPickup(player, pu));
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
-    // Coins live = baseline du wallet + score gagné dans la vie courante.
-    // Pour les invités : baseline 0 + déjà-gagné en sessions précédentes
-    // (guestCoinsEarned cumule à chaque mort) + score courant.
-    this.state.players.forEach((p) => {
-      if (!p.alive) return;
-      updateScore(p);
-      p.coins = p.walletBaseline + p.guestCoinsEarned + p.score;
-    });
+    // Le solde de coins ne bouge PAS pendant la vie : il est crédité (pour les
+    // authed) ou cumulé (pour les invités) seulement à la mort, pour donner
+    // une "récompense de fin de partie" lisible plutôt qu'un compteur live.
+    this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
     this.bots.cleanupDead(this.state);
   }
 
