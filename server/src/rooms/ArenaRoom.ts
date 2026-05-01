@@ -61,6 +61,8 @@ import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
 import { verifyAccessToken } from "../auth/supabase";
 import { recordMatch } from "../auth/matches";
+import { getWallet } from "../auth/wallet";
+import { signGuestCoins } from "../auth/guestToken";
 
 function sanitizeName(raw: string): string {
   const cleaned = (raw ?? "")
@@ -195,6 +197,18 @@ export class ArenaRoom extends Room<ArenaState> {
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.state.players.set(client.sessionId, p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+    // Joueur authed : on charge son wallet de façon asynchrone, puis on
+    // pousse la baseline + le solde initial sur le state synchronisé. Les
+    // ticks suivants vont recalculer player.coins = baseline + score.
+    if (p.userId) {
+      const userId = p.userId;
+      void getWallet(userId).then((w) => {
+        const player = this.state.players.get(client.sessionId);
+        if (!player || player.userId !== userId) return;
+        player.walletBaseline = w.balance;
+        player.coins = w.balance + player.score;
+      });
+    }
   }
 
   private spawnInitialBladeFor(p: Player): void {
@@ -239,24 +253,53 @@ export class ArenaRoom extends Room<ArenaState> {
     this.state.players.delete(sessionId);
   }
 
-  // Persiste le match courant pour les joueurs authentifiés. No-op pour les
-  // bots, les invités et si Supabase n'est pas configuré. Idempotent par
-  // appelant — on ne déduplique pas côté serveur, c'est l'appelant qui doit
-  // n'appeler qu'une fois (à la mort, au leave, ou au respawn).
+  // Persiste le match courant et, pour les joueurs authentifiés, crédite
+  // le wallet (1 point = 1 coin) en MAJ-ant la baseline locale pour que la
+  // sync Colyseus reflète le nouveau solde sans qu'on doive re-fetcher.
+  // Pour les invités : on accumule le score dans guestCoinsEarned et on
+  // pousse un token signé au client (`coinsUpdate`) qu'il pourra rejouer
+  // après signup. No-op pour les bots.
   private persistMatchIfAuthed(p: Player): void {
     if (p.isBot) return;
-    if (!p.userId) return;
-    const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
-    void recordMatch({
-      userId: p.userId,
-      score: p.score,
-      kills: p.kills,
-      maxBlades: p.maxBladeCount,
-      survivalSeconds: survival,
-      cratesDestroyed: p.cratesDestroyed,
-      powerupsCollected: p.powerupsCollected,
-      roomCode: this.roomCode || undefined,
-    });
+    if (p.userId) {
+      const userId = p.userId;
+      const sessionId = p.id;
+      const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
+      const earned = Math.floor(p.score);
+      void recordMatch({
+        userId,
+        score: p.score,
+        kills: p.kills,
+        maxBlades: p.maxBladeCount,
+        survivalSeconds: survival,
+        cratesDestroyed: p.cratesDestroyed,
+        powerupsCollected: p.powerupsCollected,
+        roomCode: this.roomCode || undefined,
+      }).then((newBalance) => {
+        const player = this.state.players.get(sessionId);
+        if (!player || player.userId !== userId) return;
+        // Si la BDD a confirmé un nouveau solde, on l'utilise ; sinon on
+        // applique le crédit localement (déploiement sans Supabase) pour
+        // que le HUD reste cohérent en mode dégradé.
+        const baseline =
+          newBalance != null ? newBalance : player.walletBaseline + earned;
+        player.walletBaseline = baseline;
+        // p.score sera remis à 0 au respawn — ici, juste avant ce reset,
+        // coins = baseline + 0 + 0 = nouveau solde net.
+      });
+      return;
+    }
+    // Invité : pas de BDD, on cumule les coins de la session et on pousse
+    // un token signé au client. La somme grossit à chaque mort jusqu'à ce
+    // que le joueur quitte ou crée un compte.
+    const earned = Math.floor(p.score);
+    if (earned <= 0) return;
+    p.guestCoinsEarned += earned;
+    const client = this.clients.find((c) => c.sessionId === p.id);
+    if (client) {
+      const token = signGuestCoins(p.id, p.guestCoinsEarned);
+      client.send("coinsUpdate", { coins: p.guestCoinsEarned, guestToken: token });
+    }
   }
 
   private handleInput(client: Client, msg: InputMessage): void {
@@ -376,7 +419,14 @@ export class ArenaRoom extends Room<ArenaState> {
     this.powerups.update(dt, this.state, (player, pu) => this.handlePowerUpPickup(player, pu));
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
-    this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
+    // Coins live = baseline du wallet + score gagné dans la vie courante.
+    // Pour les invités : baseline 0 + déjà-gagné en sessions précédentes
+    // (guestCoinsEarned cumule à chaque mort) + score courant.
+    this.state.players.forEach((p) => {
+      if (!p.alive) return;
+      updateScore(p);
+      p.coins = p.walletBaseline + p.guestCoinsEarned + p.score;
+    });
     this.bots.cleanupDead(this.state);
   }
 
