@@ -14,18 +14,20 @@ import { Player } from "../state/Player";
  * survival. Le score est directement écrit dans player.score (uint32
  * synchronisé par Colyseus).
  *
- * Formule : kills×15 + bladeCount×1 + floor(survivalSec / 10)×1
+ * Formule : kills×15 + maxBladeCount×1 + floor(survivalSec / 10)×1
  *           + cratesDestroyed×3 + powerupsCollected×2
  *
- * bladeCount = lames ACTUELLES (pas max) → le score monte ET baisse
- * en temps réel pendant les combats.
+ * On utilise maxBladeCount (et non bladeCount courant) pour que les
+ * trophées d'une partie ne baissent JAMAIS quand le joueur perd des
+ * lames en combat. Tous les autres composants sont déjà monotones
+ * (kills, crates, powerups, survival ne diminuent pas).
  */
 export function updateScore(player: Player): void {
   if (!player.alive) return;
   const survivalSec = Math.max(0, (Date.now() - player.spawnedAt) / 1000);
   const raw =
     player.kills * SCORE_KILL +
-    player.bladeCount * SCORE_BLADE +
+    player.maxBladeCount * SCORE_BLADE +
     Math.floor(survivalSec / SCORE_SURVIVAL_INTERVAL) * SCORE_SURVIVAL_PTS +
     player.cratesDestroyed * SCORE_CRATE +
     player.powerupsCollected * SCORE_POWERUP;
