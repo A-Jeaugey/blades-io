@@ -88,10 +88,6 @@ class Game {
   private minimap: Minimap;
   private settings: SettingsPanel;
   private sound = new SoundManager();
-  // Timestamps des kills locaux récents (sliding window 60s) pour piloter
-  // l'intensité de la musique de combat. Vidé au returnToMenu/death.
-  private recentKillTimes: number[] = [];
-  private lastIntensityCalc = 0;
   private conn: Connection;
   private myId = "";
   private myName = "";
@@ -371,7 +367,7 @@ class Game {
     room.onMessage("playerKilled", (msg: PlayerKilledEvent) => {
       const victim = this.players.get(msg.victimId);
       if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, 0xff2ea8, 40);
-      if (msg.killerId === this.myId) { this.camera.shake.add(0.5); this.sound.kill(); this.recentKillTimes.push(performance.now()); }
+      if (msg.killerId === this.myId) { this.camera.shake.add(0.5); this.sound.kill(); }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
     });
     room.onMessage("clash", (msg: ClashEvent) => {
@@ -595,7 +591,6 @@ class Game {
     this.hud.setRoomCode("");
     this.hud.clearEffects();
     this.effectDurations.clear();
-    this.recentKillTimes.length = 0;
     this.settings.setInGame(false);
     // Détache d'abord les listeners (élimine les callbacks fantômes), puis
     // AWAIT la fermeture effective de la WS. Sans l'await, en prod (proxy
@@ -843,32 +838,6 @@ class Game {
     }
   }
 
-  // Calcule un score 0..1 d'intensité musicale et le pousse au SoundManager,
-  // qui mixe les stems en conséquence. Deux signaux : kills récents (sliding
-  // 60s) et menaces proches (autres joueurs <25u). Le lissage final est fait
-  // côté SoundManager pour éviter le pumping.
-  private updateMusicIntensity(now: number): void {
-    const cutoff = now - 60000;
-    while (this.recentKillTimes.length && this.recentKillTimes[0] < cutoff) {
-      this.recentKillTimes.shift();
-    }
-    const killScore = Math.min(1, this.recentKillTimes.length / 5);
-
-    let threats = 0;
-    const me = this.players.get(this.myId);
-    if (me) {
-      for (const [id, p] of this.players) {
-        if (id === this.myId) continue;
-        const dx = p.renderX - me.renderX;
-        const dy = p.renderY - me.renderY;
-        if (dx * dx + dy * dy < 25 * 25) threats++;
-      }
-    }
-    const threatScore = Math.min(1, threats / 4);
-
-    this.sound.setBattleIntensity(0.6 * killScore + 0.4 * threatScore);
-  }
-
   private loop(): void {
     let last = performance.now();
     const tick = () => {
@@ -888,10 +857,6 @@ class Game {
       if (this.room && now - this.lastInputSent > 1000 / CLIENT_INPUT_RATE) {
         this.lastInputSent = now;
         this.sendInput();
-      }
-      if (this.room && now - this.lastIntensityCalc > 250) {
-        this.lastIntensityCalc = now;
-        this.updateMusicIntensity(now);
       }
       const localView = this.players.get(this.myId);
       const nowMs = Date.now();
