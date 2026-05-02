@@ -53,12 +53,18 @@ export async function recordMatch(rec: MatchRecord): Promise<number | null> {
   // Credit the wallet : 1 point = 1 coin. Score==0 short-circuits inside
   // creditWallet, so no need to gate here.
   if (rec.score > 0) {
-    return await creditWallet(
+    const newBalance = await creditWallet(
       rec.userId,
       Math.floor(rec.score),
       "match_reward",
       matchId ?? undefined,
     );
+    if (newBalance == null) {
+      console.warn(
+        `[blade.io] match credit returned null (score=${rec.score}, user=${rec.userId})`,
+      );
+    }
+    return newBalance;
   }
   return null;
 }
