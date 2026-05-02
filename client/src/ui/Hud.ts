@@ -11,8 +11,6 @@ export class Hud {
   private effects: HTMLElement;
   private effectNodes: Map<string, { root: HTMLElement; bar: HTMLElement }> = new Map();
   private rankBadge: HTMLElement;
-  private coinBadge: HTMLElement | null;
-  private coinValue: HTMLElement | null;
 
   constructor() {
     this.bladeCount = document.getElementById("blade-count")!;
@@ -26,18 +24,6 @@ export class Hud {
     this.roomBadge.addEventListener("click", () => this.copyInviteLink());
     this.effects = document.getElementById("effects")!;
     this.rankBadge = document.getElementById("rank-badge")!;
-    this.coinBadge = document.getElementById("coin-badge");
-    this.coinValue = document.getElementById("coin-value");
-  }
-
-  setCoins(n: number): void {
-    if (!this.coinValue || !this.coinBadge) return;
-    this.coinValue.textContent = formatCoins(n);
-    this.coinBadge.classList.remove("hidden");
-  }
-
-  hideCoins(): void {
-    this.coinBadge?.classList.add("hidden");
   }
 
   // Met à jour un badge d'effet actif (SPEED, SPIN, MAGNET, SHIELD).
@@ -135,10 +121,4 @@ export class Hud {
     this.roomBadge.classList.add("copied");
     setTimeout(() => this.roomBadge.classList.remove("copied"), 900);
   }
-}
-
-function formatCoins(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + "M";
-  if (n >= 10_000) return (n / 1_000).toFixed(0) + "k";
-  return String(Math.floor(n));
 }

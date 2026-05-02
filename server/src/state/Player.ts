@@ -12,12 +12,6 @@ export class Player extends Schema {
   @type("uint16") bladeCount: number = 0;
   @type("uint32") score: number = 0; // = bladeCount max atteint (leaderboard)
   @type("uint16") kills: number = 0;
-  // Solde courant en pièces (monnaie persistante). Pour les joueurs
-  // authentifiés : balance du wallet à l'arrivée + score gagné en match
-  // (live-updated chaque tick). Pour les invités : 0 + score gagné en
-  // session, transformé en token signé à la mort/leave pour qu'un signup
-  // ultérieur puisse réclamer le butin via /api/wallet/claim-guest.
-  @type("uint32") coins: number = 0;
   // Stats de session
   @type("float64") spawnedAt: number = 0;
   @type("uint16") maxBladeCount: number = 0;
@@ -67,15 +61,6 @@ export class Player extends Schema {
   // les bots. Utilisé à la mort pour persister le score dans la table
   // matches (via le service role).
   userId: string | null = null;
-  // Snapshot du wallet à l'arrivée du joueur authentifié, ou 0 pour les
-  // invités. coins synchronisé est calculé live comme walletBaseline +
-  // score, donc il monte avec le score sans qu'on doive le décrémenter
-  // sur respawn (qui remet score à 0 mais laisse coins intact).
-  walletBaseline: number = 0;
-  // Coins gagnés cumulés sur la session pour les invités (somme des scores
-  // de chaque vie au moment de la mort). Encapsulé dans un guest token à
-  // la mort/leave pour réclamation ultérieure.
-  guestCoinsEarned: number = 0;
   inputDx: number = 0;
   inputDy: number = 0;
   inputBoost: boolean = false;
