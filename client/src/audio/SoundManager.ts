@@ -5,14 +5,46 @@ import { BladeRarity } from "@bladeio/shared";
 // sync-music). Préfixé par BASE_URL pour survivre aux déploiements en
 // sous-chemin (ex: GitHub Pages).
 const BASE = (import.meta as any).env?.BASE_URL ?? "/";
-const BATTLE_TRACK_URL = `${BASE}Hardline_Pursuit.mp4`;
 const LOBBY_TRACK_URL = `${BASE}lobby.mp3`;
+const STEM_NAMES = ["vocals", "drums", "bass", "percussion", "synth", "other"] as const;
+type StemName = (typeof STEM_NAMES)[number];
+const STEM_URL = (name: StemName) => `${BASE}stems/battle/${name}.mp3`;
 
 type MusicTrack = "lobby" | "battle";
 
-// SFX procéduraux (Tone.js) + musiques via HTMLAudioElement (tracks enregistrés).
-// Deux tracks : lobby (chill, login/menu/death screen) et battle (in-game).
-// Crossfade rapide entre les deux pour ne pas couper sec.
+// Mapping intensité (0..1) → volume cible par stem (0..1). Interpolation
+// linéaire entre keypoints pour des transitions douces. Le morceau monte par
+// couches : à l'idle on n'a que le pad/bass + un peu de choeur ; à fond, tout
+// joue à plein.
+type StemMix = Record<StemName, number>;
+const INTENSITY_KEYPOINTS: { score: number; vols: StemMix }[] = [
+  { score: 0.0,  vols: { vocals: 0.6, drums: 0.0, bass: 0.3, percussion: 0.0, synth: 0.0, other: 0.5 } },
+  { score: 0.3,  vols: { vocals: 0.6, drums: 0.6, bass: 1.0, percussion: 0.0, synth: 0.4, other: 0.7 } },
+  { score: 0.6,  vols: { vocals: 0.5, drums: 1.0, bass: 1.0, percussion: 0.5, synth: 0.8, other: 0.7 } },
+  { score: 0.85, vols: { vocals: 0.6, drums: 1.0, bass: 1.0, percussion: 1.0, synth: 1.0, other: 0.8 } },
+  { score: 1.0,  vols: { vocals: 0.9, drums: 1.0, bass: 1.0, percussion: 1.0, synth: 1.0, other: 1.0 } },
+];
+
+function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
+
+function mixForIntensity(score: number): StemMix {
+  const s = Math.min(1, Math.max(0, score));
+  for (let i = 1; i < INTENSITY_KEYPOINTS.length; i++) {
+    const a = INTENSITY_KEYPOINTS[i - 1];
+    const b = INTENSITY_KEYPOINTS[i];
+    if (s <= b.score) {
+      const t = (s - a.score) / (b.score - a.score || 1);
+      const out = {} as StemMix;
+      for (const n of STEM_NAMES) out[n] = lerp(a.vols[n], b.vols[n], t);
+      return out;
+    }
+  }
+  return INTENSITY_KEYPOINTS[INTENSITY_KEYPOINTS.length - 1].vols;
+}
+
+// SFX procéduraux (Tone.js) + musiques via HTMLAudioElement.
+// Lobby : track unique bouclée. Battle : 6 stems lus en parallèle, mixés
+// dynamiquement par setBattleIntensity(0..1) pour suivre l'action de jeu.
 export class SoundManager {
   private master = new Tone.Gain(0.7).toDestination();
   private sfxGain = new Tone.Gain(0.8).connect(this.master);
@@ -26,16 +58,20 @@ export class SoundManager {
   private boostFilter!: Tone.Filter;
   private boostEnv!: Tone.AmplitudeEnvelope;
 
-  // Volumes logiques 0..1 conservés pour recomposer audio.volume à chaque maj.
   private masterVol = 0.7;
   private musicVol = 0.5;
   private lobbyMusic: HTMLAudioElement | null = null;
-  private battleMusic: HTMLAudioElement | null = null;
+  private battleStems: Map<StemName, HTMLAudioElement> = new Map();
   private currentTrack: MusicTrack | null = null;
-  // Promise en cours du crossfade — annulé si on relance avant la fin.
   private fadeAbort: { cancelled: boolean } | null = null;
-  // Listener "first interaction" pour débloquer l'autoplay si bloqué au boot.
   private autoplayUnlocker: (() => void) | null = null;
+
+  // Intensité battle (lissée). targetIntensity reflète ce que le code de jeu
+  // demande ; smoothedIntensity converge vers la cible (lerp à chaque tick)
+  // pour éviter le "pumping" si l'action saute brutalement.
+  private targetIntensity = 0;
+  private smoothedIntensity = 0;
+  private intensityTimer: ReturnType<typeof setInterval> | null = null;
 
   // Tone.js exige des `start()` strictement croissants par voix (sinon
   // FMOscillator throw "Start time must be strictly greater..."). Plusieurs
@@ -97,35 +133,31 @@ export class SoundManager {
     this.boostEnv.connect(this.sfxGain);
     this.boostNoise.volume.value = -22;
     this.boostNoise.start();
-
-    // La musique elle-même est gérée séparément par playLobbyMusic / playBattleMusic
-    // — init() n'enclenche que la couche SFX (Tone.js), qui exige un user gesture.
   }
 
-  // Musique : HTMLAudioElement bouclé, plus léger que createMediaElementSource
-  // pour ce besoin. Pas de Tone, donc utilisable AVANT init() (au boot, pour
-  // le lobby music, sans avoir à attendre le clic "Enter the grid").
-  private getOrCreateTrack(track: MusicTrack): HTMLAudioElement {
-    if (track === "lobby") {
-      if (!this.lobbyMusic) {
-        this.lobbyMusic = new Audio(LOBBY_TRACK_URL);
-        this.lobbyMusic.loop = true;
-        this.lobbyMusic.preload = "auto";
-        this.lobbyMusic.volume = 0;
+  private getOrCreateLobby(): HTMLAudioElement {
+    if (!this.lobbyMusic) {
+      this.lobbyMusic = new Audio(LOBBY_TRACK_URL);
+      this.lobbyMusic.loop = true;
+      this.lobbyMusic.preload = "auto";
+      this.lobbyMusic.volume = 0;
+    }
+    return this.lobbyMusic;
+  }
+
+  private getOrCreateStems(): HTMLAudioElement[] {
+    if (this.battleStems.size === 0) {
+      for (const name of STEM_NAMES) {
+        const a = new Audio(STEM_URL(name));
+        a.loop = true;
+        a.preload = "auto";
+        a.volume = 0;
+        this.battleStems.set(name, a);
       }
-      return this.lobbyMusic;
     }
-    if (!this.battleMusic) {
-      this.battleMusic = new Audio(BATTLE_TRACK_URL);
-      this.battleMusic.loop = true;
-      this.battleMusic.preload = "auto";
-      this.battleMusic.volume = 0;
-    }
-    return this.battleMusic;
+    return [...this.battleStems.values()];
   }
 
-  // Joue lobby music avec fade-in. Si autoplay est bloqué (pas encore d'interaction
-  // utilisateur), on attache un listener "first interaction" qui retentera.
   async playLobbyMusic(): Promise<void> {
     await this.switchTrack("lobby");
   }
@@ -135,56 +167,121 @@ export class SoundManager {
   }
 
   stopMusic(): void {
-    this.fadeAbort = { cancelled: true };
+    if (this.fadeAbort) this.fadeAbort.cancelled = true;
     this.fadeAbort = null;
     if (this.lobbyMusic) { this.lobbyMusic.pause(); this.lobbyMusic.volume = 0; }
-    if (this.battleMusic) { this.battleMusic.pause(); this.battleMusic.volume = 0; }
+    for (const s of this.battleStems.values()) { s.pause(); s.volume = 0; }
+    this.stopIntensityLoop();
     this.currentTrack = null;
+  }
+
+  // setBattleIntensity : appelé par le code de jeu (kills récents, threats…).
+  // 0 = idle, 1 = combat à fond. La valeur est lissée en interne ; appels
+  // fréquents OK, c'est l'intensityTimer qui applique aux volumes.
+  setBattleIntensity(level: number): void {
+    this.targetIntensity = Math.min(1, Math.max(0, level));
+  }
+
+  private startIntensityLoop(): void {
+    if (this.intensityTimer) return;
+    // 100ms tick : alpha 0.06 → ~2.5s pour atteindre 90% de la cible.
+    // Suffisant pour suivre l'action sans pomper sur chaque kill.
+    this.intensityTimer = setInterval(() => {
+      this.smoothedIntensity = lerp(this.smoothedIntensity, this.targetIntensity, 0.06);
+      this.applyStemVolumes();
+    }, 100);
+  }
+
+  private stopIntensityLoop(): void {
+    if (this.intensityTimer) {
+      clearInterval(this.intensityTimer);
+      this.intensityTimer = null;
+    }
+  }
+
+  private applyStemVolumes(): void {
+    if (this.currentTrack !== "battle") return;
+    const mix = mixForIntensity(this.smoothedIntensity);
+    const base = this.masterVol * this.musicVol;
+    for (const [name, a] of this.battleStems) {
+      a.volume = Math.min(1, Math.max(0, base * mix[name]));
+    }
   }
 
   private async switchTrack(target: MusicTrack): Promise<void> {
     if (this.currentTrack === target) return;
-    // Annule un crossfade en cours pour éviter qu'il finisse par écraser
-    // les volumes du nouveau switch.
     if (this.fadeAbort) this.fadeAbort.cancelled = true;
     const fade = { cancelled: false };
     this.fadeAbort = fade;
 
-    const next = this.getOrCreateTrack(target);
-    const prev = this.currentTrack
-      ? (this.currentTrack === "lobby" ? this.lobbyMusic : this.battleMusic)
-      : null;
-
-    const targetVol = this.masterVol * this.musicVol;
+    const baseVol = this.masterVol * this.musicVol;
+    const prevTrack = this.currentTrack;
 
     try {
-      await next.play();
+      if (target === "battle") {
+        const stems = this.getOrCreateStems();
+        // Sync : tous les currentTime à 0 puis play() en parallèle. Le
+        // navigateur démarre tous les buffers ensemble — drift négligeable
+        // sur la durée d'une partie (<10 min).
+        for (const s of stems) s.currentTime = 0;
+        await Promise.all(stems.map((s) => s.play()));
+      } else {
+        await this.getOrCreateLobby().play();
+      }
     } catch {
-      // Autoplay bloqué : retenter à la première interaction utilisateur.
       this.armAutoplayUnlocker(target);
       return;
     }
     this.currentTrack = target;
 
-    // Crossfade ~600ms : suffisant pour ne pas couper sec, court pour rester
-    // réactif à l'entrée en jeu (sentiment de "ça démarre").
+    // Crossfade ~600ms. Pour la battle, on ramp les stems vers leur cible
+    // (qui dépend de l'intensité courante) ; pour le lobby, fade simple.
     const durationMs = 600;
     const steps = 20;
     const stepMs = durationMs / steps;
-    const startNext = next.volume;
-    const startPrev = prev ? prev.volume : 0;
+    const targetMix = target === "battle" ? mixForIntensity(this.smoothedIntensity) : null;
+    const startStems: number[] = target === "battle"
+      ? this.getOrCreateStems().map((s) => s.volume)
+      : [];
+    const startLobby = this.lobbyMusic ? this.lobbyMusic.volume : 0;
+    const prevWasLobby = prevTrack === "lobby" && this.lobbyMusic;
+    const prevWasBattle = prevTrack === "battle";
+    const prevStartStems: number[] = prevWasBattle ? [...this.battleStems.values()].map((s) => s.volume) : [];
+
     for (let i = 1; i <= steps; i++) {
       if (fade.cancelled) return;
       const t = i / steps;
-      next.volume = Math.min(1, startNext + (targetVol - startNext) * t);
-      if (prev && prev !== next) prev.volume = Math.max(0, startPrev * (1 - t));
+      if (target === "battle" && targetMix) {
+        const stems = [...this.battleStems.values()];
+        const names = [...this.battleStems.keys()];
+        for (let k = 0; k < stems.length; k++) {
+          const goal = baseVol * targetMix[names[k]];
+          stems[k].volume = Math.min(1, Math.max(0, lerp(startStems[k], goal, t)));
+        }
+      } else if (target === "lobby" && this.lobbyMusic) {
+        this.lobbyMusic.volume = Math.min(1, lerp(startLobby, baseVol, t));
+      }
+      if (prevWasLobby && this.lobbyMusic && target !== "lobby") {
+        this.lobbyMusic.volume = Math.max(0, startLobby * (1 - t));
+      }
+      if (prevWasBattle && target !== "battle") {
+        const stems = [...this.battleStems.values()];
+        for (let k = 0; k < stems.length; k++) {
+          stems[k].volume = Math.max(0, prevStartStems[k] * (1 - t));
+        }
+      }
       await new Promise((r) => setTimeout(r, stepMs));
     }
-    if (prev && prev !== next) prev.pause();
+
+    if (prevWasLobby && this.lobbyMusic && target !== "lobby") this.lobbyMusic.pause();
+    if (prevWasBattle && target !== "battle") {
+      for (const s of this.battleStems.values()) s.pause();
+    }
+
+    if (target === "battle") this.startIntensityLoop();
+    else this.stopIntensityLoop();
   }
 
-  // Si l'autoplay est bloqué (Chrome/Safari avant tout user gesture),
-  // on attache un listener one-shot qui retente quand l'user clique/touche.
   private armAutoplayUnlocker(pendingTrack: MusicTrack): void {
     if (this.autoplayUnlocker) return;
     const unlock = () => {
@@ -198,10 +295,6 @@ export class SoundManager {
     window.addEventListener("keydown", unlock, { once: true });
   }
 
-  // Renvoie un temps strictement > au précédent trigger sur ce synth, en
-  // partant de Tone.now(). Espacement minimum : 1 ms — assez pour Tone, et
-  // imperceptible (les triggers reviennent ensuite en temps réel dès que le
-  // burst est passé).
   private nextTime(synth: object): number {
     const now = Tone.now();
     const last = this.lastTriggerTime.get(synth) ?? 0;
@@ -215,11 +308,11 @@ export class SoundManager {
     this.musicVol = music;
     this.master.gain.rampTo(master, 0.05);
     this.sfxGain.gain.rampTo(sfx, 0.05);
-    // Volume appliqué seulement à la track active — l'autre reste à 0
-    // (silencieuse, en attente d'un éventuel switch).
-    const v = master * music;
-    if (this.currentTrack === "lobby" && this.lobbyMusic) this.lobbyMusic.volume = v;
-    if (this.currentTrack === "battle" && this.battleMusic) this.battleMusic.volume = v;
+    if (this.currentTrack === "lobby" && this.lobbyMusic) {
+      this.lobbyMusic.volume = master * music;
+    } else if (this.currentTrack === "battle") {
+      this.applyStemVolumes();
+    }
   }
 
   pickup(rarity: BladeRarity, gain = 1): void {
