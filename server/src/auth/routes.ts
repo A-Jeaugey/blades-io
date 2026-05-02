@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
+import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
+import { claimGuestWallet, createGuestWallet, getGuestWalletBalance, getWallet } from "./wallet";
 
 const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
 
@@ -97,6 +99,101 @@ export function buildAuthRouter(): Router {
       return;
     }
     res.json({ entries: data ?? [] });
+  });
+
+  // --------------------------------------------------------------------- //
+  // POST /api/guest/init
+  // Crée une ligne guest_wallets et retourne un token signé HMAC. Le client
+  // le persiste en localStorage et le renvoie au join Colyseus + au moment
+  // du claim. No-auth requis (c'est justement le mode invité).
+  // --------------------------------------------------------------------- //
+  router.post("/guest/init", async (_req: Request, res: Response) => {
+    if (!isSupabaseConfigured() || !isGuestTokenConfigured()) {
+      res.status(503).json({ error: "guest_unavailable" });
+      return;
+    }
+    const guestId = await createGuestWallet();
+    if (!guestId) {
+      res.status(500).json({ error: "guest_init_failed" });
+      return;
+    }
+    res.json({ guest_id: guestId, token: signGuestToken(guestId) });
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/guest/wallet?token=...
+  // Lit le solde courant d'un guest token signé. Permet à l'UI d'afficher
+  // les trophées accumulés en mode invité. Retourne 0 si déjà claimé.
+  // --------------------------------------------------------------------- //
+  router.get("/guest/wallet", async (req: Request, res: Response) => {
+    if (!isGuestTokenConfigured()) {
+      res.status(503).json({ error: "guest_unavailable" });
+      return;
+    }
+    const token = (req.query.token as string | undefined)?.toString() ?? "";
+    const guestId = verifyGuestToken(token);
+    if (!guestId) {
+      res.status(400).json({ error: "invalid_guest_token" });
+      return;
+    }
+    const snap = await getGuestWalletBalance(guestId);
+    if (!snap) {
+      res.status(404).json({ error: "guest_not_found" });
+      return;
+    }
+    res.json({ balance: snap.balance, claimed: snap.claimed });
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/wallet
+  // Solde courant d'un user authentifié. Auth obligatoire.
+  // --------------------------------------------------------------------- //
+  router.get("/wallet", async (req: Request, res: Response) => {
+    if (!isSupabaseConfigured()) {
+      res.status(503).json({ error: "auth_unavailable" });
+      return;
+    }
+    const user = await verifyAccessToken(bearerToken(req));
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const snap = await getWallet(user.id);
+    res.json({ balance: snap?.balance ?? 0, total_earned: snap?.total_earned ?? 0 });
+  });
+
+  // --------------------------------------------------------------------- //
+  // POST /api/wallet/claim  { guest_token }
+  // Transfère atomiquement le solde du guest vers le wallet de l'user authed.
+  // Idempotent : si déjà claimé par cet user, retourne transferred=0 et le
+  // solde courant ; si claimé par un autre, 409.
+  // --------------------------------------------------------------------- //
+  router.post("/wallet/claim", async (req: Request, res: Response) => {
+    if (!isSupabaseConfigured() || !isGuestTokenConfigured()) {
+      res.status(503).json({ error: "auth_unavailable" });
+      return;
+    }
+    const user = await verifyAccessToken(bearerToken(req));
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const token = (req.body?.guest_token ?? "").toString();
+    const guestId = verifyGuestToken(token);
+    if (!guestId) {
+      res.status(400).json({ error: "invalid_guest_token" });
+      return;
+    }
+    const result = await claimGuestWallet(user.id, guestId);
+    if ("error" in result) {
+      if (result.error === "guest_already_claimed") {
+        res.status(409).json({ error: "guest_already_claimed" });
+        return;
+      }
+      res.status(500).json({ error: result.error });
+      return;
+    }
+    res.json({ transferred: result.transferred, new_balance: result.new_balance });
   });
 
   return router;

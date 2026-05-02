@@ -50,6 +50,8 @@ import { SettingsPanel } from "./ui/Settings";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { auth } from "./auth/supabase";
+import { ensureGuestToken, getGuestToken } from "./auth/guestToken";
+import { wallet } from "./auth/wallet";
 
 const RENDER_DELAY = 150;
 
@@ -172,6 +174,13 @@ class Game {
     });
     this.conn = new Connection(resolveServerEndpoint());
     window.addEventListener("beforeunload", () => { this.conn.leave(); });
+    // Pré-provisionne un guest token en background dès le boot : le claim
+    // au sign-in et le credit à la fin d'une partie en mode invité ont
+    // besoin d'un token déjà valide. Fire-and-forget : si Supabase est
+    // indisponible, on dégrade silencieusement.
+    if (!auth.getAccessToken()) {
+      void ensureGuestToken();
+    }
     this.loop();
   }
 
@@ -182,7 +191,7 @@ class Game {
     this.settings.setInGame(true);
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
     try {
-      const joinOpts: { code?: string; bots?: boolean; token?: string } = {};
+      const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null } = {};
       if (res.mode === "create") {
         joinOpts.code = res.code;
         joinOpts.bots = res.bots;
@@ -190,10 +199,15 @@ class Game {
         joinOpts.code = res.code;
       }
       // Joueurs authentifiés → JWT passé au join, le serveur valide via
-      // onAuth puis stocke userId sur le Player → score persisté à la mort.
-      // Mode invité (pas de token) → no-op côté serveur, gameplay inchangé.
+      // onAuth puis stocke userId sur le Player → score + wallet persistés.
+      // Mode invité → token guest signé HMAC, le serveur credite
+      // guest_wallets jusqu'au sign-in (où tout est transféré au compte).
       const token = auth.getAccessToken();
-      if (token) joinOpts.token = token;
+      if (token) {
+        joinOpts.token = token;
+      } else {
+        joinOpts.guestToken = await ensureGuestToken();
+      }
       this.room = await this.conn.join(res.name, joinOpts);
     } catch (e) {
       console.error("could not join", e);
@@ -522,20 +536,31 @@ class Game {
     const rank = this.computeMyRank();
     this.sound.death();
     this.camera.shake.add(0.8);
+    const earned = me.score;
+    const isAuthed = auth.getAccessToken() !== null;
+    // Solde local connu à l'instant de la mort, +ce qu'on vient de gagner.
+    // Le vrai total côté serveur peut différer si plusieurs onglets
+    // jouent en parallèle ; on rafraîchit en background pour reconverger.
+    const cached = wallet.get();
+    const optimisticTotal = isAuthed && cached ? cached.balance + earned : null;
     this.death.show({
       lifeSeconds: Math.max(0, lifeMs / 1000),
       maxBlades: me.maxBladeCount,
       kills: me.kills,
       rank,
-      score: me.score,
+      score: earned,
       cratesDestroyed: me.cratesDestroyed ?? 0,
       powerupsCollected: me.powerupsCollected ?? 0,
       killerName,
       // Le serveur persiste seulement si le joueur a fourni un token au
       // join. Côté client, le state d'auth au moment de la mort est la
       // meilleure approximation.
-      scorePersisted: auth.getAccessToken() !== null,
+      scorePersisted: isAuthed,
+      walletTotal: optimisticTotal,
     });
+    // Refresh asynchrone du solde authoritative pour le prochain affichage
+    // (login screen au retour menu, prochaine mort).
+    if (isAuthed) void wallet.refresh();
   }
 
   private computeMyRank(): number {
