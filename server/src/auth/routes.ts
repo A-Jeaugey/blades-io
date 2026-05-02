@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
-import { creditWallet, getWallet, getSchemaStatus, ensureWalletSchemaReady } from "./wallet";
+import { creditWallet, getWallet } from "./wallet";
 import { verifyGuestCoins } from "./guestToken";
 
 const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
@@ -65,8 +65,6 @@ export function buildAuthRouter(): Router {
   // --------------------------------------------------------------------- //
   // GET /api/wallet
   // Returns the caller's balance / total_earned. 401 for unauthed callers.
-  // Includes `schemaReady` so the client can surface a clear error when
-  // the migrations haven't been applied yet (instead of silently showing 0).
   // --------------------------------------------------------------------- //
   router.get("/wallet", async (req: Request, res: Response) => {
     const user = await verifyAccessToken(bearerToken(req));
@@ -75,27 +73,7 @@ export function buildAuthRouter(): Router {
       return;
     }
     const w = await getWallet(user.id);
-    const schema = getSchemaStatus();
-    res.json({
-      balance: w.balance,
-      totalEarned: w.totalEarned,
-      schemaReady: schema?.walletsTable ?? null,
-    });
-  });
-
-  // --------------------------------------------------------------------- //
-  // GET /api/diagnostic
-  // Public, read-only health probe : reports whether each piece of the
-  // wallet schema is reachable from the server. Re-runs the probe on each
-  // call so an admin can check progress after applying a migration.
-  // --------------------------------------------------------------------- //
-  router.get("/diagnostic", async (_req: Request, res: Response) => {
-    await ensureWalletSchemaReady();
-    const schema = getSchemaStatus();
-    res.json({
-      supabaseConfigured: isSupabaseConfigured(),
-      schema,
-    });
+    res.json({ balance: w.balance, totalEarned: w.totalEarned });
   });
 
   // --------------------------------------------------------------------- //

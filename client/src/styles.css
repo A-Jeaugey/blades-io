@@ -1425,11 +1425,6 @@ button:hover {
 }
 .menu-coins.hidden { display: none; }
 .menu-coins .menu-coins-label { color: #89bacf; font-weight: 500; letter-spacing: 1.5px; }
-.menu-coins.menu-coins-error {
-  border-color: rgba(255, 46, 168, 0.55);
-  color: #ff2ea8;
-  text-shadow: 0 0 8px rgba(255, 46, 168, 0.4);
-}
 
 /* ─── Death screen coins row ─────────────────────────────────────────── */
 .death-coins {
