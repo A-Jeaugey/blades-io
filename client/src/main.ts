@@ -181,6 +181,9 @@ class Game {
     if (!auth.getAccessToken()) {
       void ensureGuestToken();
     }
+    // Lobby music dès le boot. autoplay() peut être bloqué tant que l'user
+    // n'a pas interagi : SoundManager arme un fallback pointerdown/keydown.
+    void this.sound.playLobbyMusic();
     this.loop();
   }
 
@@ -190,6 +193,7 @@ class Game {
     this.hud.show();
     this.settings.setInGame(true);
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
+    void this.sound.playBattleMusic();
     try {
       const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null } = {};
       if (res.mode === "create") {
@@ -612,6 +616,7 @@ class Game {
     // démarre sur une ardoise propre.
     await this.conn.leave();
     this.login.show();
+    void this.sound.playLobbyMusic();
   }
 
   private sendInput(): void {

@@ -1,12 +1,18 @@
 import * as Tone from "tone";
 import { BladeRarity } from "@bladeio/shared";
 
-// Musique servie depuis client/public/ (synchronisée au build via npm script
-// sync-music, qui copie Hardline_Pursuit.mp4 depuis la racine du repo).
-// Préfixé par BASE_URL pour survivre aux déploiements en sous-chemin.
-const MUSIC_TRACK_URL = `${((import.meta as any).env?.BASE_URL ?? "/")}Hardline_Pursuit.mp4`;
+// Musiques servies depuis client/public/ (synchronisées au build via le script
+// sync-music). Préfixé par BASE_URL pour survivre aux déploiements en
+// sous-chemin (ex: GitHub Pages).
+const BASE = (import.meta as any).env?.BASE_URL ?? "/";
+const BATTLE_TRACK_URL = `${BASE}Hardline_Pursuit.mp4`;
+const LOBBY_TRACK_URL = `${BASE}lobby.mp3`;
 
-// SFX procéduraux (Tone.js) + musique via HTMLAudioElement (track enregistré).
+type MusicTrack = "lobby" | "battle";
+
+// SFX procéduraux (Tone.js) + musiques via HTMLAudioElement (tracks enregistrés).
+// Deux tracks : lobby (chill, login/menu/death screen) et battle (in-game).
+// Crossfade rapide entre les deux pour ne pas couper sec.
 export class SoundManager {
   private master = new Tone.Gain(0.7).toDestination();
   private sfxGain = new Tone.Gain(0.8).connect(this.master);
@@ -23,7 +29,13 @@ export class SoundManager {
   // Volumes logiques 0..1 conservés pour recomposer audio.volume à chaque maj.
   private masterVol = 0.7;
   private musicVol = 0.5;
-  private music: HTMLAudioElement | null = null;
+  private lobbyMusic: HTMLAudioElement | null = null;
+  private battleMusic: HTMLAudioElement | null = null;
+  private currentTrack: MusicTrack | null = null;
+  // Promise en cours du crossfade — annulé si on relance avant la fin.
+  private fadeAbort: { cancelled: boolean } | null = null;
+  // Listener "first interaction" pour débloquer l'autoplay si bloqué au boot.
+  private autoplayUnlocker: (() => void) | null = null;
 
   // Tone.js exige des `start()` strictement croissants par voix (sinon
   // FMOscillator throw "Start time must be strictly greater..."). Plusieurs
@@ -86,19 +98,104 @@ export class SoundManager {
     this.boostNoise.volume.value = -22;
     this.boostNoise.start();
 
-    // Musique : track enregistré, bouclé. HTMLAudioElement gère le decoding
-    // et le streaming, plus léger que createMediaElementSource pour ce besoin.
-    this.music = new Audio(MUSIC_TRACK_URL);
-    this.music.loop = true;
-    this.music.preload = "auto";
-    this.music.volume = this.masterVol * this.musicVol;
-    // Play peut rejeter si l'utilisateur n'a pas interagi, mais init() est
-    // appelé depuis le clic "Enter the grid", donc c'est bon.
-    try {
-      await this.music.play();
-    } catch (e) {
-      console.warn("music autoplay blocked", e);
+    // La musique elle-même est gérée séparément par playLobbyMusic / playBattleMusic
+    // — init() n'enclenche que la couche SFX (Tone.js), qui exige un user gesture.
+  }
+
+  // Musique : HTMLAudioElement bouclé, plus léger que createMediaElementSource
+  // pour ce besoin. Pas de Tone, donc utilisable AVANT init() (au boot, pour
+  // le lobby music, sans avoir à attendre le clic "Enter the grid").
+  private getOrCreateTrack(track: MusicTrack): HTMLAudioElement {
+    if (track === "lobby") {
+      if (!this.lobbyMusic) {
+        this.lobbyMusic = new Audio(LOBBY_TRACK_URL);
+        this.lobbyMusic.loop = true;
+        this.lobbyMusic.preload = "auto";
+        this.lobbyMusic.volume = 0;
+      }
+      return this.lobbyMusic;
     }
+    if (!this.battleMusic) {
+      this.battleMusic = new Audio(BATTLE_TRACK_URL);
+      this.battleMusic.loop = true;
+      this.battleMusic.preload = "auto";
+      this.battleMusic.volume = 0;
+    }
+    return this.battleMusic;
+  }
+
+  // Joue lobby music avec fade-in. Si autoplay est bloqué (pas encore d'interaction
+  // utilisateur), on attache un listener "first interaction" qui retentera.
+  async playLobbyMusic(): Promise<void> {
+    await this.switchTrack("lobby");
+  }
+
+  async playBattleMusic(): Promise<void> {
+    await this.switchTrack("battle");
+  }
+
+  stopMusic(): void {
+    this.fadeAbort = { cancelled: true };
+    this.fadeAbort = null;
+    if (this.lobbyMusic) { this.lobbyMusic.pause(); this.lobbyMusic.volume = 0; }
+    if (this.battleMusic) { this.battleMusic.pause(); this.battleMusic.volume = 0; }
+    this.currentTrack = null;
+  }
+
+  private async switchTrack(target: MusicTrack): Promise<void> {
+    if (this.currentTrack === target) return;
+    // Annule un crossfade en cours pour éviter qu'il finisse par écraser
+    // les volumes du nouveau switch.
+    if (this.fadeAbort) this.fadeAbort.cancelled = true;
+    const fade = { cancelled: false };
+    this.fadeAbort = fade;
+
+    const next = this.getOrCreateTrack(target);
+    const prev = this.currentTrack
+      ? (this.currentTrack === "lobby" ? this.lobbyMusic : this.battleMusic)
+      : null;
+
+    const targetVol = this.masterVol * this.musicVol;
+
+    try {
+      await next.play();
+    } catch {
+      // Autoplay bloqué : retenter à la première interaction utilisateur.
+      this.armAutoplayUnlocker(target);
+      return;
+    }
+    this.currentTrack = target;
+
+    // Crossfade ~600ms : suffisant pour ne pas couper sec, court pour rester
+    // réactif à l'entrée en jeu (sentiment de "ça démarre").
+    const durationMs = 600;
+    const steps = 20;
+    const stepMs = durationMs / steps;
+    const startNext = next.volume;
+    const startPrev = prev ? prev.volume : 0;
+    for (let i = 1; i <= steps; i++) {
+      if (fade.cancelled) return;
+      const t = i / steps;
+      next.volume = Math.min(1, startNext + (targetVol - startNext) * t);
+      if (prev && prev !== next) prev.volume = Math.max(0, startPrev * (1 - t));
+      await new Promise((r) => setTimeout(r, stepMs));
+    }
+    if (prev && prev !== next) prev.pause();
+  }
+
+  // Si l'autoplay est bloqué (Chrome/Safari avant tout user gesture),
+  // on attache un listener one-shot qui retente quand l'user clique/touche.
+  private armAutoplayUnlocker(pendingTrack: MusicTrack): void {
+    if (this.autoplayUnlocker) return;
+    const unlock = () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      this.autoplayUnlocker = null;
+      void this.switchTrack(pendingTrack);
+    };
+    this.autoplayUnlocker = unlock;
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
   }
 
   // Renvoie un temps strictement > au précédent trigger sur ce synth, en
@@ -118,7 +215,11 @@ export class SoundManager {
     this.musicVol = music;
     this.master.gain.rampTo(master, 0.05);
     this.sfxGain.gain.rampTo(sfx, 0.05);
-    if (this.music) this.music.volume = master * music;
+    // Volume appliqué seulement à la track active — l'autre reste à 0
+    // (silencieuse, en attente d'un éventuel switch).
+    const v = master * music;
+    if (this.currentTrack === "lobby" && this.lobbyMusic) this.lobbyMusic.volume = v;
+    if (this.currentTrack === "battle" && this.battleMusic) this.battleMusic.volume = v;
   }
 
   pickup(rarity: BladeRarity, gain = 1): void {
