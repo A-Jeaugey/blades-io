@@ -949,14 +949,15 @@ button:hover {
 .bio2-input::placeholder { color: rgba(160,168,196,.45); letter-spacing: 3px; }
 .bio2-field-cnt { display: block; text-align: right; margin-top: 4px; font-size: 11px; color: var(--fg-muted); letter-spacing: 1.5px; transition: color .2s; }
 
-/* Boutons RENAME / ✓ / ✗ accolés à droite de l'input CALLSIGN. En mode
- * idle, le compteur "0/16" est masqué côté logique (display:none via
- * absence de bio2-field-cnt visible) — ici on reproduit la même position
- * absolue à droite de l'input. */
+/* Boutons RENAME / ✓ / ✗ ancrés à droite de l'input CALLSIGN, centrés
+ * verticalement. Le wrapper .bio2-input-wrap est position:relative pour
+ * que les buttons restent collés à l'input même quand un compteur ou un
+ * message d'erreur s'ajoute en dessous. */
 .bio2-rename-actions {
   position: absolute;
   right: 8px;
-  bottom: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -987,7 +988,8 @@ button:hover {
   color: var(--pink);
   letter-spacing: 0.5px;
 }
-.bio2-input:focus ~ .bio2-field-cnt { color: var(--cyan); }
+.bio2-field:focus-within .bio2-field-cnt { color: var(--cyan); }
+.bio2-input-wrap { position: relative; }
 
 .bio2-modes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .bio2-mode {
