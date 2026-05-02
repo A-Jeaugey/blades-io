@@ -17,9 +17,13 @@ export interface DeathStats {
   powerupsCollected: number;
   killerName?: string | null;
   // True si le joueur est authentifié → le serveur a persisté ce score
-  // dans la table matches. False = mode invité, score perdu après cette
-  // partie.
+  // dans la table matches et crédité son wallet. False = mode invité,
+  // les trophées sont stockés dans guest_wallets et seront transférés
+  // au prochain sign-in.
   scorePersisted?: boolean;
+  // Solde total après cette partie (cumul lifetime). Optionnel : si non
+  // fourni, on n'affiche pas la ligne TOTAL.
+  walletTotal?: number | null;
 }
 
 export class DeathScreen {
@@ -45,15 +49,19 @@ export class DeathScreen {
   show(s: DeathStats): void {
     const killedBy = s.killerName ? `<div class="row"><span class="label">killed by</span><span>${escapeHtml(s.killerName)}</span></div>` : "";
     const persisted = s.scorePersisted
-      ? `<div class="row death-saved"><span class="label">score</span><span>saved to leaderboard</span></div>`
-      : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to save scores</span></div>`;
+      ? `<div class="row death-saved"><span class="label">trophées</span><span>added to leaderboard</span></div>`
+      : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to keep your trophées</span></div>`;
+    const total = (s.walletTotal !== undefined && s.walletTotal !== null && s.walletTotal > 0)
+      ? `<div class="row rank-row"><span class="label">total</span><span>🏆 ${s.walletTotal}</span></div>`
+      : "";
 
     this.stats.innerHTML = `
       <div class="score-total-container">
-        <div class="score-total">🏆 ${s.score}</div>
+        <div class="score-total">🏆 +${s.score}</div>
         <div class="score-sub">💀 ${s.kills} &nbsp;&nbsp;&nbsp; 🗡️ ${s.maxBlades}</div>
       </div>
       <div class="row rank-row"><span class="label">rank</span><span>#${s.rank}</span></div>
+      ${total}
       ${killedBy}
       ${persisted}
     `;

@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient, Session } from "@supabase/supabase-js";
+import { wallet } from "./wallet";
 
 // Public profile resolved from /api/auth/me (joined username, fresher than
 // the JWT user_metadata which can be stale after a username change).
@@ -59,6 +60,10 @@ class AuthService {
     if (data.session) {
       const profile = await this.fetchProfile(data.session.access_token);
       this.setState({ status: "signed_in", session: data.session, profile: profile ?? this.fallbackProfile(data.session) });
+      // Reload de page avec session active : tenter le claim au cas où le
+      // user vient de jouer en mode invité avant de se reconnecter.
+      void wallet.claimGuestIfAny();
+      void wallet.refresh();
     } else {
       this.setState({ status: "signed_out" });
     }
@@ -70,6 +75,13 @@ class AuthService {
         // changement de username.
         const profile = await this.fetchProfile(session.access_token);
         this.setState({ status: "signed_in", session, profile: profile ?? this.fallbackProfile(session) });
+        // Au passage signed-out -> signed-in (signup, signin, oauth callback),
+        // on tente de transférer les trophées guest accumulés vers le wallet.
+        // Idempotent côté serveur.
+        if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+          void wallet.claimGuestIfAny();
+          void wallet.refresh();
+        }
       } else {
         this.setState({ status: "signed_out" });
       }

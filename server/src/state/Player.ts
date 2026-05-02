@@ -61,6 +61,11 @@ export class Player extends Schema {
   // les bots. Utilisé à la mort pour persister le score dans la table
   // matches (via le service role).
   userId: string | null = null;
+  // ID guest_wallets pour les joueurs non authentifiés (token guest signé
+  // côté serveur). null pour les bots, les anonymes sans token, et les
+  // joueurs authentifiés. À la mort, on credit guest_wallets au lieu de
+  // matches.
+  guestId: string | null = null;
   inputDx: number = 0;
   inputDy: number = 0;
   inputBoost: boolean = false;

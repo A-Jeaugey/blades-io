@@ -919,6 +919,21 @@ button:hover {
 .bio2-console-spacer { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(0,229,255,.3), transparent); margin: 0 8px; }
 .bio2-console-meta { font-variant-numeric: tabular-nums; color: var(--fg-muted); }
 
+.bio2-wallet {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px; padding: 8px 12px;
+  background: rgba(0,229,255,.06);
+  border: 1px solid rgba(0,229,255,.25);
+  border-radius: 2px;
+  font-size: 11px; letter-spacing: 2.5px;
+}
+.bio2-wallet-label { color: var(--fg-muted); }
+.bio2-wallet-val {
+  color: var(--cyan); font-weight: 700; font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.bio2-wallet-val::before { content: "🏆 "; }
+
 .bio2-field { margin-top: 12px; position: relative; }
 .bio2-field-label { display:block; font-size: 10px; letter-spacing: 2.5px; color: var(--fg-muted); margin-bottom: 6px; }
 .bio2-input {

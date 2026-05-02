@@ -61,6 +61,8 @@ import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
 import { verifyAccessToken } from "../auth/supabase";
 import { recordMatch } from "../auth/matches";
+import { creditGuestWallet, creditWallet } from "../auth/wallet";
+import { verifyGuestToken } from "../auth/guestToken";
 
 function sanitizeName(raw: string): string {
   const cleaned = (raw ?? "")
@@ -151,38 +153,43 @@ export class ArenaRoom extends Room<ArenaState> {
   // n'utilise pas ça pour gating l'accès (mode invité possible) — juste
   // pour valider le token Supabase et stocker l'identité authentifiée que
   // onJoin pourra consommer via auth.userId.
-  async onAuth(_client: Client, options: { token?: string; name?: string }): Promise<{
+  async onAuth(_client: Client, options: { token?: string; guestToken?: string; name?: string }): Promise<{
     userId: string | null;
     username: string | null;
+    guestId: string | null;
     name: string;
   }> {
     const token = typeof options?.token === "string" && options.token.length > 0 ? options.token : null;
+    const guestTok = typeof options?.guestToken === "string" && options.guestToken.length > 0 ? options.guestToken : null;
     const requestedName = sanitizeName(options?.name ?? "");
-    if (!token) {
-      // Mode invité : on accepte, juste pas d'identité authentifiée.
-      return { userId: null, username: null, name: requestedName };
-    }
-    const user = await verifyAccessToken(token);
-    if (!user) {
+    if (token) {
+      const user = await verifyAccessToken(token);
+      if (user) {
+        // Authed : un user authentifié n'a pas besoin de guest token, ses
+        // trophées vont directement dans wallets.
+        const finalName = user.username && user.username.length > 0 ? user.username : requestedName;
+        return { userId: user.id, username: user.username, guestId: null, name: finalName };
+      }
       // Token présent mais invalide/expiré → on dégrade en invité plutôt que
-      // de refuser l'accès (l'UX coté client reflasher le token est plus
+      // de refuser l'accès (l'UX côté client reflasher le token est plus
       // douce qu'un pop d'erreur). Le client peut détecter ça via /api/auth/me.
-      return { userId: null, username: null, name: requestedName };
     }
-    // Si l'utilisateur a un username officiel, on l'utilise comme nom in-game,
-    // sinon on garde celui demandé au join (ou le random d'invité).
-    const finalName = user.username && user.username.length > 0 ? user.username : requestedName;
-    return { userId: user.id, username: user.username, name: finalName };
+    // Pas authed : si un guest token signé est fourni, on l'utilise pour
+    // créditer les trophées dans guest_wallets ; sinon le joueur joue mais
+    // ses trophées ne sont pas trackés.
+    const guestId = guestTok ? verifyGuestToken(guestTok) : null;
+    return { userId: null, username: null, guestId, name: requestedName };
   }
 
   onJoin(
     client: Client,
-    _options: { name?: string; token?: string },
-    auth: { userId: string | null; username: string | null; name: string },
+    _options: { name?: string; token?: string; guestToken?: string },
+    auth: { userId: string | null; username: string | null; guestId: string | null; name: string },
   ): void {
     const p = new Player();
     p.id = client.sessionId;
     p.userId = auth?.userId ?? null;
+    p.guestId = auth?.guestId ?? null;
     p.name = sanitizeName(auth?.name ?? "");
     const spawn = randomSpawnPoint(this.state);
     p.x = spawn.x; p.y = spawn.y;
@@ -239,24 +246,35 @@ export class ArenaRoom extends Room<ArenaState> {
     this.state.players.delete(sessionId);
   }
 
-  // Persiste le match courant pour les joueurs authentifiés. No-op pour les
-  // bots, les invités et si Supabase n'est pas configuré. Idempotent par
-  // appelant — on ne déduplique pas côté serveur, c'est l'appelant qui doit
-  // n'appeler qu'une fois (à la mort, au leave, ou au respawn).
+  // À la fin d'une partie (mort ou leave en vie) :
+  // - si le joueur est authed -> insert dans matches (leaderboard) +
+  //   credit dans wallets (currency persistante).
+  // - si le joueur est guest avec un token signé -> credit dans
+  //   guest_wallets (sera transféré au compte au sign-in).
+  // - sinon (bot, anonyme sans token, Supabase down) -> no-op.
+  // Idempotent par appelant : on n'appelle qu'une fois (à la mort, au
+  // leave en vie, ou au timeout de reconnect).
   private persistMatchIfAuthed(p: Player): void {
     if (p.isBot) return;
-    if (!p.userId) return;
-    const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
-    void recordMatch({
-      userId: p.userId,
-      score: p.score,
-      kills: p.kills,
-      maxBlades: p.maxBladeCount,
-      survivalSeconds: survival,
-      cratesDestroyed: p.cratesDestroyed,
-      powerupsCollected: p.powerupsCollected,
-      roomCode: this.roomCode || undefined,
-    });
+    const trophies = Math.max(0, Math.floor(p.score));
+    if (p.userId) {
+      const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
+      void recordMatch({
+        userId: p.userId,
+        score: p.score,
+        kills: p.kills,
+        maxBlades: p.maxBladeCount,
+        survivalSeconds: survival,
+        cratesDestroyed: p.cratesDestroyed,
+        powerupsCollected: p.powerupsCollected,
+        roomCode: this.roomCode || undefined,
+      });
+      if (trophies > 0) void creditWallet(p.userId, trophies);
+      return;
+    }
+    if (p.guestId && trophies > 0) {
+      void creditGuestWallet(p.guestId, trophies);
+    }
   }
 
   private handleInput(client: Client, msg: InputMessage): void {

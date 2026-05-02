@@ -1,6 +1,8 @@
 import { NAME_MAX_LENGTH, NAME_MIN_LENGTH } from "@bladeio/shared";
 import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
+import { wallet } from "../auth/wallet";
+import { fetchGuestWallet } from "../auth/guestToken";
 
 export type LoginMode = "public" | "create" | "join";
 export interface LoginResult {
@@ -61,6 +63,8 @@ export class LoginScreen {
   private authPanel: AuthPanel | null = null;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private mode: LoginMode = "public";
+  private walletBadge: HTMLElement | null = null;
+  private walletValue: HTMLElement | null = null;
 
   constructor(onEnter: (res: LoginResult) => void) {
     this.root = document.getElementById("login-screen")!;
@@ -81,9 +85,23 @@ export class LoginScreen {
     const authRoot = document.getElementById("auth-panel");
     if (authRoot) {
       this.authPanel = new AuthPanel(authRoot);
-      // Quand l'état d'auth change, mettre à jour le champ CALLSIGN.
-      auth.subscribe(() => this.applyAuthState());
+      // Quand l'état d'auth change, mettre à jour le champ CALLSIGN
+      // + rafraîchir le badge wallet (perd ou gagne du sens selon la session).
+      auth.subscribe(() => {
+        this.applyAuthState();
+        this.refreshWallet();
+      });
     }
+    this.walletBadge = document.getElementById("wallet-badge");
+    this.walletValue = document.getElementById("wallet-balance");
+    // Subscribe au store wallet pour recevoir les updates côté authed
+    // (mort en partie, claim, refresh post-sign-in).
+    wallet.subscribe((w) => {
+      if (w && this.walletBadge && this.walletValue) {
+        this.walletValue.textContent = String(w.balance);
+        this.walletBadge.classList.remove("hidden");
+      }
+    });
 
     // Cellules code (5) — les arrows mettent à jour leur contenu en lisant
     // l'input invisible posé en overlay. UX inspirée du design v2 : on tape
@@ -150,6 +168,31 @@ export class LoginScreen {
     if (this.taglineEl) runGlitchReveal(this.taglineEl, "SPIN TO SURVIVE");
     this.applyAuthState();
     this.refreshTopOps();
+    this.refreshWallet();
+  }
+
+  // Met à jour le badge "TROPHÉES" avec le solde courant. Pour un user
+  // authentifié, on tape /api/wallet ; pour un guest avec token, on tape
+  // /api/guest/wallet ; sinon on cache le badge.
+  private async refreshWallet(): Promise<void> {
+    if (!this.walletBadge || !this.walletValue) return;
+    if (auth.getAccessToken()) {
+      const w = await wallet.refresh();
+      if (w) {
+        this.walletValue.textContent = String(w.balance);
+        this.walletBadge.classList.remove("hidden");
+      } else {
+        this.walletBadge.classList.add("hidden");
+      }
+      return;
+    }
+    const g = await fetchGuestWallet();
+    if (g && !g.claimed) {
+      this.walletValue.textContent = String(g.balance);
+      this.walletBadge.classList.remove("hidden");
+    } else {
+      this.walletBadge.classList.add("hidden");
+    }
   }
 
   // Fetch /api/leaderboard et remplit le panneau de droite "TOP OPS". On
@@ -279,8 +322,9 @@ export class LoginScreen {
     this.root.classList.remove("hidden");
     if (this.tickInterval === null) this.startReadouts();
     // Re-fetch à chaque retour au menu : le joueur vient de finir une partie,
-    // son score peut être dans le top maintenant.
+    // son score peut être dans le top maintenant et son wallet a augmenté.
     this.refreshTopOps();
+    this.refreshWallet();
   }
   hide(): void {
     this.root.classList.add("hidden");

@@ -18,10 +18,12 @@ export class Connection {
   // public, false en privé).
   // opts.token : JWT Supabase. Si présent, la room appelle onAuth, valide
   // le token, et stocke userId sur le Player → score persisté à la mort.
-  // Sans token, le joueur entre en mode invité.
+  // opts.guestToken : token guest signé (HMAC) pour les joueurs non
+  // authentifiés. Sans aucun des deux, le joueur joue mais ses trophées
+  // ne sont pas trackés.
   async join(
     name: string,
-    opts: { code?: string; bots?: boolean; token?: string } = {},
+    opts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null } = {},
   ): Promise<Room<RoomState>> {
     const maxAttempts = 3;
     let backoff = 500;
@@ -32,6 +34,7 @@ export class Connection {
     const joinOpts: any = { name, code: (opts.code ?? "").toUpperCase() };
     if (opts.bots !== undefined) joinOpts.bots = opts.bots;
     if (opts.token) joinOpts.token = opts.token;
+    else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
     while (this.reconnectAttempts < maxAttempts) {
       try {
         const room = await this.client.joinOrCreate<RoomState>("arena", joinOpts);

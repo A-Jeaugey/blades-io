@@ -12,7 +12,7 @@ export class Leaderboard {
 
   constructor() {
     this.root = document.getElementById("leaderboard")!;
-    this.root.innerHTML = `<h4>LEADERBOARD</h4><div id="lb-rows"></div>`;
+    this.root.innerHTML = `<h4>TROPHÉES</h4><div id="lb-rows"></div>`;
   }
 
   update(entries: LeaderboardEntry[], myId: string, now: number): void {
