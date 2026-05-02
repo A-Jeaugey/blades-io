@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync-music": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync('public',{recursive:true});const s=p.resolve('..','Hardline_Pursuit.mp4');if(fs.existsSync(s))fs.copyFileSync(s,'public/Hardline_Pursuit.mp4');else console.warn('music track not found at',s);\"",
+    "sync-music": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync('public',{recursive:true});const tracks=[['Hardline_Pursuit.mp4','Hardline_Pursuit.mp4'],['Room-Ready Match (2).mp3','lobby.mp3']];for(const [src,dst] of tracks){const s=p.resolve('..',src);if(fs.existsSync(s))fs.copyFileSync(s,p.join('public',dst));else console.warn('music track not found at',s);}\"",
     "predev": "npm run sync-music",
     "prebuild": "npm run sync-music",
     "dev": "vite",
