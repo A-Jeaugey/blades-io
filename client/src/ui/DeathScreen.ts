@@ -20,11 +20,6 @@ export interface DeathStats {
   // dans la table matches. False = mode invité, score perdu après cette
   // partie.
   scorePersisted?: boolean;
-  // Coins gagnés dans cette vie (= score). Pour les invités, reportés au
-  // solde de session ; pour les authentifiés, déjà crédités au wallet.
-  coinsEarned?: number;
-  // Solde courant (live) — affiché pour rappeler le total accumulé.
-  coinBalance?: number;
 }
 
 export class DeathScreen {
@@ -49,14 +44,9 @@ export class DeathScreen {
 
   show(s: DeathStats): void {
     const killedBy = s.killerName ? `<div class="row"><span class="label">killed by</span><span>${escapeHtml(s.killerName)}</span></div>` : "";
-    const earned = s.coinsEarned ?? s.score;
-    const coinsRow = `<div class="row death-coins"><span class="label">coins earned</span><span>+${earned} 💰</span></div>`;
-    const balanceRow = s.coinBalance !== undefined && s.coinBalance > 0
-      ? `<div class="row"><span class="label">balance</span><span>${s.coinBalance} 💰</span></div>`
-      : "";
     const persisted = s.scorePersisted
-      ? `<div class="row death-saved"><span class="label">progress</span><span>saved to your account</span></div>`
-      : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to keep your coins</span></div>`;
+      ? `<div class="row death-saved"><span class="label">score</span><span>saved to leaderboard</span></div>`
+      : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to save scores</span></div>`;
 
     this.stats.innerHTML = `
       <div class="score-total-container">
@@ -65,8 +55,6 @@ export class DeathScreen {
       </div>
       <div class="row rank-row"><span class="label">rank</span><span>#${s.rank}</span></div>
       ${killedBy}
-      ${coinsRow}
-      ${balanceRow}
       ${persisted}
     `;
     this.root.classList.remove("hidden");

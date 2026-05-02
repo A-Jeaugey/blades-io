@@ -1,7 +1,6 @@
 import { NAME_MAX_LENGTH, NAME_MIN_LENGTH } from "@bladeio/shared";
 import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
-import { LeaderboardsModal } from "./LeaderboardsModal";
 
 export type LoginMode = "public" | "create" | "join";
 export interface LoginResult {
@@ -82,12 +81,8 @@ export class LoginScreen {
     const authRoot = document.getElementById("auth-panel");
     if (authRoot) {
       this.authPanel = new AuthPanel(authRoot);
-      // Quand l'état d'auth change, mettre à jour le champ CALLSIGN + le
-      // solde de coins du menu.
-      auth.subscribe(() => {
-        this.applyAuthState();
-        void this.refreshMenuCoins();
-      });
+      // Quand l'état d'auth change, mettre à jour le champ CALLSIGN.
+      auth.subscribe(() => this.applyAuthState());
     }
 
     // Cellules code (5) — les arrows mettent à jour leur contenu en lisant
@@ -155,48 +150,6 @@ export class LoginScreen {
     if (this.taglineEl) runGlitchReveal(this.taglineEl, "SPIN TO SURVIVE");
     this.applyAuthState();
     this.refreshTopOps();
-
-    // Bouton "VIEW ALL LEADERBOARDS" → ouvre la modale avec les onglets
-    // Best Score / Richest. Lazy-construit pour ne pas charger inutilement
-    // les éléments si l'utilisateur n'ouvre jamais la modale.
-    const lbBtn = document.getElementById("open-leaderboards-btn");
-    if (lbBtn) {
-      let modal: LeaderboardsModal | null = null;
-      lbBtn.addEventListener("click", () => {
-        if (!modal) modal = new LeaderboardsModal();
-        modal.show();
-      });
-    }
-  }
-
-  // Affiche/met à jour la pastille "BALANCE" sous le panneau d'auth. Pour
-  // les invités on laisse caché (pas de wallet persistant). Pour les
-  // authed on fetch /api/wallet ; en cas d'échec silencieux on cache aussi.
-  // Appelé après chaque changement d'état d'auth (signin, signout, refresh)
-  // et à chaque retour au menu.
-  private async refreshMenuCoins(): Promise<void> {
-    const chip = document.getElementById("menu-coins");
-    const val = document.getElementById("menu-coins-value");
-    if (!chip || !val) return;
-    const token = auth.getAccessToken();
-    if (!token) {
-      chip.classList.add("hidden");
-      return;
-    }
-    try {
-      const r = await fetch("/api/wallet", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) {
-        chip.classList.add("hidden");
-        return;
-      }
-      const j = await r.json();
-      val.textContent = formatCoins(Number(j.balance ?? 0));
-      chip.classList.remove("hidden");
-    } catch {
-      chip.classList.add("hidden");
-    }
   }
 
   // Fetch /api/leaderboard et remplit le panneau de droite "TOP OPS". On
@@ -326,9 +279,8 @@ export class LoginScreen {
     this.root.classList.remove("hidden");
     if (this.tickInterval === null) this.startReadouts();
     // Re-fetch à chaque retour au menu : le joueur vient de finir une partie,
-    // son score (et son solde de coins) ont pu changer.
+    // son score peut être dans le top maintenant.
     this.refreshTopOps();
-    void this.refreshMenuCoins();
   }
   hide(): void {
     this.root.classList.add("hidden");
@@ -350,10 +302,4 @@ function formatScore(n: number): string {
   const s = String(Math.max(0, Math.floor(n)));
   if (s.length >= 5) return s;
   return " ".repeat(5 - s.length) + s;
-}
-
-function formatCoins(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1) + "M";
-  if (n >= 10_000) return Math.floor(n / 1_000) + "k";
-  return String(Math.max(0, Math.floor(n)));
 }
