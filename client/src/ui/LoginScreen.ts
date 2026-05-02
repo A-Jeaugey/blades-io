@@ -179,23 +179,44 @@ export class LoginScreen {
     const val = document.getElementById("menu-coins-value");
     if (!chip || !val) return;
     const token = auth.getAccessToken();
+    // Mode invité : pas de wallet persistant → cacher la pastille.
     if (!token) {
       chip.classList.add("hidden");
+      chip.classList.remove("menu-coins-error");
       return;
     }
+    // Authed : on AFFICHE TOUJOURS la pastille — soit avec le solde,
+    // soit avec un message d'erreur. Sinon le joueur ne sait pas si la
+    // requête a échoué ou si son solde est vraiment 0.
+    chip.classList.remove("hidden");
+    val.textContent = "…";
+    chip.classList.remove("menu-coins-error");
     try {
       const r = await fetch("/api/wallet", {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
       if (!r.ok) {
-        chip.classList.add("hidden");
+        val.textContent = `ERR ${r.status}`;
+        chip.classList.add("menu-coins-error");
         return;
       }
       const j = await r.json();
+      // Si le serveur signale que le schéma n'est pas prêt, on le dit
+      // explicitement — ça évite l'illusion "0 coins" alors qu'en fait
+      // la table n'existe pas encore.
+      if (j.schemaReady === false) {
+        val.textContent = "DB INIT";
+        chip.classList.add("menu-coins-error");
+        chip.title = "Wallet table missing — apply supabase/migrations/0002_currency.sql";
+        return;
+      }
       val.textContent = formatCoins(Number(j.balance ?? 0));
-      chip.classList.remove("hidden");
-    } catch {
-      chip.classList.add("hidden");
+      chip.title = `Lifetime earned: ${Math.floor(Number(j.totalEarned ?? 0))}`;
+    } catch (e) {
+      val.textContent = "OFFLINE";
+      chip.classList.add("menu-coins-error");
+      console.warn("[blade.io] wallet fetch threw", e);
     }
   }
 

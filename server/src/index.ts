@@ -9,8 +9,13 @@ import fs from "fs";
 import { ArenaRoom } from "./rooms/ArenaRoom";
 import { initSupabase } from "./auth/supabase";
 import { buildAuthRouter } from "./auth/routes";
+import { ensureWalletSchemaReady } from "./auth/wallet";
 
 initSupabase();
+// Self-check : probe Supabase for the wallet schema and log a clear,
+// actionable message if anything is missing. Non-blocking — the game loop
+// boots regardless ; coin credits will use the fallback path if needed.
+void ensureWalletSchemaReady();
 
 const PORT = Number(process.env.PORT ?? 2567);
 
