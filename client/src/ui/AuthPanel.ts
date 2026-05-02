@@ -18,9 +18,6 @@ export class AuthPanel {
   // Le form signed-out est replié par défaut pour ne pas saturer l'écran de
   // login. L'utilisateur clique le trigger pour le déplier.
   private expanded = false;
-  // Quand true, signed-in avec username affiche le formulaire de renommage
-  // au lieu du résumé. Reset à chaque save / cancel / sign-out.
-  private renaming = false;
   private message: { kind: "error" | "info"; text: string } | null = null;
 
   constructor(root: HTMLElement) {
@@ -83,11 +80,7 @@ export class AuthPanel {
       return;
     }
     if (state.status === "signed_in" && state.profile.username) {
-      if (this.renaming) {
-        this.renderRename(state.profile.username);
-      } else {
-        this.renderSignedIn(state.profile.username, state.profile.email ?? "");
-      }
+      this.renderSignedIn(state.profile.username, state.profile.email ?? "");
       return;
     }
     if (state.status === "signed_in" && !state.profile.username) {
@@ -131,39 +124,10 @@ export class AuthPanel {
           <span class="bio2-auth-user">${escapeHtml(username)}</span>
           ${email ? `<span class="bio2-auth-email">${escapeHtml(email)}</span>` : ""}
         </div>
-        <div class="bio2-auth-summary-r">
-          <button type="button" class="bio2-auth-link" data-action="rename">RENAME</button>
-          <button type="button" class="bio2-auth-link" data-action="signout">SIGN OUT</button>
-        </div>
+        <button type="button" class="bio2-auth-link" data-action="signout">SIGN OUT</button>
       </div>
     `;
     this.bindSignedIn();
-  }
-
-  // Formulaire de renommage : pré-rempli avec le username courant, bouton
-  // SAVE qui appelle auth.setUsername (= POST /api/profile, upsert), bouton
-  // CANCEL pour revenir au résumé sans changer.
-  private renderRename(currentUsername: string): void {
-    this.root.classList.remove("hidden");
-    this.root.classList.remove("bio2-auth-mini");
-    this.root.innerHTML = `
-      <div class="bio2-auth-head">
-        <span class="bio2-auth-tag">// AUTH</span>
-        <span class="bio2-auth-title">RENAME</span>
-      </div>
-      <div class="bio2-auth-body">
-        <p class="bio2-auth-hint">3–16 chars · letters, digits, _ . -</p>
-        <div class="bio2-field">
-          <label class="bio2-field-label" for="auth-username">USERNAME</label>
-          <input id="auth-username" class="bio2-input" type="text" maxlength="16" autocomplete="off" value="${escapeHtml(currentUsername)}" />
-        </div>
-        <button type="button" class="bio2-auth-cta" data-action="save-rename">SAVE</button>
-        <button type="button" class="bio2-auth-link" data-action="cancel-rename">CANCEL</button>
-        <div class="bio2-auth-msg hidden"></div>
-      </div>
-    `;
-    if (this.message) this.setMessage(this.message.kind, this.message.text);
-    this.bindRename(currentUsername);
   }
 
   private renderUsernamePicker(): void {
@@ -378,54 +342,6 @@ export class AuthPanel {
       await auth.signOut();
       this.setBusy(false);
     });
-    this.root.querySelector<HTMLButtonElement>("[data-action=rename]")?.addEventListener("click", () => {
-      this.renaming = true;
-      this.clearMessage();
-      this.render(auth.getState());
-    });
-  }
-
-  private bindRename(currentUsername: string): void {
-    const input = this.root.querySelector<HTMLInputElement>("#auth-username");
-    const submit = async () => {
-      if (this.busy || !input) return;
-      const u = input.value.trim();
-      if (!USERNAME_RE.test(u)) {
-        this.setMessage("error", "3–16 chars (letters, digits, _ . -).");
-        return;
-      }
-      if (u === currentUsername) {
-        // Pas de changement, on quitte sans appel API.
-        this.renaming = false;
-        this.clearMessage();
-        this.render(auth.getState());
-        return;
-      }
-      this.clearMessage();
-      this.setBusy(true);
-      const { error } = await auth.setUsername(u);
-      this.setBusy(false);
-      if (error) {
-        this.setMessage("error", error);
-        return;
-      }
-      // setUsername a déjà mis à jour le profile en cache → le subscribe
-      // d'auth re-render automatiquement le résumé. On flip juste le flag.
-      this.renaming = false;
-      this.clearMessage();
-    };
-    this.root.querySelector<HTMLButtonElement>("[data-action=save-rename]")?.addEventListener("click", submit);
-    input?.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
-    this.root.querySelector<HTMLButtonElement>("[data-action=cancel-rename]")?.addEventListener("click", () => {
-      this.renaming = false;
-      this.clearMessage();
-      this.render(auth.getState());
-    });
-    // Auto-focus + select all text → édition rapide à un caractère près.
-    if (input) {
-      input.focus();
-      input.select();
-    }
   }
 
   private bindUsernamePicker(): void {

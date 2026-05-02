@@ -65,6 +65,14 @@ export class LoginScreen {
   private mode: LoginMode = "public";
   private walletBadge: HTMLElement | null = null;
   private walletValue: HTMLElement | null = null;
+  private renameActions: HTMLElement | null = null;
+  private renameBtn: HTMLButtonElement | null = null;
+  private renameSaveBtn: HTMLButtonElement | null = null;
+  private renameCancelBtn: HTMLButtonElement | null = null;
+  private renameMsg: HTMLElement | null = null;
+  private renaming = false;
+  private renameOriginal = "";
+  private renameBusy = false;
 
   constructor(onEnter: (res: LoginResult) => void) {
     this.root = document.getElementById("login-screen")!;
@@ -101,6 +109,20 @@ export class LoginScreen {
         this.walletValue.textContent = String(w.balance);
         this.walletBadge.classList.remove("hidden");
       }
+    });
+
+    this.renameActions = document.getElementById("rename-actions");
+    this.renameBtn = document.getElementById("rename-btn") as HTMLButtonElement | null;
+    this.renameSaveBtn = document.getElementById("rename-save") as HTMLButtonElement | null;
+    this.renameCancelBtn = document.getElementById("rename-cancel") as HTMLButtonElement | null;
+    this.renameMsg = document.getElementById("rename-msg");
+    this.renameBtn?.addEventListener("click", () => this.startRename());
+    this.renameSaveBtn?.addEventListener("click", () => this.saveRename());
+    this.renameCancelBtn?.addEventListener("click", () => this.cancelRename());
+    this.input.addEventListener("keydown", (e) => {
+      if (!this.renaming) return;
+      if (e.key === "Enter") { e.preventDefault(); this.saveRename(); }
+      else if (e.key === "Escape") { e.preventDefault(); this.cancelRename(); }
     });
 
     // Cellules code (5) — les arrows mettent à jour leur contenu en lisant
@@ -161,7 +183,9 @@ export class LoginScreen {
       onEnter(res);
     };
     this.button.addEventListener("click", submit);
-    this.input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    // En mode rename, ENTER sur l'input est consommé par saveRename (cf
+    // listener plus haut). On garde ce listener actif pour le mode normal.
+    this.input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !this.renaming) submit(); });
     this.codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
 
     this.startReadouts();
@@ -228,23 +252,114 @@ export class LoginScreen {
   }
 
   // Verrouille / déverrouille le champ CALLSIGN selon l'état d'auth.
-  // Authed avec username → champ readonly pré-rempli, label change.
-  // Sinon → comportement classique (mode invité).
+  // Authed avec username → champ readonly pré-rempli, bouton RENAME visible.
+  // Sinon → comportement classique (mode invité), pas de bouton.
   private applyAuthState(): void {
     const username = this.authPanel?.isLockedToUsername() ? this.authPanel?.getDisplayName() ?? "" : "";
     if (username) {
-      this.input.value = username;
-      this.input.readOnly = true;
-      this.input.classList.add("bio2-input-locked");
-      if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN (FROM PROFILE)";
+      // Si on était en train de renommer et que le username remonté du
+      // serveur a changé, on sort proprement du mode rename.
+      if (this.renaming && this.renameOriginal !== username) {
+        this.renaming = false;
+        this.clearRenameMessage();
+      }
+      if (!this.renaming) {
+        this.input.value = username;
+        this.input.readOnly = true;
+        this.input.classList.add("bio2-input-locked");
+        if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN (FROM PROFILE)";
+      }
+      // Affiche les boutons rename (état idle ou éditable selon this.renaming).
+      this.renameActions?.classList.remove("hidden");
+      this.applyRenameButtons();
     } else {
+      this.renaming = false;
+      this.clearRenameMessage();
       this.input.readOnly = false;
       this.input.classList.remove("bio2-input-locked");
       if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN";
       const saved = localStorage.getItem("blade.name");
       if (saved && this.input.value === "") this.input.value = saved;
+      this.renameActions?.classList.add("hidden");
     }
     this.updateNameCount();
+  }
+
+  // Reflète l'état renaming sur les 3 boutons (idle: RENAME, edit: ✓ + ✗).
+  private applyRenameButtons(): void {
+    if (!this.renameBtn || !this.renameSaveBtn || !this.renameCancelBtn) return;
+    if (this.renaming) {
+      this.renameBtn.classList.add("hidden");
+      this.renameSaveBtn.classList.remove("hidden");
+      this.renameCancelBtn.classList.remove("hidden");
+    } else {
+      this.renameBtn.classList.remove("hidden");
+      this.renameSaveBtn.classList.add("hidden");
+      this.renameCancelBtn.classList.add("hidden");
+    }
+  }
+
+  private startRename(): void {
+    if (!this.authPanel?.isLockedToUsername()) return;
+    this.renameOriginal = this.input.value;
+    this.renaming = true;
+    this.input.readOnly = false;
+    this.input.classList.remove("bio2-input-locked");
+    this.applyRenameButtons();
+    this.clearRenameMessage();
+    this.input.focus();
+    this.input.select();
+    this.updateNameCount();
+  }
+
+  private cancelRename(): void {
+    this.renaming = false;
+    this.input.value = this.renameOriginal;
+    this.input.readOnly = true;
+    this.input.classList.add("bio2-input-locked");
+    this.applyRenameButtons();
+    this.clearRenameMessage();
+    this.updateNameCount();
+  }
+
+  private async saveRename(): Promise<void> {
+    if (!this.renaming || this.renameBusy) return;
+    const next = this.input.value.trim();
+    if (!/^[A-Za-z0-9_.\-]{3,16}$/.test(next)) {
+      this.setRenameMessage("3–16 chars (letters, digits, _ . -).");
+      return;
+    }
+    if (next === this.renameOriginal) {
+      // Pas de changement, on sort sans round-trip.
+      this.cancelRename();
+      return;
+    }
+    this.renameBusy = true;
+    if (this.renameSaveBtn) this.renameSaveBtn.disabled = true;
+    if (this.renameCancelBtn) this.renameCancelBtn.disabled = true;
+    const { error } = await auth.setUsername(next);
+    this.renameBusy = false;
+    if (this.renameSaveBtn) this.renameSaveBtn.disabled = false;
+    if (this.renameCancelBtn) this.renameCancelBtn.disabled = false;
+    if (error) {
+      this.setRenameMessage(error);
+      return;
+    }
+    // setUsername a poussé un nouveau profile dans auth → applyAuthState
+    // se re-déclenche via subscribe et le mode rename se reset.
+    this.renaming = false;
+    this.clearRenameMessage();
+  }
+
+  private setRenameMessage(text: string): void {
+    if (!this.renameMsg) return;
+    this.renameMsg.textContent = text;
+    this.renameMsg.classList.remove("hidden");
+  }
+  private clearRenameMessage(): void {
+    if (!this.renameMsg) return;
+    this.renameMsg.textContent = "";
+    this.renameMsg.classList.add("hidden");
   }
 
   private updateNameCount(): void {
