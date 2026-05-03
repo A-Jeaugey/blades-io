@@ -157,26 +157,18 @@ export function createDecor(q: QualityConfig): {
     }
   }
 
-  // Bosquets de brume éthérée : zones de cachette. Plus de tronc cylindrique
-  // (qui faisait Lego) — à la place une grappe désordonnée de petites sphères
-  // translucides mauves + 2-3 points lumineux mint/rose pour suggérer la vie
-  // intérieure du bosquet. Positions générées de manière déterministe (seed
-  // basé sur l'index du bush) pour que tous les clients voient la même forme.
+  // Bosquets de champignons spirit-world : zones de cachette. Chaque bosquet
+  // = grappe de champignons (pied + chapeau + glow sous-chapeau) plantés sur
+  // un tapis de mousse au sol. Les champignons donnent la silhouette
+  // verticale claire qui manquait à la grappe de sphères ; la mousse au sol
+  // assure la lecture "zone de cachette dense". Positions générées de
+  // manière déterministe (seed = index bush) pour que tous les clients
+  // voient la même forme.
   //
-  // Single InstancedMesh par couche (foliage + glow accents) → 2 draw calls
-  // au total quel que soit le nombre de bushes.
-  const bushFolMat = new THREE.MeshBasicMaterial({
-    color: PALETTE.groveFoliage,
-    transparent: true,
-    opacity: 0.72,
-    depthWrite: false, // évite le z-fighting entre sphères qui se chevauchent
-  });
-  disposables.push(bushFolMat);
+  // 4 InstancedMesh : mousse + pieds + chapeaux + glows sous-chapeau.
 
   if (BUSHES.length > 0) {
-    // Hash déterministe (Mulberry32-like) — donne un float [0,1) reproductible
-    // depuis un seed entier. Utilisé pour placer les sphères de manière
-    // pseudo-aléatoire mais identique entre clients.
+    // Hash déterministe (Mulberry32-like) — float [0,1) reproductible.
     const hash01 = (seed: number): number => {
       let h = (seed | 0) + 0x6D2B79F5;
       h = Math.imul(h ^ (h >>> 15), h | 1);
@@ -184,103 +176,163 @@ export function createDecor(q: QualityConfig): {
       return ((h ^ (h >>> 14)) >>> 0) / 4294967296;
     };
 
-    // Densité du bosquet selon le preset : rich = 14 sphères, simple = 8,
-    // minimal = 5. Sous 5, on perd la lecture "bosquet" et ça devient juste
-    // 3 sphères visibles.
-    const spheresPerBush =
-      q.decorDetail === "rich" ? 14 :
-      q.decorDetail === "simple" ? 8 : 5;
+    const mushroomsPerBush =
+      q.decorDetail === "rich" ? 5 :
+      q.decorDetail === "simple" ? 3 : 2;
+    const mossPerBush =
+      q.decorDetail === "rich" ? 6 :
+      q.decorDetail === "simple" ? 4 : 3;
 
-    const sphSeg = q.simpleMaterials ? 6 : 8;
-    const sphGeo = new THREE.SphereGeometry(1, sphSeg, Math.max(4, sphSeg - 2));
-    disposables.push(sphGeo);
-
-    const totalSph = BUSHES.length * spheresPerBush;
-    const sphMesh = new THREE.InstancedMesh(sphGeo, bushFolMat, totalSph);
-
-    let si = 0;
+    // ─── COUCHE 1 : Mousse au sol (sphères translucides aplaties) ───
+    // Couvre les "trous" entre les pieds des champignons et donne la
+    // lecture "tapis dense" pour la cachette. Hauteur < 1.0.
+    const mossMat = new THREE.MeshBasicMaterial({
+      color: PALETTE.groveFoliage,
+      transparent: true,
+      opacity: 0.7,
+      depthWrite: false,
+    });
+    disposables.push(mossMat);
+    const mossSeg = q.simpleMaterials ? 6 : 8;
+    const mossGeo = new THREE.SphereGeometry(1, mossSeg, Math.max(4, mossSeg - 2));
+    disposables.push(mossGeo);
+    const totalMoss = BUSHES.length * mossPerBush;
+    const mossMesh = new THREE.InstancedMesh(mossGeo, mossMat, totalMoss);
+    let mossIdx = 0;
     for (let bi = 0; bi < BUSHES.length; bi++) {
       const b = BUSHES[bi];
-      for (let i = 0; i < spheresPerBush; i++) {
+      for (let i = 0; i < mossPerBush; i++) {
         const seed = bi * 1009 + i * 31;
-        // Position dans le disque d'influence du bush. sqrt(rand) pour
-        // distribution uniforme dans le cercle (sinon trop concentré au
-        // centre). Limite à 0.85 du rayon collision pour que les sphères
-        // débordent un peu sans cacher visuellement la limite.
         const angle = hash01(seed) * Math.PI * 2;
         const radial = Math.sqrt(hash01(seed + 1)) * b.radius * 0.85;
         const sx = b.x + Math.cos(angle) * radial;
         const sz = b.y + Math.sin(angle) * radial;
-        // Distribution verticale : plus dense au milieu (1.2-2.0), quelques
-        // sphères en bas (0.6) et en haut (2.6) pour casser la silhouette
-        // dôme uniforme.
-        const heightT = hash01(seed + 2);
-        const sy = 0.6 + heightT * heightT * 2.0; // bias vers le bas
-        // Taille variée : petites sphères qui se chevauchent (0.35 à 0.65 ×
-        // bush radius) — créent une masse organique au lieu de boules
-        // distinctes.
-        const sphR = b.radius * (0.35 + hash01(seed + 3) * 0.30);
-
+        const sy = 0.3 + hash01(seed + 2) * 0.6;
+        const horizR = b.radius * (0.4 + hash01(seed + 3) * 0.35);
+        const vertR = horizR * (0.5 + hash01(seed + 4) * 0.2);
         tmpPos.set(sx, sy, sz);
-        tmpEuler.set(
-          hash01(seed + 4) * Math.PI,
-          hash01(seed + 5) * Math.PI,
-          hash01(seed + 6) * Math.PI,
-        );
+        tmpEuler.set(0, hash01(seed + 5) * Math.PI, 0);
         tmpQuat.setFromEuler(tmpEuler);
-        tmpScale.set(sphR, sphR * (0.85 + hash01(seed + 7) * 0.3), sphR);
+        tmpScale.set(horizR, vertR, horizR);
         tmpMat.compose(tmpPos, tmpQuat, tmpScale);
-        sphMesh.setMatrixAt(si++, tmpMat);
+        mossMesh.setMatrixAt(mossIdx++, tmpMat);
       }
     }
-    sphMesh.instanceMatrix.needsUpdate = true;
-    sphMesh.matrixAutoUpdate = false;
-    sphMesh.renderOrder = 0; // foliage drawn first
-    group.add(sphMesh);
+    mossMesh.instanceMatrix.needsUpdate = true;
+    mossMesh.matrixAutoUpdate = false;
+    mossMesh.renderOrder = 0;
+    group.add(mossMesh);
 
-    // Points lumineux à l'intérieur du bosquet : 2 par bush en rich, 1 en
-    // simple, 0 en minimal. Suggère "il y a de la vie là-dedans" (luciole,
-    // esprit qui s'y cache) sans révéler les joueurs.
-    const glowsPerBush =
-      q.decorDetail === "rich" ? 2 :
-      q.decorDetail === "simple" ? 1 : 0;
-    if (glowsPerBush > 0) {
-      const glowMat = new THREE.MeshBasicMaterial({
-        color: PALETTE.groveAccent,
-        transparent: true,
-        opacity: 0.55,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
-      disposables.push(glowMat);
-      const glowGeo = new THREE.SphereGeometry(0.18, 6, 5);
-      disposables.push(glowGeo);
-      const totalGlow = BUSHES.length * glowsPerBush;
-      const glowMesh = new THREE.InstancedMesh(glowGeo, glowMat, totalGlow);
-      let gi = 0;
-      for (let bi = 0; bi < BUSHES.length; bi++) {
-        const b = BUSHES[bi];
-        for (let i = 0; i < glowsPerBush; i++) {
-          const seed = bi * 7919 + i * 113;
-          const angle = hash01(seed) * Math.PI * 2;
-          const radial = hash01(seed + 1) * b.radius * 0.5;
-          const sx = b.x + Math.cos(angle) * radial;
-          const sz = b.y + Math.sin(angle) * radial;
-          const sy = 1.0 + hash01(seed + 2) * 1.2;
-          tmpPos.set(sx, sy, sz);
-          tmpEuler.set(0, 0, 0);
-          tmpQuat.setFromEuler(tmpEuler);
-          const s = 0.7 + hash01(seed + 3) * 0.6;
-          tmpScale.set(s, s, s);
-          tmpMat.compose(tmpPos, tmpQuat, tmpScale);
-          glowMesh.setMatrixAt(gi++, tmpMat);
-        }
+    // ─── COUCHE 2 : Pieds des champignons (cylindre conique opaque) ───
+    const stemSeg = q.simpleMaterials ? 6 : 8;
+    const stemGeo = new THREE.CylinderGeometry(0.13, 0.18, 1.0, stemSeg);
+    disposables.push(stemGeo);
+    const stemMat = q.simpleMaterials
+      ? new THREE.MeshBasicMaterial({ color: 0xe8d4f0 })
+      : new THREE.MeshStandardMaterial({
+          color: 0xe8d4f0,        // crème rosée pâle
+          emissive: 0x4a2f6e,     // ombre mauve dans les creux du shading
+          emissiveIntensity: 0.15,
+          roughness: 0.85,
+          metalness: 0.0,
+        });
+    disposables.push(stemMat);
+    const totalStems = BUSHES.length * mushroomsPerBush;
+    const stemMesh = new THREE.InstancedMesh(stemGeo, stemMat, totalStems);
+
+    // ─── COUCHE 3 : Chapeaux (hémisphère aplatie, translucide rose-violet) ───
+    const capSeg = q.simpleMaterials ? 8 : 12;
+    const capGeo = new THREE.SphereGeometry(1, capSeg, Math.max(4, capSeg / 2));
+    disposables.push(capGeo);
+    const capMat = q.simpleMaterials
+      ? new THREE.MeshBasicMaterial({
+          color: PALETTE.groveAccent,
+          transparent: true,
+          opacity: 0.85,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: PALETTE.groveAccent,
+          emissive: PALETTE.shrineAccent,
+          emissiveIntensity: 0.3,
+          roughness: 0.6,
+          metalness: 0.0,
+          transparent: true,
+          opacity: 0.92,
+        });
+    disposables.push(capMat);
+    const capMesh = new THREE.InstancedMesh(capGeo, capMat, totalStems);
+
+    // ─── COUCHE 4 : Glow sous-chapeau (signature champignon féérique) ───
+    // Disque additif rose vif sous chaque chapeau — détail qui transforme
+    // "champignon" en "champignon enchanté".
+    const underglowMat = new THREE.MeshBasicMaterial({
+      color: 0xffb4e0,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    disposables.push(underglowMat);
+    const underglowGeo = new THREE.CircleGeometry(0.55, 12);
+    disposables.push(underglowGeo);
+    const underglowMesh = new THREE.InstancedMesh(underglowGeo, underglowMat, totalStems);
+
+    let ms = 0;
+    for (let bi = 0; bi < BUSHES.length; bi++) {
+      const b = BUSHES[bi];
+      for (let i = 0; i < mushroomsPerBush; i++) {
+        const seed = bi * 4099 + i * 71;
+        // Position dans le bush — concentré vers le centre (0..0.65 × radius)
+        // pour laisser la mousse déborder à la périphérie.
+        const angle = hash01(seed) * Math.PI * 2;
+        const radial = hash01(seed + 1) * b.radius * 0.65;
+        const sx = b.x + Math.cos(angle) * radial;
+        const sz = b.y + Math.sin(angle) * radial;
+        // Hauteur du pied : 1.2 à 2.4 pour variation. Position Y du
+        // cylindre = sa moitié-hauteur (centre).
+        const stemH = 1.2 + hash01(seed + 2) * 1.2;
+        const stemThick = 0.9 + hash01(seed + 3) * 0.5;
+        tmpPos.set(sx, stemH / 2, sz);
+        tmpEuler.set(0, hash01(seed + 4) * Math.PI, 0);
+        tmpQuat.setFromEuler(tmpEuler);
+        tmpScale.set(stemThick, stemH, stemThick);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        stemMesh.setMatrixAt(ms, tmpMat);
+
+        // Chapeau : posé sur le pied (à stemH), aplati. Tailles variées.
+        const capR = 0.5 + hash01(seed + 5) * 0.45;
+        const capH = capR * 0.55; // chapeau aplati
+        tmpPos.set(sx, stemH + capH * 0.5, sz);
+        tmpEuler.set(0, hash01(seed + 6) * Math.PI, 0);
+        tmpQuat.setFromEuler(tmpEuler);
+        tmpScale.set(capR, capH, capR);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        capMesh.setMatrixAt(ms, tmpMat);
+
+        // Glow sous le chapeau : disque face vers le bas, juste sous
+        // l'underside du chapeau.
+        tmpPos.set(sx, stemH - 0.02, sz);
+        tmpEuler.set(Math.PI / 2, 0, 0);
+        tmpQuat.setFromEuler(tmpEuler);
+        const glowR = capR * 0.95;
+        tmpScale.set(glowR, glowR, 1);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        underglowMesh.setMatrixAt(ms, tmpMat);
+
+        ms++;
       }
-      glowMesh.instanceMatrix.needsUpdate = true;
-      glowMesh.matrixAutoUpdate = false;
-      glowMesh.renderOrder = 1; // glow drawn after foliage
-      group.add(glowMesh);
     }
+    stemMesh.instanceMatrix.needsUpdate = true;
+    stemMesh.matrixAutoUpdate = false;
+    capMesh.instanceMatrix.needsUpdate = true;
+    capMesh.matrixAutoUpdate = false;
+    underglowMesh.instanceMatrix.needsUpdate = true;
+    underglowMesh.matrixAutoUpdate = false;
+    underglowMesh.renderOrder = 1;
+    group.add(stemMesh);
+    group.add(capMesh);
+    group.add(underglowMesh);
   }
 
   // Lanternes d'âmes flottantes — 3 couches superposées pour qu'elles lisent

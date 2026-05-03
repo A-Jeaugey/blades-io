@@ -53,13 +53,14 @@ export class AmbientWisps {
   private readonly despawnRadius: number;
 
   constructor(q: QualityConfig) {
-    // Dimensionnement selon le preset : on garde l'ambiance même en low.
-    // Ultra : 30, low : 60, medium : 100, high : 160.
+    // Dimensionnement selon le preset. Volontairement modeste : trop de
+    // wisps fatigue l'œil et concurrence la lecture du combat. On vise
+    // "ambiance vivante en arrière-plan", pas "blizzard d'étoiles".
     const count =
-      q.preset === "high" ? 160 :
-      q.preset === "medium" ? 100 :
-      q.preset === "low" ? 60 :
-      30;
+      q.preset === "high" ? 80 :
+      q.preset === "medium" ? 50 :
+      q.preset === "low" ? 30 :
+      18;
 
     this.spawnRadius = 70;   // rayon où on crée des wisps autour du joueur
     this.despawnRadius = 90; // au-delà, on respawn de l'autre côté
