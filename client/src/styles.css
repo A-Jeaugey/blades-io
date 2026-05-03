@@ -877,19 +877,16 @@ button:hover {
   position: relative;
   box-shadow: 0 0 60px rgba(0,229,255,.2), inset 0 0 30px rgba(0,229,255,.05);
   backdrop-filter: blur(10px);
-  overflow: hidden;
-  /* Scrollbar stylée cyan-discrète (Firefox + standard) — appliquée
-     uniquement quand le scroll est activé (state déplié, voir plus bas). */
+  /* Plafond de hauteur + scroll INTERNE permanent : garantit que ENTER
+     THE GRID reste atteignable peu importe l'état du panel auth (signed-in,
+     signed-out collapsed, sign-up déplié). Scrollbar n'apparaît que si le
+     contenu déborde réellement (overflow-y: auto, pas scroll). */
+  max-height: 78vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Scrollbar stylée cyan-discrète (Firefox + standard). */
   scrollbar-width: thin;
   scrollbar-color: rgba(0,229,255,.4) transparent;
-}
-/* Plafond + scroll INTERNE uniquement quand l'auth panel est déplié.
-   Détection via :has() de .bio2-auth-providers qui n'existe que dans
-   le form complet (signin/signup). Le reste du temps : console au
-   naturel, pas de scrollbar parasite. */
-.bio2-console:has(.bio2-auth-providers) {
-  max-height: 65vh;
-  overflow-y: auto;
 }
 /* Scrollbar Webkit (Chrome / Edge / Safari) — même look. */
 .bio2-console::-webkit-scrollbar {
