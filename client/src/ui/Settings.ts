@@ -1,4 +1,5 @@
 import { QualityPreset, detectPreset, savePresetChoice } from "../quality";
+import { getActiveTheme, listThemes, setActiveTheme } from "../themes";
 
 export interface SettingsState {
   master: number;
@@ -72,6 +73,32 @@ export class SettingsPanel {
         }
       });
     }
+
+    // Sélecteur de thème — populated depuis themes/index.ts. Un reload est
+    // nécessaire car les shaders, matériaux, lumières et CSS sont construits
+    // au boot selon le thème actif (cf. getActiveTheme appelé à l'init de
+    // chaque module de rendu).
+    const themeSel = document.getElementById("theme-select") as HTMLSelectElement | null;
+    if (themeSel) {
+      themeSel.innerHTML = "";
+      const activeId = getActiveTheme().id;
+      for (const t of listThemes()) {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = t.displayName;
+        if (t.id === activeId) opt.selected = true;
+        themeSel.appendChild(opt);
+      }
+      themeSel.addEventListener("change", () => {
+        const newId = themeSel.value;
+        if (newId === activeId) return;
+        setActiveTheme(newId);
+        if (confirm("Le changement de thème nécessite un reload. Recharger maintenant ?")) {
+          window.location.reload();
+        }
+      });
+    }
+
     this.applyToInputs();
   }
 
