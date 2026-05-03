@@ -38,6 +38,7 @@ import { BladeRenderer, PlayerPositionProvider } from "./entities/BladeView";
 import { CrateRenderer } from "./entities/CrateView";
 import { PowerUpRenderer } from "./entities/PowerUpView";
 import { ParticlePool } from "./fx/Particles";
+import { AmbientWisps } from "./scene/AmbientWisps";
 import { InputManager } from "./input/InputManager";
 import { Hud } from "./ui/Hud";
 import { LoginScreen, LoginResult } from "./ui/LoginScreen";
@@ -71,6 +72,7 @@ class Game {
   // au départ).
   private effectDurations: Map<string, number> = new Map();
   private particles!: ParticlePool;
+  private wisps!: AmbientWisps;
   // Moniteur FPS adaptatif : si fps reste sous le seuil pendant une fenêtre,
   // on baisse la résolution dynamiquement (resScale) ; si ça ne suffit pas,
   // on downgrade le preset (low → ultra). Si le fps remonte durablement, on
@@ -135,6 +137,7 @@ class Game {
     this.crates = new CrateRenderer(this.quality);
     this.powerups = new PowerUpRenderer(this.quality);
     this.particles = new ParticlePool(this.quality.maxParticles, this.quality.particleScale);
+    this.wisps = new AmbientWisps(this.quality);
     this.ground = createGround(this.quality);
     this.sceneStack.scene.add(this.ground.mesh);
     this.wall = createBoundaryWall(this.quality);
@@ -145,6 +148,7 @@ class Game {
     this.sceneStack.scene.add(this.crates.root);
     this.sceneStack.scene.add(this.powerups.root);
     this.sceneStack.scene.add(this.particles.object3d);
+    this.sceneStack.scene.add(this.wisps.object3d);
     this.hud = new Hud();
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
@@ -890,6 +894,12 @@ class Game {
       this.camera.update(dt);
       this.ground.update(this.elapsed * 0.001);
       this.decor.update(this.elapsed * 0.001);
+      // Wisps ambient : centrés sur le joueur local pour qu'on en voie
+      // toujours autour de soi. Au lobby (pas de localView) on les laisse
+      // tourner autour de l'origine.
+      const wispCx = localView ? localView.renderX : 0;
+      const wispCz = localView ? localView.renderY : 0;
+      this.wisps.update(wispCx, wispCz, dt, this.elapsed * 0.001);
       this.updateHud();
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
 

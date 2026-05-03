@@ -222,19 +222,41 @@ export function createDecor(q: QualityConfig): {
     }
   }
 
-  // Reliques flottantes (purement déco). Cristaux d'âme en suspension —
-  // animés en rich/simple, statiques en minimal. Toujours InstancedMesh.
+  // Lanternes d'âmes flottantes (purement déco). Sphères translucides
+  // émissives or — beaucoup plus organique que les cubes cyberpunk d'avant.
+  // Animées en rich/simple (bob + lent rotation), statiques en minimal.
+  // Garde InstancedMesh : 1 seul draw call quel que soit le nombre.
   let cubeMesh: THREE.InstancedMesh | null = null;
   let cubesData: Array<{ baseY: number; phase: number; spin: number; x: number; y: number }> = [];
   if (q.decorDetail !== "minimal") {
-    const cubeGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const cubeMat = mkEmissive(PALETTE.shrineAccent, 1.1);
-    disposables.push(cubeGeo, cubeMat);
-    cubeMesh = new THREE.InstancedMesh(cubeGeo, cubeMat, FLOATING_CUBES.length);
+    // SphereGeometry low poly (8x6 segments) — invisible à l'œil que c'est
+    // bas poly, donné le bloom + la transparence. Économise les vertices.
+    const lanternGeo = new THREE.SphereGeometry(0.55, 8, 6);
+    // Matériau émissif transparent : on contourne mkEmissive pour pouvoir
+    // ajouter la transparency (que mkEmissive ne supporte pas tel quel).
+    const lanternMat = q.simpleMaterials
+      ? new THREE.MeshBasicMaterial({
+          color: PALETTE.sacredGold,
+          transparent: true,
+          opacity: 0.75,
+        })
+      : new THREE.MeshStandardMaterial({
+          color: PALETTE.sacredGold,
+          emissive: PALETTE.sacredGold,
+          emissiveIntensity: 1.4,
+          metalness: 0.0,
+          roughness: 0.7,
+          transparent: true,
+          opacity: 0.85,
+        });
+    disposables.push(lanternGeo, lanternMat);
+    cubeMesh = new THREE.InstancedMesh(lanternGeo, lanternMat, FLOATING_CUBES.length);
     for (let i = 0; i < FLOATING_CUBES.length; i++) {
       const c = FLOATING_CUBES[i];
-      cubesData.push({ baseY: c.baseY, phase: c.phase, spin: c.spin, x: c.x, y: c.y });
-      tmpPos.set(c.x, c.baseY, c.y);
+      // Décale la baseY un peu plus haut (les lanternes flottent au-dessus
+      // de la portée des lames, donc visuellement séparées).
+      cubesData.push({ baseY: c.baseY + 0.6, phase: c.phase, spin: c.spin, x: c.x, y: c.y });
+      tmpPos.set(c.x, c.baseY + 0.6, c.y);
       tmpEuler.set(0, 0, 0);
       tmpQuat.setFromEuler(tmpEuler);
       tmpScale.set(1, 1, 1);
@@ -260,12 +282,17 @@ export function createDecor(q: QualityConfig): {
     update(t: number) {
       if (halo) halo.rotation.z = t * 0.2;
       if (cubeMesh && animateCubes) {
+        // Lanternes : pas de rotation (sphère = invisible), juste un bob
+        // vertical doux + une légère oscillation horizontale (mouvement
+        // de lanterne qui suit un courant aérien). Le tout reste subtil
+        // pour ne pas distraire du combat.
         for (let i = 0; i < cubesData.length; i++) {
           const c = cubesData[i];
-          const ry = t * c.spin;
-          const rx = t * c.spin * 0.7;
-          updPos.set(c.x, c.baseY + Math.sin(t + c.phase) * 0.4, c.y);
-          updEuler.set(rx, ry, 0);
+          const bob = Math.sin(t * 0.7 + c.phase) * 0.4;
+          const swayX = Math.cos(t * 0.4 + c.phase * 1.3) * 0.25;
+          const swayZ = Math.sin(t * 0.45 + c.phase * 0.7) * 0.25;
+          updPos.set(c.x + swayX, c.baseY + bob, c.y + swayZ);
+          updEuler.set(0, 0, 0);
           updQuat.setFromEuler(updEuler);
           updMat.compose(updPos, updQuat, updScale);
           cubeMesh.setMatrixAt(i, updMat);

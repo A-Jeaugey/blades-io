@@ -197,8 +197,18 @@ export class BladeRenderer {
               emissive: tintedEmissive,
               // Compensation luminance × tier intensity : équilibre le bloom
               // entre raretés (sinon les blanches dominent visuellement).
-              emissiveIntensity: TIER_EMISSIVE[t] * RARITY_GLOW_COMP[r],
-              shininess: 80,
+              // Boost +15 % en plus pour pousser le glow spirit-world
+              // (les lames doivent lire comme des "fragments d'âme" lumineux,
+              // pas comme du métal poli).
+              emissiveIntensity: TIER_EMISSIVE[t] * RARITY_GLOW_COMP[r] * 1.15,
+              // Shininess basse (30 au lieu de 80) : highlight spéculaire
+              // plus large et doux → lecture "lumière intérieure" plutôt
+              // que "métal réfléchissant". Plus cohérent avec un objet
+              // spirituel qu'avec une épée d'acier.
+              shininess: 30,
+              specular: 0x4a3a6e, // tint mauve sur le specular pour
+              // unifier avec l'ambiance générale (au lieu du blanc défaut
+              // qui crée des reflets cyberpunk-froids).
             });
         const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES_PER_BUCKET);
         mesh.count = 0;
