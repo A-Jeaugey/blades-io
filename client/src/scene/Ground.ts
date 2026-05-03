@@ -87,6 +87,15 @@ const GROUND_FRAG_RICH = /* glsl */ `
     col += uSacred * rings;
 
     col *= edgeFade;
+
+    // Dithering : casse le banding visible sur les longs gradients (sol
+    // qui s'étend très loin → 8 bits par canal = sauts visibles, surtout
+    // amplifiés par le bloom). Bruit blanc d'amplitude 1/255 ajouté aux
+    // RGB juste avant la quantization sRGB. Invisible à l'œil mais noie
+    // les bandes dans le grain.
+    float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
+    col += vec3(dither);
+
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -94,7 +103,7 @@ const GROUND_FRAG_RICH = /* glsl */ `
 // Version "simple" (medium GPUs) : 2 octaves de FBM au lieu de 3, pas de
 // wisps animés (juste les nappes + cercles diffus). Reste atmosphérique.
 const GROUND_FRAG_SIMPLE = /* glsl */ `
-  precision mediump float;
+  precision highp float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
@@ -124,6 +133,9 @@ const GROUND_FRAG_SIMPLE = /* glsl */ `
     vec3 col = mix(uBase, uMid, mist);
     col += uSacred * rings;
     col *= edgeFade;
+    // Dithering anti-banding (cf. variant rich pour le détail).
+    float dither = (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
