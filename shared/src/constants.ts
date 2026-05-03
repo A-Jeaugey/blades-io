@@ -183,9 +183,24 @@ export const AMBIENT_SPAWN_BURST = 20; // max de spawns par tick
 export const AMBIENT_MIN_FLOOR = 35; // toujours au moins N lames au sol
 
 // --- Mort / drop ---
-export const DEATH_DROP_RATIO = 0.5;
-export const DEATH_DROP_MIN_DIST = 2;
-export const DEATH_DROP_MAX_DIST = 6;
+// Fraction des lames en orbite dropées au sol à la mort. 0.7 → le tueur
+// peut récupérer 70 % du stockpile orbital de la victime (en plus des
+// pertes récentes, cf. plus bas). Avant à 0.5 le kill se sentait peu
+// rentable face à un joueur loaded.
+export const DEATH_DROP_RATIO = 0.7;
+// Distances de spawn des drops autour de la victime. Volontairement
+// resserrées (1-3.5) pour que les lames atterrissent toutes DANS le
+// PICKUP_MAGNET_RADIUS (5.5) après prise en compte de la trajectoire
+// initiale (speed 2-3 + friction 3.5 = +0.4 à +1.0 unité). Avant à
+// 2-6 + speed 3-5 → final 5-9 unités, hors d'aimant pour la moitié
+// des drops → le tueur les ratait.
+export const DEATH_DROP_MIN_DIST = 1;
+export const DEATH_DROP_MAX_DIST = 3.5;
+// Vitesse initiale radiale des lames lâchées à la mort (u/s). Donne le
+// "burst" visuel sans projeter les lames hors d'aimant. Friction
+// GROUND_BLADE_FRICTION les arrête en ~0.6-1.0 s.
+export const DEATH_DROP_SPEED_MIN = 2;
+export const DEATH_DROP_SPEED_MAX = 3;
 // Bonus de drop : pertes "récentes" cumulées en clash dans cette fenêtre
 // (ms). Évite que tuer un ennemi qui finit forcément à 0 lames donne 0 loot,
 // sans pour autant resservir l'historique entier de la partie.

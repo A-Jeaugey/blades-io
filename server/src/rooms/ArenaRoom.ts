@@ -9,6 +9,8 @@ import {
   DEATH_DROP_MAX_DIST,
   DEATH_DROP_MIN_DIST,
   DEATH_DROP_RATIO,
+  DEATH_DROP_SPEED_MIN,
+  DEATH_DROP_SPEED_MAX,
   RECENT_LOSS_BUFFER_CAP,
   RECENT_LOSS_DROP_RATIO,
   RECENT_LOSS_WINDOW_MS,
@@ -539,10 +541,11 @@ export class ArenaRoom extends Room<ArenaState> {
     victim.bladeIds = [];
     victim.bladeCount = 0;
     const now = Date.now();
-    // Bonus "pertes récentes" : on prune la fenêtre, puis on drop 50 % des
-    // lames cassées en clash dans les 10 dernières secondes. C'est ce qui
-    // donne au tueur un butin cohérent avec le combat même si la victime
-    // meurt à 0 lame en orbite.
+    // Bonus "pertes récentes" : on prune la fenêtre, puis on drop la
+    // fraction RECENT_LOSS_DROP_RATIO (1.0 = 100 %) des lames cassées en
+    // clash dans les 10 dernières secondes. C'est ce qui donne au tueur
+    // un butin cohérent avec le combat même si la victime meurt à 0 lame
+    // en orbite. Plafonné à RECENT_LOSS_BUFFER_CAP entrées (12).
     const cutoff = now - RECENT_LOSS_WINDOW_MS;
     const fresh = victim.recentLosses.filter((l) => l.ts >= cutoff);
     const recentDropCount = Math.floor(fresh.length * RECENT_LOSS_DROP_RATIO);
@@ -557,7 +560,10 @@ export class ArenaRoom extends Room<ArenaState> {
     for (const rarity of droppedRarities) {
       const a = Math.random() * Math.PI * 2;
       const d = DEATH_DROP_MIN_DIST + Math.random() * (DEATH_DROP_MAX_DIST - DEATH_DROP_MIN_DIST);
-      const speed = 3 + Math.random() * 2;
+      // Vitesse initiale calibrée pour que la position finale (post-friction)
+      // reste dans PICKUP_MAGNET_RADIUS — le tueur récupère le butin sans
+      // avoir à courir après les bords.
+      const speed = DEATH_DROP_SPEED_MIN + Math.random() * (DEATH_DROP_SPEED_MAX - DEATH_DROP_SPEED_MIN);
       const nb = new Blade();
       nb.id = randomId();
       nb.rarity = rarity;
