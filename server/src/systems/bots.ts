@@ -4,7 +4,9 @@ import {
   BOT_NAMES,
   BOT_THINK_INTERVAL,
   MAP_RADIUS,
+  PLAYER_SPEED,
   THROW_PROJECTILE_MAX_RANGE,
+  THROW_PROJECTILE_SPEED,
   WALL_KILL_THICKNESS,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -45,10 +47,66 @@ interface BotState {
   jitterAngle: number;
   fleeSign: number;
   actionType: string;
+  // Hysteresis : ID du joueur cible courant. Le bot conserve cette cible
+  // tant qu'elle reste pertinente, plutôt que de re-scorer à zéro chaque
+  // tick. Évite l'oscillation entre cibles équivalentes — donne une
+  // sensation d'"intention".
+  currentTargetId: string | null;
+  // Sinusoïde de courbure d'approche : déphasage individuel + signe
+  // (-1/+1) → chaque bot prend un arc d'approche différent, ne fonce
+  // jamais en ligne droite. Phase incrémentée par wall-clock.
+  curveSign: number;
+  curvePhaseOffset: number; // [0, 2π) initial seed
+  // Niveau de menace ressenti (0..N) : nombre de lames perdues dans les
+  // dernières 3s. Mis à jour à chaque decide(). >3 = "je prends cher"
+  // → bias vers flee.
+  threatLevel: number;
+}
+
+// Cache vélocité par joueur — une seule entrée par playerID, mise à jour
+// à chaque tick du BotController. Permet aux bots de prédire les
+// trajectoires avec la VRAIE vitesse (input + knockback + friction)
+// au lieu de p.inputDx qui n'est qu'une intention sans grandeur.
+interface VelocityCache {
+  vx: number;
+  vy: number;
+  prevX: number;
+  prevY: number;
+  lastT: number; // secondes
+}
+
+// Calcule un point d'interception prédit pour un projectile partant de
+// (origX, origY) à projSpeed contre une cible à (tgtX, tgtY) qui se déplace
+// à (tgtVx, tgtVy). Itération à 2 passes pour raffiner — converge vite à
+// l'échelle des distances de combat (12-30u). Au-delà la cible peut tourner
+// donc précision marginale, peu utile.
+function predictIntercept(
+  origX: number, origY: number,
+  tgtX: number, tgtY: number,
+  tgtVx: number, tgtVy: number,
+  projSpeed: number,
+): { x: number; y: number; t: number } {
+  let px = tgtX;
+  let py = tgtY;
+  let t = 0;
+  for (let i = 0; i < 2; i++) {
+    const dx = px - origX;
+    const dy = py - origY;
+    const d = Math.hypot(dx, dy);
+    t = d / Math.max(0.001, projSpeed);
+    px = tgtX + tgtVx * t;
+    py = tgtY + tgtVy * t;
+  }
+  return { x: px, y: py, t };
 }
 
 export class BotController {
   private state = new Map<string, BotState>();
+  // Vélocité lissée des joueurs (humans + bots) — utilisée pour les
+  // prédictions d'intercept des throws et de chase. EMA avec alpha 0.7
+  // sur le sample courant pour absorber le knockback / micro-jitter sans
+  // figer les tournants brusques.
+  private velocity = new Map<string, VelocityCache>();
 
   spawnBot(arena: ArenaState, spawnPoint: { x: number; y: number }): Player {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
@@ -96,26 +154,43 @@ export class BotController {
 
   update(dt: number, arena: ArenaState): void {
     const now = (Date.now() / 1000);
+    // Mise à jour cache vélocité avant les décisions des bots — toutes les
+    // prédictions d'intercept en dépendent.
+    this.updateVelocityCache(arena, now);
     arena.players.forEach((p) => {
       if (!p.isBot || !p.alive) return;
       let st = this.state.get(p.id);
       if (!st) {
+        const personality = Math.floor(Math.random() * 4) as BotPersonality;
         st = {
           targetX: p.x,
           targetY: p.y,
           nextThinkAt: 0,
-          personality: Math.floor(Math.random() * 4) as BotPersonality,
+          personality,
           jitterAngle: 0,
           fleeSign: Math.random() < 0.5 ? 1 : -1,
           actionType: "wander",
+          currentTargetId: null,
+          curveSign: Math.random() < 0.5 ? 1 : -1,
+          curvePhaseOffset: Math.random() * Math.PI * 2,
+          threatLevel: 0,
         };
         this.state.set(p.id, st);
       }
       if (now >= st.nextThinkAt) {
-        st.nextThinkAt = now + BOT_THINK_INTERVAL + (Math.random() * 0.1); // Reaction time jitter
+        // Reaction time jitter par personnalité : Hunter rapide (focused),
+        // Aggressive moyen, Farmer plus lent (méthodique), Camper le plus
+        // lent (réaction défensive). Cible 50-300ms de variance par-dessus
+        // l'intervalle de base. Plus humain qu'une jitter uniforme.
+        const reactionByPers =
+          st.personality === BotPersonality.Hunter ? 0.05 :
+          st.personality === BotPersonality.Aggressive ? 0.10 :
+          st.personality === BotPersonality.Farmer ? 0.20 :
+          0.30; // Camper
+        st.nextThinkAt = now + BOT_THINK_INTERVAL + Math.random() * reactionByPers;
         this.decide(p, arena, st);
       }
-      this.applyInput(p, st);
+      this.applyInput(p, st, now);
       // Évalue un throw opportuniste à chaque tick (le cooldown est géré
       // par processThrows). Pas de coût dispendieux : une boucle bornée
       // sur les joueurs + caisses, après alignement on shortcut.
@@ -129,7 +204,60 @@ export class BotController {
     }
   }
 
+  // Met à jour la vélocité lissée de chaque joueur. Appelé une fois par
+  // tick au début de update(). EMA(0.7) pour absorber le micro-jitter du
+  // knockback sans figer les tournants brusques. Skipper si le delta de
+  // temps est trop court (< 50ms) → évite les divisions explosives.
+  private updateVelocityCache(arena: ArenaState, now: number): void {
+    arena.players.forEach((p) => {
+      if (!p.alive) return;
+      let v = this.velocity.get(p.id);
+      if (!v) {
+        this.velocity.set(p.id, { vx: 0, vy: 0, prevX: p.x, prevY: p.y, lastT: now });
+        return;
+      }
+      const dt = now - v.lastT;
+      if (dt < 0.05) return;
+      const newVx = (p.x - v.prevX) / dt;
+      const newVy = (p.y - v.prevY) / dt;
+      v.vx = v.vx * 0.3 + newVx * 0.7;
+      v.vy = v.vy * 0.3 + newVy * 0.7;
+      v.prevX = p.x;
+      v.prevY = p.y;
+      v.lastT = now;
+    });
+    // GC les entrées orphelines périodiquement.
+    if (this.velocity.size > arena.players.size * 1.5 + 4) {
+      for (const id of [...this.velocity.keys()]) {
+        if (!arena.players.has(id)) this.velocity.delete(id);
+      }
+    }
+  }
+
+  // Lit la vélocité en cache (zéro si absente). Helper qui évite des
+  // `?.vx` partout dans les calculs de prédiction.
+  private getVelocity(id: string): { vx: number; vy: number } {
+    const v = this.velocity.get(id);
+    return v ? { vx: v.vx, vy: v.vy } : { vx: 0, vy: 0 };
+  }
+
+  // Compte les lames perdues récemment (3s) — proxy pour "je prends cher".
+  // Lit le buffer recentLosses du bot lui-même (rempli par clashes.ts à
+  // chaque destruction d'une de ses lames).
+  private recentDamageRate(bot: Player, nowMs: number): number {
+    const cutoff = nowMs - 3000;
+    let count = 0;
+    for (const l of bot.recentLosses) {
+      if (l.ts >= cutoff) count++;
+    }
+    return count;
+  }
+
   private decide(bot: Player, arena: ArenaState, st: BotState): void {
+    // Mise à jour du threat level avant le scoring : flee/chase/farm en
+    // dépendent.
+    st.threatLevel = this.recentDamageRate(bot, Date.now());
+
     const scores = [];
 
     // ── Priorité absolue : éviter le mur ──
@@ -162,6 +290,13 @@ export class BotController {
     st.targetY = safe.y;
     st.actionType = bestAction.type;
     bot.inputBoost = bestAction.boost;
+
+    // Si on n'a pas pris une action chase, libérer la commitment de cible
+    // (sinon elle persiste et bias les futures décisions chase de manière
+    // incorrecte alors que le bot a fait autre chose entre temps).
+    if (bestAction.type !== "chase") {
+      st.currentTargetId = null;
+    }
 
     // Aim Jitter
     st.jitterAngle = (Math.random() - 0.5) * 0.5; // Up to ~14 degrees of error
@@ -212,17 +347,24 @@ export class BotController {
       m = Math.hypot(threatDx, threatDy) || 1;
     }
 
+    // Bonus threat-aware : si le bot prend cher (≥ 3 lames perdues en 3s),
+    // boost le flee score pour qu'il décide de fuir même contre un ennemi
+    // à priori comparable. "Je suis blessé, je dois me regrouper".
+    const threatBoost = st.threatLevel >= 3 ? st.threatLevel * 50 : 0;
+
     return {
       type: "flee",
-      score: 1000 + maxDanger * 10,
+      score: 1000 + maxDanger * 10 + threatBoost,
       x: bot.x + (threatDx / m) * 30,
       y: bot.y + (threatDy / m) * 30,
-      boost: bot.bladeCount > 2 && maxDanger > 10,
+      // Plus enclin à boost en flee si déjà blessé.
+      boost: bot.bladeCount > 2 && (maxDanger > 10 || st.threatLevel >= 4),
     };
   }
 
   private scoreChase(bot: Player, arena: ArenaState, st: BotState) {
     let bestScore = -1;
+    let bestId: string | null = null;
     let targetX = 0, targetY = 0;
     let shouldBoost = false;
 
@@ -231,16 +373,22 @@ export class BotController {
 
     if (st.personality === BotPersonality.Aggressive) {
       minBlades = 1;
-      aggroAdvantage = -1; // Peut attaquer quelqu'un qui a 1 lame de plus
+      aggroAdvantage = -1;
     } else if (st.personality === BotPersonality.Hunter) {
       minBlades = 2;
-      aggroAdvantage = 0; // Attaque à armes égales
+      aggroAdvantage = 0;
     } else if (st.personality === BotPersonality.Farmer) {
       minBlades = 5;
       aggroAdvantage = 2;
     }
 
     if (bot.bladeCount < minBlades) return null;
+
+    // Hysteresis de cible : bonus pour la cible courante. Empêche
+    // l'oscillation entre deux cibles équivalentes (le bot reste engagé
+    // avec celle qu'il poursuivait déjà). Bonus modeste — si une autre
+    // cible est NETTEMENT meilleure (>20 d'écart), on switch quand même.
+    const COMMITMENT_BONUS = 20;
 
     arena.players.forEach((other) => {
       if (other.id === bot.id || !other.alive) return;
@@ -252,15 +400,13 @@ export class BotController {
 
       if (d > 80) return;
 
-      // Score de base plus élevé pour encourager le combat
       let score = 80 + (bot.bladeCount - other.bladeCount) * 5 - d;
 
-      if (st.personality === BotPersonality.Hunter) {
-        score += 20; // Les hunters aiment chasser
-      }
-      if (st.personality === BotPersonality.Aggressive) {
-        score += 40; // Les agressifs foncent dans le tas
-      }
+      if (st.personality === BotPersonality.Hunter) score += 20;
+      if (st.personality === BotPersonality.Aggressive) score += 40;
+
+      // Bonus commitment si on poursuivait déjà cette cible.
+      if (other.id === st.currentTargetId) score += COMMITMENT_BONUS;
 
       // Anti-double-aggro
       let someoneCloser = false;
@@ -274,16 +420,23 @@ export class BotController {
 
       if (score > bestScore) {
         bestScore = score;
-        const speed = 11;
-        const futureX = other.x + (other.inputDx || 0) * speed * (d / speed) * 0.5;
-        const futureY = other.y + (other.inputDy || 0) * speed * (d / speed) * 0.5;
-        targetX = futureX;
-        targetY = futureY;
+        bestId = other.id;
+        // Aim au point d'interception : on prédit où l'ennemi sera quand on
+        // arrive là-bas, pas sa position courante. Vitesse réelle (lissée)
+        // depuis le cache, fallback sur l'input direction si la cible vient
+        // d'apparaître. Lead time = d / PLAYER_SPEED (notre propre vitesse
+        // d'approche, pas celle du projectile — on est en chase corps).
+        const v = this.getVelocity(other.id);
+        const leadT = d / Math.max(0.1, PLAYER_SPEED);
+        targetX = other.x + v.vx * leadT;
+        targetY = other.y + v.vy * leadT;
         shouldBoost = bot.bladeCount > 5 && d > 15 && d < 40 && st.personality !== BotPersonality.Camper;
       }
     });
 
     if (bestScore <= 0) return null;
+    // Mémorise la cible pour le prochain tick (commitment).
+    st.currentTargetId = bestId;
     return { type: "chase", score: bestScore, x: targetX, y: targetY, boost: shouldBoost };
   }
 
@@ -411,11 +564,11 @@ export class BotController {
     };
   }
 
-  private applyInput(bot: Player, st: BotState): void {
+  private applyInput(bot: Player, st: BotState, now: number): void {
     const dx = st.targetX - bot.x;
     const dy = st.targetY - bot.y;
     const d = Math.hypot(dx, dy);
-    
+
     if (d < 0.5) {
       bot.inputDx = 0;
       bot.inputDy = 0;
@@ -423,7 +576,20 @@ export class BotController {
     }
 
     let angle = Math.atan2(dy, dx);
-    angle += st.jitterAngle; // Apply jitter
+    angle += st.jitterAngle; // jitter de visée fixe par décision
+
+    // Approche en courbe : en chase à moyenne distance (8-40u), on ajoute
+    // une oscillation perpendiculaire qui module l'angle de marche. Au
+    // lieu de foncer en ligne droite, le bot trace un arc. Amplitude
+    // décroît avec la distance (effet plus marqué loin, presque nul de
+    // près pour ne pas rater l'impact). Phase déterministe depuis now +
+    // curvePhaseOffset → chaque bot oscille sur son propre cycle.
+    if (st.actionType === "chase" && d > 8 && d < 40) {
+      const t = now * 1.4 + st.curvePhaseOffset;
+      const distAttenuation = Math.min(1, (d - 8) / 20); // 0 à d=8, 1 à d=28+
+      const curveAmp = 0.32 * st.curveSign * distAttenuation; // ~18° max
+      angle += Math.sin(t) * curveAmp;
+    }
 
     let dirX = Math.cos(angle);
     let dirY = Math.sin(angle);
@@ -499,14 +665,27 @@ export class BotController {
       const dy = other.y - bot.y;
       const d = Math.hypot(dx, dy);
       if (d < minDist || d > maxDist) return;
-      const cos = ax * (dx / d) + ay * (dy / d);
+      // Lead aim au point d'interception : on aligne sur où la cible SERA
+      // quand le projectile arrive (pas où elle est). Sans ça les bots
+      // ratent toute cible en mouvement à >12u. La vitesse cible vient du
+      // cache lissé (vraie vitesse incluant knockback, pas juste l'intent
+      // input).
+      const v = this.getVelocity(other.id);
+      const intercept = predictIntercept(bot.x, bot.y, other.x, other.y, v.vx, v.vy, THROW_PROJECTILE_SPEED);
+      const idx = intercept.x - bot.x;
+      const idy = intercept.y - bot.y;
+      const idd = Math.hypot(idx, idy);
+      if (idd < 0.1) return;
+      const cos = ax * (idx / idd) + ay * (idy / idd);
       if (cos < cosThreshold) return;
+      // Vérifie aussi que l'intercept reste DANS la portée — si la cible
+      // file, l'intercept peut sortir de maxDist et la lame finirait au sol.
+      if (idd > maxDist) return;
       foundTarget = true;
     });
 
-    // Caisses : seulement si pas de joueur trouvé. Une lame jetée dans une
-    // caisse fait progresser sa destruction (et flatte le score). Les
-    // farmers/campers privilégient la caisse.
+    // Caisses : seulement si pas de joueur trouvé. Caisses statiques donc
+    // pas d'intercept à calculer — alignement direct avec la position.
     if (!foundTarget && (st.personality === BotPersonality.Farmer || st.personality === BotPersonality.Camper)) {
       arena.crates?.forEach((c) => {
         if (foundTarget) return;
