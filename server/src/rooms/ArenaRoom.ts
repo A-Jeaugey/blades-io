@@ -482,8 +482,33 @@ export class ArenaRoom extends Room<ArenaState> {
 
   private removePlayerBlades(player: Player, count: number): void {
     for (let i = 0; i < count; i++) {
-      const id = player.bladeIds.pop();
-      if (!id) break;
+      if (player.bladeIds.length === 0) break;
+
+      // Drain boost par rareté ASCENDANTE : on dépense en priorité les
+      // lames les moins précieuses (Common avant Rare avant Epic avant
+      // Legendary). Avant : pop() consommait la dernière lame ramassée,
+      // souvent la plus rare → boostait punissait les loot drops chanceux.
+      // Maintenant : scan pour trouver le minimum de rareté et le splice.
+      let pickIdx = -1;
+      let pickRarity = Infinity;
+      for (let j = 0; j < player.bladeIds.length; j++) {
+        const blade = this.state.blades.get(player.bladeIds[j]);
+        if (!blade) continue; // entrée orpheline (state divergence)
+        if (blade.rarity < pickRarity) {
+          pickRarity = blade.rarity;
+          pickIdx = j;
+          // Fast-path : rareté 0 = Common = minimum possible, on s'arrête.
+          if (blade.rarity === 0) break;
+        }
+      }
+
+      if (pickIdx === -1) {
+        // Aucune lame valide : nettoie l'orphelin en queue et continue.
+        player.bladeIds.pop();
+        continue;
+      }
+
+      const [id] = player.bladeIds.splice(pickIdx, 1);
       const b = this.state.blades.get(id);
       if (!b) continue;
       const ring = b.ringIndex;
