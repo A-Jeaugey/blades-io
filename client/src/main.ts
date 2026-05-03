@@ -19,11 +19,9 @@ import {
   PickupEvent,
   PlayerKilledEvent,
   ProjectileImpactEvent,
-  POWERUP_COLOR,
   POWERUP_DURATION,
   PowerUpPickupEvent,
   PowerUpType,
-  RARITY_COLOR,
   isInBush,
   resolveDecorCollision,
   tierClashShake,
@@ -49,6 +47,7 @@ import { Minimap } from "./ui/Minimap";
 import { SettingsPanel } from "./ui/Settings";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
+import { PALETTE, POWERUP_COLOR, RARITY_COLOR } from "./scene/palette";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
@@ -343,15 +342,15 @@ class Game {
     });
     room.onMessage("crateHit", (msg: CrateHitEvent) => {
       this.crates.hit(msg.crateId, msg.hp);
-      this.particles.spawnSparks(msg.x, 1.0, msg.y, 0x00e5ff, 8, 4);
+      this.particles.spawnSparks(msg.x, 1.0, msg.y, PALETTE.shrineAccent, 8, 4);
     });
     room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => {
-      this.particles.spawnExplosion(msg.x, 1.0, msg.y, 0xff2ea8, 28);
+      this.particles.spawnExplosion(msg.x, 1.0, msg.y, PALETTE.sacredGold, 28);
       this.sound.kill(this.audibleGain(msg.x, msg.y));
     });
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
       // Effet visuel coloré selon le type + son de pickup satisfaisant.
-      const color = POWERUP_COLOR[msg.type as PowerUpType] ?? 0xffffff;
+      const color = POWERUP_COLOR[msg.type as PowerUpType] ?? PALETTE.playerLocalPrimary;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 22);
       // Le son est plein volume si c'est moi qui ramasse, atténué sinon.
       const g = msg.playerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
@@ -366,7 +365,7 @@ class Game {
     });
     room.onMessage("playerKilled", (msg: PlayerKilledEvent) => {
       const victim = this.players.get(msg.victimId);
-      if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, 0xff2ea8, 40);
+      if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, PALETTE.dangerAccent, 40);
       if (msg.killerId === this.myId) { this.camera.shake.add(0.5); this.sound.kill(); }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
     });
@@ -375,7 +374,7 @@ class Game {
       // pas confondre avec les drops (sparks couleur rareté).
       const count = 6 + msg.tier * 6;
       const speed = 4 + msg.tier * 2.5;
-      this.particles.spawnSparks(msg.x, 0.95, msg.y, 0xb14bff, count, speed);
+      this.particles.spawnSparks(msg.x, 0.95, msg.y, PALETTE.shrinePrimary, count, speed);
       const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
         : msg.tier === 1 ? BladeRarity.Rare
         : BladeRarity.Epic;
@@ -420,7 +419,7 @@ class Game {
     room.onMessage("tierUp", (msg: TierUpEvent) => {
       // Tier-up VFX : ring d'étincelles autour du joueur + shake si local.
       // On utilise une explosion bien dense pour signaler le palier passé.
-      const color = msg.tier >= 2 ? 0xff2ea8 : 0x00e5ff;
+      const color = msg.tier >= 2 ? PALETTE.sacredGold : PALETTE.shrineAccent;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 32 + msg.tier * 12);
       if (msg.playerId === this.myId) {
         const intensity = TIER_UP_SHAKE[Math.min(msg.tier, TIER_UP_SHAKE.length - 1)] ?? 0.3;
@@ -506,7 +505,7 @@ class Game {
     this.trailEmitAccum -= ticks * interval;
     this.room.state.blades.forEach((b: any) => {
       if (!b.isProjectile) return;
-      const color = RARITY_COLOR[b.rarity as BladeRarity] ?? 0xffffff;
+      const color = RARITY_COLOR[b.rarity as BladeRarity] ?? PALETTE.playerLocalPrimary;
       this.particles.spawnSparks(b.x, 0.95, b.y, color, 2, 0.8);
     });
   }

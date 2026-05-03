@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { QualityConfig } from "../quality";
+import { PALETTE } from "../scene/palette";
 
 export class PlayerView {
   root: THREE.Group;
@@ -39,10 +40,13 @@ export class PlayerView {
     const detail = q.playerDetail;
     this.hasTrail = q.playerTrail && isLocal;
 
-    // Palette : blanc + cyan pour soi, rose/violet pour les autres.
-    const primary = isLocal ? 0xffffff : 0xffd0e8;
-    const accent = isLocal ? 0x00e5ff : 0xff2ea8;
-    const accentDim = isLocal ? 0x0077aa : 0x8a1a5e;
+    // Palette spirit-world : crème lunaire + halo rose poudré pour le joueur
+    // local, crème rosée + halo violet pour les autres. Lecture instantanée
+    // (local plus chaud/clair, autres plus froids/profonds) sans casser
+    // l'unité chromatique du thème.
+    const primary = isLocal ? PALETTE.playerLocalPrimary : PALETTE.playerRemotePrimary;
+    const accent = isLocal ? PALETTE.playerLocalAccent : PALETTE.playerRemoteAccent;
+    const accentDim = isLocal ? PALETTE.playerLocalAccentDim : PALETTE.playerRemoteAccentDim;
 
     const mkMat = (color: number, emissive: number, intensity: number) =>
       simpleMaterials
@@ -123,7 +127,7 @@ export class PlayerView {
       const protSeg = detail === "rich" ? 36 : 20;
       const protGeo = new THREE.RingGeometry(1.0, 1.6, protSeg);
       const protMat = new THREE.MeshBasicMaterial({
-        color: 0x00e5ff,
+        color: PALETTE.playerLocalAccent,
         transparent: true,
         opacity: 0.0,
         side: THREE.DoubleSide,

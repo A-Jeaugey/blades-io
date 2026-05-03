@@ -3,7 +3,11 @@ import { ScreenShake } from "../fx/ScreenShake";
 
 export class CameraRig {
   private target = new THREE.Vector3();
-  private cameraOffset = new THREE.Vector3(0, 22, 16);
+  // Offset (0, 19, 17) ≈ 48° d'inclinaison depuis l'horizontale. Plus
+  // plongeant que le 54° d'origine (était (0, 22, 16)) pour donner plus de
+  // présence aux décors verticaux (sanctuaires, reliques flottantes) tout
+  // en restant lisible pour un .io où la menace vient de toutes directions.
+  private cameraOffset = new THREE.Vector3(0, 19, 17);
   public shake = new ScreenShake();
 
   constructor(private cam: THREE.PerspectiveCamera) {}

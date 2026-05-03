@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { BUSHES, DECOR_COLLIDERS, FLOATING_CUBES, GROUND_PADS } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
+import { PALETTE } from "./palette";
 
-// Décors cyberpunk. Les obstacles (pilier central + obélisques) sont
-// collidables serveur-side : positions définies dans @bladeio/shared et
-// utilisées ici pour garantir que le visuel matche la collision.
+// Décors "Sanctuaire des Esprits". Les obstacles (sanctuaire central + pierres
+// dressées) sont collidables serveur-side : positions définies dans
+// @bladeio/shared et utilisées ici pour garantir que le visuel matche la
+// collision.
 //
 // Optimisation perfo : les multiples obstacles partagent une seule
 // InstancedMesh par "type" (cônes obélisques, cubes flottants), ce qui
@@ -25,20 +27,21 @@ export function createDecor(q: QualityConfig): {
     q.simpleMaterials
       ? mkBasic(color)
       : new THREE.MeshStandardMaterial({
-          color: 0x111122,
+          // Pierre sombre violette : émerge du brouillard sans dominer.
+          color: 0x1a0f2e,
           emissive: color,
           emissiveIntensity: intensity,
-          metalness: 0.4,
-          roughness: 0.3,
+          metalness: 0.2,
+          roughness: 0.6,
         });
 
   const centralCol = DECOR_COLLIDERS[0];
   const obeliskCols = DECOR_COLLIDERS.slice(1);
 
-  // Pilier central — segments réduits en low/ultra.
+  // Sanctuaire central — pilier de pierre violet aux veines d'or sacré.
   const pillarSeg = q.simpleMaterials ? 8 : 12;
   const coreGeo = new THREE.CylinderGeometry(0.6, centralCol.radius, 6, pillarSeg);
-  const coreMat = mkEmissive(0xff2ea8, 1.4);
+  const coreMat = mkEmissive(PALETTE.sacredGold, 1.2);
   const corePillar = new THREE.Mesh(coreGeo, coreMat);
   corePillar.position.set(centralCol.x, 3, centralCol.y);
   corePillar.matrixAutoUpdate = false;
@@ -46,13 +49,13 @@ export function createDecor(q: QualityConfig): {
   group.add(corePillar);
   disposables.push(coreGeo, coreMat);
 
-  // Halo torus : seulement si on a un peu de marge (rich/simple). Coupé en
-  // minimal (ultra) — c'est purement décoratif.
+  // Cercle rituel au sol autour du sanctuaire — rose poudré, suggère un site
+  // sacré. Coupé en minimal (ultra), purement décoratif.
   let halo: THREE.Mesh | null = null;
   if (q.decorDetail !== "minimal") {
     const haloSeg = q.decorDetail === "rich" ? 48 : 24;
     const haloGeo = new THREE.TorusGeometry(2.5, 0.12, 6, haloSeg);
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+    const haloMat = new THREE.MeshBasicMaterial({ color: PALETTE.shrineAccent });
     halo = new THREE.Mesh(haloGeo, haloMat);
     halo.position.set(centralCol.x, 0.08, centralCol.y);
     halo.rotation.x = Math.PI / 2;
@@ -67,10 +70,11 @@ export function createDecor(q: QualityConfig): {
   const obSeg = q.simpleMaterials ? 5 : 6;
   const obeliskGeo = new THREE.ConeGeometry(1, 5, obSeg);
   disposables.push(obeliskGeo);
-  // Deux raretés visuelles : inner (cyan) et outer (purple). On crée 2
-  // InstancedMesh — un par couleur — au lieu de 28 mesh individuels.
-  const obMatInner = mkEmissive(0x00e5ff, 0.9);
-  const obMatOuter = mkEmissive(0xb14bff, 0.9);
+  // Deux types de pierres dressées : inner (mauve / champignon mint pour
+  // marquer les pierres proches du centre) et outer (violet profond pour
+  // l'extérieur). 2 InstancedMesh — 1 par couleur — au lieu de 28 mesh.
+  const obMatInner = mkEmissive(PALETTE.mushroomGlow, 0.85);
+  const obMatOuter = mkEmissive(PALETTE.shrinePrimary, 0.95);
   disposables.push(obMatInner, obMatOuter);
   const innerCount = Math.min(10, obeliskCols.length);
   const outerCount = obeliskCols.length - innerCount;
@@ -105,14 +109,13 @@ export function createDecor(q: QualityConfig): {
   group.add(innerMesh);
   group.add(outerMesh);
 
-  // Pads glowing au sol (non-collidables). Coupés en minimal et low pour
-  // gagner 10 draw calls.
+  // Sceaux lumineux au sol (non-collidables). Coupés en minimal et low.
   if (q.decorDetail === "rich") {
     const padGeo = new THREE.CircleGeometry(2.2, 16);
     const padMat = new THREE.MeshBasicMaterial({
-      color: 0x00e5ff,
+      color: PALETTE.mushroomGlow,
       transparent: true,
-      opacity: 0.12,
+      opacity: 0.13,
       side: THREE.DoubleSide,
     });
     disposables.push(padGeo, padMat);
@@ -132,16 +135,16 @@ export function createDecor(q: QualityConfig): {
     group.add(padMesh);
   }
 
-  // Anneaux concentriques : repères visuels. Coupés en minimal/simple ;
-  // gardés en rich avec moins de segments.
+  // Anneaux concentriques : repères visuels (cercles d'évocation). Rose
+  // poudré, presque imperceptibles, pour marquer la distance sans surcharger.
   if (q.decorDetail === "rich") {
     const ringSeg = 64;
     for (const r of [50, 100, 180]) {
       const rg = new THREE.RingGeometry(r - 0.2, r + 0.2, ringSeg);
       const rm = new THREE.MeshBasicMaterial({
-        color: 0xff2ea8,
+        color: PALETTE.shrineAccent,
         transparent: true,
-        opacity: 0.1,
+        opacity: 0.09,
         side: THREE.DoubleSide,
       });
       const ring = new THREE.Mesh(rg, rm);
@@ -154,13 +157,13 @@ export function createDecor(q: QualityConfig): {
     }
   }
 
-  // Buissons : zones de cachette. En "rich", on a tronc + 5 sphères par
-  // bush. En "simple"/"minimal", juste le tronc (la zone reste lisible et
-  // le gameplay identique). Géométries partagées entre tous les bushes.
+  // Bosquets de brume violette : zones de cachette. Tronc translucide
+  // mauve sombre + halo rose-violet en "rich" (suggère un voile éthéré).
+  // Gameplay identique au cyberpunk d'origine, juste l'apparence change.
   const bushFolMat = new THREE.MeshBasicMaterial({
-    color: 0x1a4d2e,
+    color: PALETTE.groveFoliage,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.78,
   });
   disposables.push(bushFolMat);
 
@@ -184,13 +187,13 @@ export function createDecor(q: QualityConfig): {
     trunkMesh.matrixAutoUpdate = false;
     group.add(trunkMesh);
 
-    // Sphères accent : seulement en rich. Sinon le tronc seul fait le
-    // travail (zone de cachette toujours lisible).
+    // Sphères accent : halo rose-violet pour le mood féérique. Seulement
+    // en rich.
     if (q.decorDetail === "rich") {
       const bushAccentMat = new THREE.MeshBasicMaterial({
-        color: 0x4ad277,
+        color: PALETTE.groveAccent,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.5,
       });
       disposables.push(bushAccentMat);
       const sphGeo = new THREE.SphereGeometry(1, 8, 6);
@@ -219,13 +222,13 @@ export function createDecor(q: QualityConfig): {
     }
   }
 
-  // Cubes flottants (purement déco). Animés en rich/simple, statiques en
-  // minimal. Toujours InstancedMesh.
+  // Reliques flottantes (purement déco). Cristaux d'âme en suspension —
+  // animés en rich/simple, statiques en minimal. Toujours InstancedMesh.
   let cubeMesh: THREE.InstancedMesh | null = null;
   let cubesData: Array<{ baseY: number; phase: number; spin: number; x: number; y: number }> = [];
   if (q.decorDetail !== "minimal") {
     const cubeGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const cubeMat = mkEmissive(0xff2ea8, 1.2);
+    const cubeMat = mkEmissive(PALETTE.shrineAccent, 1.1);
     disposables.push(cubeGeo, cubeMat);
     cubeMesh = new THREE.InstancedMesh(cubeGeo, cubeMat, FLOATING_CUBES.length);
     for (let i = 0; i < FLOATING_CUBES.length; i++) {

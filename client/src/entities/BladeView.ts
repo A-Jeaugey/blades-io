@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import {
   BladeRarity,
-  RARITY_COLOR,
   RARITY_SCALE,
   slotAngle,
   ringRadius,
@@ -9,6 +8,7 @@ import {
   tierVisualScale,
   bladeCountRotationMult,
 } from "@bladeio/shared";
+import { RARITY_COLOR, RARITY_GLOW_COMP } from "../scene/palette";
 
 // Géométrie d'épée : lame longue et fine en bipyramide losange (pointe
 // en +x, section losange au milieu pour un reflet en arête), garde
@@ -156,17 +156,10 @@ const TIER_EMISSIVE: readonly number[] = [0.90, 0.75, 0.60];
 // Couleur "body" légèrement atténuée à haut tier pour limiter la sommation
 // sous bloom additif, mais sans assombrir (T2 garde ~85 % de la teinte).
 const TIER_COLOR_MULT: readonly number[] = [1.0, 0.92, 0.85];
-// Compensation de luminance par rareté. UnrealBloomPass extrait les pixels
-// au-dessus d'un threshold (0.65) ; or les couleurs colorées (cyan, purple,
-// pink) ont une luminance perçue bien plus basse que le blanc à émissif
-// égal — d'où "les blanches glow plus que les autres". On boost les
-// rares/epic/leg pour qu'elles franchissent le threshold autant que le
-// blanc. Calcul : 1 / luminance_rec601(color).
-//   Common (white)   L=1.00 → ×1.0
-//   Rare (cyan)      L=0.64 → ×1.55
-//   Epic (purple)    L=0.49 → ×2.0
-//   Legendary (pink) L=0.48 → ×2.05
-const RARITY_GLOW_COMP: readonly number[] = [1.0, 1.55, 2.0, 2.05];
+// Compensation de luminance par rareté : voir palette.ts (calculée
+// dynamiquement à partir des couleurs courantes). Permet à toutes les raretés
+// de franchir le threshold UnrealBloom de manière équilibrée — sinon les
+// teintes claires (Common, Legendary or) écrasent les violets profonds.
 const bucketKey = (rarity: BladeRarity, tier: number): number => rarity * TIER_BUCKETS + tier;
 
 export class BladeRenderer {

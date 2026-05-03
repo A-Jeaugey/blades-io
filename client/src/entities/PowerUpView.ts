@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import {
   BladeRarity,
-  POWERUP_COLOR,
   POWERUP_SCALE,
   PowerUpType,
 } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
+import { POWERUP_COLOR, PALETTE } from "../scene/palette";
 
 interface PowerUpEntry {
   id: string;
@@ -78,9 +78,9 @@ export class PowerUpRenderer {
     this.ringGeoLow = new THREE.RingGeometry(1.2, 1.55, ringSeg);
     this.disposables.push(this.ringGeoLow);
     this.ringMatEpic = new THREE.MeshBasicMaterial({
-      color: 0xff2ea8,
+      color: PALETTE.sacredGold,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
       side: THREE.DoubleSide,
     });
     this.disposables.push(this.ringMatEpic);

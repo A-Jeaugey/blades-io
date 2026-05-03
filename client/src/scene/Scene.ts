@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { QualityConfig } from "../quality";
+import { PALETTE } from "./palette";
 
 export class SceneStack {
   renderer: THREE.WebGLRenderer;
@@ -33,12 +34,16 @@ export class SceneStack {
     this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setClearColor(new THREE.Color("#05060c"), 1);
+    // Clear color = nuit étoilée violette. Tout ce qui dépasse le sol
+    // (skybox virtuelle) baigne dans cette teinte.
+    this.renderer.setClearColor(new THREE.Color(PALETTE.nightDeep), 1);
 
     this.scene = new THREE.Scene();
     const fogNear = 60 * q.fogDensity;
     const fogFar = 200 * q.fogDensity;
-    this.scene.fog = new THREE.Fog(new THREE.Color("#1a0033"), fogNear, fogFar);
+    // Brouillard mauve mid : se confond avec la nuit profonde au loin pour
+    // un effet "le monde s'évapore" plutôt qu'un mur de fog visible.
+    this.scene.fog = new THREE.Fog(new THREE.Color(PALETTE.fogMid), fogNear, fogFar);
 
     this.camera = new THREE.PerspectiveCamera(
       55,
@@ -48,19 +53,27 @@ export class SceneStack {
       // déjà invisible via le fog, donc pas la peine de le projeter.
       Math.max(220, fogFar + 40),
     );
-    this.camera.position.set(0, 18, 14);
+    // Caméra légèrement plus inclinée qu'avant : (0, 19, 17) ≈ 48° depuis
+    // l'horizontale, vs 54° avant. Suffisant pour donner du volume aux
+    // décors verticaux (sanctuaires, champignons, reliques flottantes) sans
+    // casser la lisibilité tactique d'un .io top-down.
+    this.camera.position.set(0, 19, 17);
     this.camera.lookAt(0, 0, 0);
 
-    const ambient = new THREE.AmbientLight(0x9ad1ff, 0.55);
+    // Ambient = clair de lune mauve doux. Donne la teinte chaude/froide
+    // unifiée à tous les matériaux PBR en lit (joueurs, décor).
+    const ambient = new THREE.AmbientLight(0xb4a4d8, 0.55);
     this.scene.add(ambient);
     // Sur "simpleMaterials" (low/ultra), les directional lights sont inutiles
     // (les matériaux n'utilisent pas de lighting) : on n'ajoute que l'ambient
     // pour économiser des uniforms/shader.
     if (!q.simpleMaterials) {
-      const key = new THREE.DirectionalLight(0xffffff, 0.4);
+      // Key light : lune chaude (crème) plongeant depuis le haut.
+      const key = new THREE.DirectionalLight(PALETTE.playerLocalPrimary, 0.4);
       key.position.set(20, 40, 20);
       this.scene.add(key);
-      const rim = new THREE.DirectionalLight(0xff2ea8, 0.25);
+      // Rim light : violet-rose pour souligner les silhouettes côté opposé.
+      const rim = new THREE.DirectionalLight(PALETTE.shrineAccent, 0.3);
       rim.position.set(-30, 20, -20);
       this.scene.add(rim);
     }
