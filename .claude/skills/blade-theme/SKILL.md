@@ -147,11 +147,11 @@ no <unwanted 1> no <unwanted 2> no <unwanted 3>, feels like <vibe sentence>,
 
 ### 10. sync-music script
 
-Étendre `client/package.json` script `sync-music` pour copier les .mp3 source :
+Étendre `client/package.json` script `sync-music` pour copier les .mp3 source depuis `assets/music/` :
 ```js
 const tracks = [
-  ['Room-Ready Match (2).mp3', 'lobby-neon.mp3'],
-  ['Neon Boxing Tape (1).mp3', 'battle-neon.mp3'],
+  ['Neon Lobby.mp3',           'lobby-neon.mp3'],
+  ['Neon Battle.mp3',          'battle-neon.mp3'],
   ['Sanctuaire Lobby.mp3',     'lobby-sanctuaire.mp3'],
   ['Sanctuaire Battle.mp3',    'battle-sanctuaire.mp3'],
   ['<Theme> Lobby.mp3',        'lobby-<id>.mp3'],     // ← nouvelles lignes
@@ -159,7 +159,7 @@ const tracks = [
 ];
 ```
 
-Dans `themes/<id>.ts` : `music: { lobby: "lobby-<id>.mp3", battle: "battle-<id>.mp3" }`. L'utilisateur dépose les `.mp3` source à la racine du repo avec ces noms exacts.
+Dans `themes/<id>.ts` : `music: { lobby: "lobby-<id>.mp3", battle: "battle-<id>.mp3" }`. L'utilisateur dépose les `.mp3` source dans `assets/music/` à la racine du repo avec ces noms exacts.
 
 ### 11. Build + commit
 

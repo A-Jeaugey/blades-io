@@ -177,13 +177,13 @@ C'est tout. Le sélecteur de Settings le détecte automatiquement (`listThemes()
 ### 4. Musique
 
 1. Générer 2 tracks via Suno (lobby ambient + battle action).
-2. Placer les fichiers à la racine du repo avec un naming `<Theme> Lobby.mp3`
+2. Placer les fichiers dans `assets/music/` avec un naming `<Theme> Lobby.mp3`
    et `<Theme> Battle.mp3` (espaces autorisés, mais respectez la casse).
 3. Étendre `client/package.json` → script `sync-music` :
    ```js
    const tracks = [
-     ['Room-Ready Match (2).mp3', 'lobby-neon.mp3'],
-     ['Neon Boxing Tape (1).mp3', 'battle-neon.mp3'],
+     ['Neon Lobby.mp3',           'lobby-neon.mp3'],
+     ['Neon Battle.mp3',          'battle-neon.mp3'],
      ['Sanctuaire Lobby.mp3',     'lobby-sanctuaire.mp3'],
      ['Sanctuaire Battle.mp3',    'battle-sanctuaire.mp3'],
      ['Glacial Lobby.mp3',        'lobby-glacial.mp3'],     // ← nouvelles
@@ -238,9 +238,9 @@ serveur-side via la wallet, et conditionnera l'activation.
   retourne 403. Le sandbox autorise les push de commits mais pas les
   deletions. Pour cleaner les feature branches, demandez à l'utilisateur de
   le faire depuis sa machine ou via GitHub web.
-- **Fichiers musicaux** : les `.mp3` source sont à la racine du repo (pas
+- **Fichiers musicaux** : les `.mp3` source vivent dans `assets/music/` (pas
   dans `client/`). Le script `sync-music` les copie vers `client/public/`
-  avec les noms attendus par les thèmes.
+  avec les noms attendus par les thèmes (`lobby-<id>.mp3`, `battle-<id>.mp3`).
 - **Camera offset trop bas tue la lisibilité .io**. Ne descendez pas en
   dessous de ~45° d'inclinaison (offset Y/Z > 0.85). Le top-down strict
   est laid mais à 30° on perd la perception des menaces.
