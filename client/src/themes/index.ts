@@ -1,6 +1,7 @@
 import { Theme } from "./Theme";
 import { NEON_THEME } from "./neon";
 import { SANCTUAIRE_THEME } from "./sanctuaire";
+import { FORGE_VERMEILLE_THEME } from "./forge-vermeille";
 
 export type { Theme } from "./Theme";
 export type { DecorVariant } from "./Theme";
@@ -10,6 +11,7 @@ export type { DecorVariant } from "./Theme";
 export const THEMES: Record<string, Theme> = {
   [NEON_THEME.id]: NEON_THEME,
   [SANCTUAIRE_THEME.id]: SANCTUAIRE_THEME,
+  [FORGE_VERMEILLE_THEME.id]: FORGE_VERMEILLE_THEME,
 };
 
 export const DEFAULT_THEME_ID = NEON_THEME.id;
