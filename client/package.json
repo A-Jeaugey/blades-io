@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync-music": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync('public',{recursive:true});const tracks=[['Neon Lobby.mp3','lobby-neon.mp3'],['Neon Battle.mp3','battle-neon.mp3'],['Sanctuaire Lobby.mp3','lobby-sanctuaire.mp3'],['Sanctuaire Battle.mp3','battle-sanctuaire.mp3'],['Forge Lobby.mp3','lobby-forge.mp3'],['Forge Battle.mp3','battle-forge.mp3']];for(const [src,dst] of tracks){const s=p.resolve('..','assets/music',src);if(fs.existsSync(s))fs.copyFileSync(s,p.join('public',dst));else console.warn('music track not found at',s);}\"",
+    "sync-music": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync('public',{recursive:true});const tracks=[['Neon Lobby.mp3','lobby-neon.mp3'],['Neon Battle.mp3','battle-neon.mp3'],['Sanctuaire Lobby.mp3','lobby-sanctuaire.mp3'],['Sanctuaire Battle.mp3','battle-sanctuaire.mp3'],['Forge Lobby.mp3','lobby-forge.mp3'],['Forge Battle.mp3','battle-forge.mp3'],['Glacees Lobby.mp3','lobby-glacees.mp3'],['Glacees Battle.mp3','battle-glacees.mp3']];for(const [src,dst] of tracks){const s=p.resolve('..','assets/music',src);if(fs.existsSync(s))fs.copyFileSync(s,p.join('public',dst));else console.warn('music track not found at',s);}\"",
     "predev": "npm run sync-music",
     "prebuild": "npm run sync-music",
     "dev": "vite",
