@@ -247,6 +247,8 @@ export const SANCTUAIRE_THEME: Theme = {
     panelBorder: "rgba(216, 164, 232, 0.35)",
     fgBright: "#f5e8d8",
     fgMuted: "#b4a4d8",
+    accentCoolRgb: "216, 164, 232",
+    accentWarmRgb: "244, 212, 113",
   },
 
   cameraOffset: { x: 0, y: 19, z: 17 },

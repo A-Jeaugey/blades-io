@@ -126,9 +126,14 @@ export interface ThemeUiPalette {
   panelBorder: string;
   fgBright: string;
   fgMuted: string;
-  // Pour les box-shadow / hover rgba constructs : composantes RGB du
-  // accent froid sans alpha (ex "0, 229, 255" ou "216, 164, 232")
-  // — plus utilisé directement, gardé pour compat future.
+  // Composantes RGB sans alpha — utilisées par les box-shadow / glow
+  // constructs en CSS via rgba(var(--accent-cool-rgb), 0.X). Permet de
+  // teinter tous les halos/ombres au thème (sinon les ombres restent
+  // cyan/pink même si les couleurs principales changent).
+  // Format : "R, G, B" (chaîne avec virgules + espaces, prête à coller
+  // dans un rgba()).
+  accentCoolRgb: string;
+  accentWarmRgb: string;
 }
 
 export interface Theme {

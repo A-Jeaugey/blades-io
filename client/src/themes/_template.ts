@@ -272,14 +272,18 @@ export const TEMPLATE_THEME: Theme = {
   // utilisent var(--cyan), var(--pink), etc. donc aucun fichier CSS à toucher.
   // Format : strings hex pour les couleurs, rgba(...) pour les semi-transparents.
   ui: {
-    accentCool:  "#ff00ff",                    // → --cyan (accent froid principal du UI)
-    accentWarm:  "#00ffff",                    // → --pink (accent chaud, hover, glows)
-    purple:      "#ff00ff",                    // → --purple (accents secondaires)
-    dark:        "#000000",                    // → --dark (background principal du UI)
-    panelBg:     "rgba(255, 0, 255, 0.82)",    // → --panel (background des cartes/panels)
-    panelBorder: "rgba(0, 255, 255, 0.35)",    // → --panel-border (bordures fines)
-    fgBright:    "#ffffff",                    // → --fg-bright (texte principal)
-    fgMuted:     "#888888",                    // → --fg-muted (texte secondaire/labels)
+    accentCool:    "#ff00ff",                    // → --cyan (accent froid principal du UI)
+    accentWarm:    "#00ffff",                    // → --pink (accent chaud, hover, glows)
+    purple:        "#ff00ff",                    // → --purple (accents secondaires)
+    dark:          "#000000",                    // → --dark (background principal du UI)
+    panelBg:       "rgba(255, 0, 255, 0.82)",    // → --panel (background des cartes/panels)
+    panelBorder:   "rgba(0, 255, 255, 0.35)",    // → --panel-border (bordures fines)
+    fgBright:      "#ffffff",                    // → --fg-bright (texte principal)
+    fgMuted:       "#888888",                    // → --fg-muted (texte secondaire/labels)
+    // Composantes RGB des accents (pour les box-shadow rgba). Doit matcher
+    // accentCool / accentWarm en hex → composantes RGB en string.
+    accentCoolRgb: "255, 0, 255",                // = accentCool
+    accentWarmRgb: "0, 255, 255",                // = accentWarm
   },
 
   // ─── Position de la caméra ───

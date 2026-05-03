@@ -10,7 +10,7 @@
   --purple: #b14bff;
   --dark: #05060c;
   --panel: rgba(10, 12, 24, 0.82);
-  --panel-border: rgba(0, 229, 255, 0.35);
+  --panel-border: rgba(var(--accent-cool-rgb), 0.35);
   --fg-bright: #e8f7ff;
   --fg-muted: #89bacf;
 }
@@ -71,7 +71,7 @@ canvas#game {
   border: 1px solid var(--panel-border);
   border-radius: 50%;
   background: rgba(5, 6, 12, 0.7);
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.2);
 }
 
 #leaderboard {
@@ -81,7 +81,7 @@ canvas#game {
   padding: 8px 12px;
   min-width: 180px;
   font-size: 13px;
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.15);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.15);
 }
 #leaderboard h4 {
   margin: 0 0 6px 0;
@@ -127,7 +127,7 @@ canvas#game {
   font-size: 28px;
   font-weight: 700;
   color: var(--pink);
-  text-shadow: 0 0 12px var(--pink), 0 0 30px rgba(255, 46, 168, 0.4);
+  text-shadow: 0 0 12px var(--pink), 0 0 30px rgba(var(--accent-warm-rgb), 0.4);
   letter-spacing: 2px;
   min-height: 36px;
 }
@@ -151,7 +151,7 @@ canvas#game {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.3);
 }
 #blade-count {
   font-size: 40px;
@@ -194,9 +194,9 @@ canvas#game {
   height: 100%;
   border: 2px solid var(--panel-border);
   border-radius: 50%;
-  background: rgba(0, 229, 255, 0.06);
+  background: rgba(var(--accent-cool-rgb), 0.06);
   position: relative;
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.15);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.15);
 }
 #joystick-thumb {
   position: absolute;
@@ -206,7 +206,7 @@ canvas#game {
   width: 54px;
   height: 54px;
   border-radius: 50%;
-  background: rgba(0, 229, 255, 0.3);
+  background: rgba(var(--accent-cool-rgb), 0.3);
   border: 1px solid var(--cyan);
   box-shadow: 0 0 16px var(--cyan);
 }
@@ -218,7 +218,7 @@ canvas#game {
   width: 110px;
   height: 110px;
   border-radius: 50%;
-  background: rgba(255, 46, 168, 0.15);
+  background: rgba(var(--accent-warm-rgb), 0.15);
   border: 2px solid var(--pink);
   color: var(--pink);
   font-weight: 700;
@@ -226,11 +226,11 @@ canvas#game {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 20px rgba(255, 46, 168, 0.25);
+  box-shadow: 0 0 20px rgba(var(--accent-warm-rgb), 0.25);
   user-select: none;
 }
 #boost-btn:active {
-  background: rgba(255, 46, 168, 0.3);
+  background: rgba(var(--accent-warm-rgb), 0.3);
 }
 
 /* Bouton THROW : à droite du boost (mobile uniquement). Plus petit que
@@ -243,7 +243,7 @@ canvas#game {
   width: 86px;
   height: 86px;
   border-radius: 50%;
-  background: rgba(0, 229, 255, 0.15);
+  background: rgba(var(--accent-cool-rgb), 0.15);
   border: 2px solid var(--cyan);
   color: var(--cyan);
   font-weight: 700;
@@ -252,11 +252,11 @@ canvas#game {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 20px rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.25);
   user-select: none;
 }
 #throw-btn:active {
-  background: rgba(0, 229, 255, 0.3);
+  background: rgba(var(--accent-cool-rgb), 0.3);
 }
 #throw-btn.cooldown {
   opacity: 0.45;
@@ -292,7 +292,7 @@ canvas#game {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 30%, rgba(0, 229, 255, 0.05), transparent 70%),
+  background: radial-gradient(circle at 50% 30%, rgba(var(--accent-cool-rgb), 0.05), transparent 70%),
     rgba(0, 0, 0, 0.55);
   z-index: 10;
 }
@@ -304,7 +304,7 @@ canvas#game {
   border-radius: 8px;
   padding: 30px 40px;
   text-align: center;
-  box-shadow: 0 0 40px rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 40px rgba(var(--accent-cool-rgb), 0.25);
   min-width: 320px;
 }
 
@@ -313,11 +313,11 @@ canvas#game {
   margin: 0;
   letter-spacing: 6px;
   color: var(--cyan);
-  text-shadow: 0 0 18px var(--cyan), 0 0 40px rgba(0, 229, 255, 0.5);
+  text-shadow: 0 0 18px var(--cyan), 0 0 40px rgba(var(--accent-cool-rgb), 0.5);
 }
 .neon-title .pink {
   color: var(--pink);
-  text-shadow: 0 0 18px var(--pink), 0 0 40px rgba(255, 46, 168, 0.55);
+  text-shadow: 0 0 18px var(--pink), 0 0 40px rgba(var(--accent-warm-rgb), 0.55);
 }
 .subtitle {
   color: var(--purple);
@@ -342,7 +342,7 @@ canvas#game {
 }
 #name-input:focus {
   border-color: var(--cyan);
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  box-shadow: 0 0 12px rgba(var(--accent-cool-rgb), 0.4);
 }
 
 button {
@@ -360,8 +360,8 @@ button {
   transition: all 0.15s ease;
 }
 button:hover {
-  background: rgba(0, 229, 255, 0.1);
-  box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
+  background: rgba(var(--accent-cool-rgb), 0.1);
+  box-shadow: 0 0 14px rgba(var(--accent-cool-rgb), 0.5);
 }
 
 #respawn-btn {
@@ -369,8 +369,8 @@ button:hover {
   color: var(--pink);
 }
 #respawn-btn:hover {
-  background: rgba(255, 46, 168, 0.12);
-  box-shadow: 0 0 14px rgba(255, 46, 168, 0.5);
+  background: rgba(var(--accent-warm-rgb), 0.12);
+  box-shadow: 0 0 14px rgba(var(--accent-warm-rgb), 0.5);
 }
 
 .login-footer {
@@ -395,14 +395,14 @@ button:hover {
   color: var(--fg-muted);
 }
 .mode-tab:hover {
-  background: rgba(0, 229, 255, 0.08);
+  background: rgba(var(--accent-cool-rgb), 0.08);
   box-shadow: none;
 }
 .mode-tab.active {
   border-color: var(--cyan);
   color: var(--cyan);
   text-shadow: 0 0 6px var(--cyan);
-  background: rgba(0, 229, 255, 0.12);
+  background: rgba(var(--accent-cool-rgb), 0.12);
 }
 .mode-panel {
   min-height: 60px;
@@ -448,11 +448,11 @@ button:hover {
 }
 #code-input:focus {
   border-color: var(--cyan);
-  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  box-shadow: 0 0 12px rgba(var(--accent-cool-rgb), 0.4);
 }
 #code-input.error {
   border-color: var(--pink);
-  box-shadow: 0 0 14px rgba(255, 46, 168, 0.6);
+  box-shadow: 0 0 14px rgba(var(--accent-warm-rgb), 0.6);
 }
 
 #king-crown {
@@ -512,16 +512,16 @@ button:hover {
   font-size: 14px;
   color: var(--pink);
   background: var(--panel);
-  border: 1px solid rgba(255, 46, 168, 0.55);
+  border: 1px solid rgba(var(--accent-warm-rgb), 0.55);
   border-radius: 4px;
   cursor: pointer;
   letter-spacing: 3px;
-  box-shadow: 0 0 16px rgba(255, 46, 168, 0.25);
+  box-shadow: 0 0 16px rgba(var(--accent-warm-rgb), 0.25);
   user-select: none;
   transition: background 0.15s ease;
 }
 #room-badge:hover {
-  background: rgba(255, 46, 168, 0.15);
+  background: rgba(var(--accent-warm-rgb), 0.15);
 }
 #room-badge.copied::after {
   content: "COPIED";
@@ -558,7 +558,7 @@ button:hover {
   display: flex;
   justify-content: space-between;
   padding: 4px 0;
-  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+  border-bottom: 1px solid rgba(var(--accent-cool-rgb), 0.15);
 }
 #death-stats .label {
   color: var(--fg-muted);
@@ -574,7 +574,7 @@ button:hover {
   font-size: 48px;
   font-weight: 700;
   color: var(--cyan);
-  text-shadow: 0 0 16px var(--cyan), 0 0 40px rgba(0, 229, 255, 0.4);
+  text-shadow: 0 0 16px var(--cyan), 0 0 40px rgba(var(--accent-cool-rgb), 0.4);
   letter-spacing: 3px;
   line-height: 1;
 }
@@ -583,11 +583,11 @@ button:hover {
   color: var(--fg-muted);
   margin-top: 12px;
   letter-spacing: 2px;
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.2);
+  text-shadow: 0 0 8px rgba(var(--accent-cool-rgb), 0.2);
 }
 #death-stats .rank-row {
   margin-top: 8px;
-  border-top: 1px solid rgba(0, 229, 255, 0.15);
+  border-top: 1px solid rgba(var(--accent-cool-rgb), 0.15);
   padding-top: 6px;
   font-size: 16px;
   font-weight: 700;
@@ -733,21 +733,21 @@ button:hover {
   font-family: "Rajdhani","Segoe UI",system-ui,sans-serif;
   z-index: 10;
   background:
-    radial-gradient(ellipse at 50% 40%, rgba(0,229,255,.10), transparent 55%),
-    radial-gradient(ellipse at 80% 90%, rgba(255,46,168,.08), transparent 50%),
+    radial-gradient(ellipse at 50% 40%, rgba(var(--accent-cool-rgb),.10), transparent 55%),
+    radial-gradient(ellipse at 80% 90%, rgba(var(--accent-warm-rgb),.08), transparent 50%),
     rgba(0,0,0,.55);
   isolation: isolate;
 }
 .bio2-screen::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(to bottom, rgba(0,229,255,.025) 0 1px, transparent 1px 3px);
+  background: repeating-linear-gradient(to bottom, rgba(var(--accent-cool-rgb),.025) 0 1px, transparent 1px 3px);
   mix-blend-mode: screen; z-index: 0;
 }
 .bio2-screen::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background-image:
-    linear-gradient(rgba(0,229,255,.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,229,255,.06) 1px, transparent 1px);
+    linear-gradient(rgba(var(--accent-cool-rgb),.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-cool-rgb),.06) 1px, transparent 1px);
   background-size: 40px 40px;
   mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
   z-index: 0;
@@ -769,8 +769,8 @@ button:hover {
   grid-column: 1 / -1; grid-row: 1;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 32px; z-index: 4; position: relative;
-  border-bottom: 1px solid rgba(0,229,255,.18);
-  background: linear-gradient(180deg, rgba(0,229,255,.06), transparent);
+  border-bottom: 1px solid rgba(var(--accent-cool-rgb),.18);
+  background: linear-gradient(180deg, rgba(var(--accent-cool-rgb),.06), transparent);
   font-size: 12px; letter-spacing: 2px;
 }
 .bio2-tb-left,.bio2-tb-right { display:flex; align-items:center; gap:10px; }
@@ -788,16 +788,16 @@ button:hover {
   display: flex; flex-direction: column; gap: 18px;
   font-size: 13px;
 }
-.bio2-rail-l { grid-column: 1; border-right: 1px solid rgba(0,229,255,.12); }
-.bio2-rail-r { grid-column: 3; border-left: 1px solid rgba(0,229,255,.12); }
-.bio2-rail-head { display:flex; align-items:baseline; gap:10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(0,229,255,.2); }
+.bio2-rail-l { grid-column: 1; border-right: 1px solid rgba(var(--accent-cool-rgb),.12); }
+.bio2-rail-r { grid-column: 3; border-left: 1px solid rgba(var(--accent-cool-rgb),.12); }
+.bio2-rail-head { display:flex; align-items:baseline; gap:10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(var(--accent-cool-rgb),.2); }
 .bio2-rail-tag { color: var(--cyan); font-weight:700; letter-spacing: 2px; font-size: 11px; transition: transform .25s cubic-bezier(.2,.7,.2,1), color .2s; }
 .bio2-rail:hover .bio2-rail-tag { transform: translateX(3px); color: var(--pink); }
 .bio2-rail-title { font-size: 16px; font-weight: 700; letter-spacing: 3px; }
 .bio2-rail-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; color: var(--fg-muted); line-height: 1.4; }
 .bio2-rail-list b { color: var(--cyan); margin-right: 6px; letter-spacing: 1.5px; font-size: 11px; }
 .bio2-rail-list kbd { display: inline-block; padding: 1px 6px; border: 1px solid var(--cyan); color: var(--cyan); font-size: 10px; border-radius: 3px; }
-.bio2-rail-foot { margin-top: auto; display:flex; justify-content: space-between; padding-top: 12px; border-top: 1px dashed rgba(0,229,255,.2); font-size: 11px; letter-spacing: 1.5px; }
+.bio2-rail-foot { margin-top: auto; display:flex; justify-content: space-between; padding-top: 12px; border-top: 1px dashed rgba(var(--accent-cool-rgb),.2); font-size: 11px; letter-spacing: 1.5px; }
 
 .bio2-lb { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
 .bio2-lb-row { display:grid; grid-template-columns: 26px 1fr auto; align-items:center; gap:8px; padding: 6px 8px; border-left: 2px solid transparent; transition: transform .25s cubic-bezier(.2,.7,.2,1), background .25s; font-variant-numeric: tabular-nums; position: relative; overflow: hidden; }
@@ -807,12 +807,12 @@ button:hover {
   transform: scaleX(0); transform-origin: left;
   transition: transform .35s cubic-bezier(.2,.7,.2,1);
 }
-.bio2-lb-row:hover { border-left-color: var(--cyan); background: rgba(0,229,255,.06); transform: translateX(4px); }
+.bio2-lb-row:hover { border-left-color: var(--cyan); background: rgba(var(--accent-cool-rgb),.06); transform: translateX(4px); }
 .bio2-lb-row:hover::after { transform: scaleX(1); }
 .bio2-lb-rank { color: var(--fg-muted); font-size: 11px; letter-spacing: 1.5px; }
 .bio2-lb-name { font-weight: 600; }
 .bio2-lb-score { color: var(--cyan); font-weight: 700; font-size: 13px; }
-.bio2-tier-lg .bio2-lb-name { color: var(--pink); text-shadow: 0 0 8px rgba(255,46,168,.4); }
+.bio2-tier-lg .bio2-lb-name { color: var(--pink); text-shadow: 0 0 8px rgba(var(--accent-warm-rgb),.4); }
 .bio2-tier-ep .bio2-lb-name { color: var(--purple); }
 .bio2-tier-ra .bio2-lb-name { color: var(--cyan); }
 
@@ -840,8 +840,8 @@ button:hover {
   font-weight: 700; letter-spacing: 6px; line-height: 1;
   font-family: "Rajdhani","Segoe UI",system-ui,sans-serif;
 }
-.bio2-title-cyan { color: var(--cyan); text-shadow: 0 0 24px rgba(0,229,255,.6), 0 0 48px rgba(0,229,255,.3); }
-.bio2-title-pink { color: var(--pink); text-shadow: 0 0 24px rgba(255,46,168,.6), 0 0 48px rgba(255,46,168,.3); }
+.bio2-title-cyan { color: var(--cyan); text-shadow: 0 0 24px rgba(var(--accent-cool-rgb),.6), 0 0 48px rgba(var(--accent-cool-rgb),.3); }
+.bio2-title-pink { color: var(--pink); text-shadow: 0 0 24px rgba(var(--accent-warm-rgb),.6), 0 0 48px rgba(var(--accent-warm-rgb),.3); }
 /* Ghost copies désactivées : le glitch chromatique 5s tape trop, et le
    text-shadow des deux spans suffit à donner du néon. */
 .bio2-title-ghost { display: none; }
@@ -854,28 +854,37 @@ button:hover {
 
 .bio2-rarity-strip {
   display:flex; align-items:center; gap: 12px; padding: 8px 18px;
-  border: 1px solid rgba(0,229,255,.2); border-radius: 999px;
+  border: 1px solid rgba(var(--accent-cool-rgb),.2); border-radius: 999px;
   background: rgba(8,10,18,.6); backdrop-filter: blur(8px);
   font-size: 11px; letter-spacing: 2.5px; color: var(--fg-muted);
   transition: border-color .25s, box-shadow .25s;
 }
-.bio2-rarity-strip:hover { border-color: rgba(0,229,255,.5); box-shadow: 0 0 24px rgba(0,229,255,.18); }
+.bio2-rarity-strip:hover { border-color: rgba(var(--accent-cool-rgb),.5); box-shadow: 0 0 24px rgba(var(--accent-cool-rgb),.18); }
 /* Pulse retiré : 4 dots qui pulsent en permanence, c'était trop "bruyant" en
    tâche de fond. Le glow neon des dots suffit comme indicateur. */
 .bio2-rarity-dot {
   width: 10px; height: 10px; border-radius: 50%;
-  background: var(--c); box-shadow: 0 0 12px var(--c);
+  /* Lit la couleur depuis l'attribut data-r (common/rare/epic/legendary) :
+     les variables --rarity-* sont injectées par applyThemeCss() depuis le
+     thème actif, donc ces 4 dots reflètent toujours les vraies couleurs des
+     lames du thème courant. */
+  background: var(--c, #fff);
+  box-shadow: 0 0 12px var(--c, #fff);
 }
+.bio2-rarity-dot[data-r="common"]    { --c: var(--rarity-common, #ffffff); }
+.bio2-rarity-dot[data-r="rare"]      { --c: var(--rarity-rare, #00e5ff); }
+.bio2-rarity-dot[data-r="epic"]      { --c: var(--rarity-epic, #b14bff); }
+.bio2-rarity-dot[data-r="legendary"] { --c: var(--rarity-legendary, #ff2ea8); }
 .bio2-rarity-label { margin-left: 6px; }
 
 .bio2-console {
   width: 520px; max-width: 92vw;
   background: linear-gradient(180deg, rgba(8,10,18,.92), rgba(8,10,18,.78));
-  border: 1px solid rgba(0,229,255,.28);
+  border: 1px solid rgba(var(--accent-cool-rgb),.28);
   border-radius: 4px;
   padding: 16px 22px 18px;
   position: relative;
-  box-shadow: 0 0 60px rgba(0,229,255,.2), inset 0 0 30px rgba(0,229,255,.05);
+  box-shadow: 0 0 60px rgba(var(--accent-cool-rgb),.2), inset 0 0 30px rgba(var(--accent-cool-rgb),.05);
   backdrop-filter: blur(10px);
   /* Plafond de hauteur + scroll INTERNE permanent : garantit que ENTER
      THE GRID reste atteignable peu importe l'état du panel auth (signed-in,
@@ -886,7 +895,7 @@ button:hover {
   overflow-y: auto;
   /* Scrollbar stylée cyan-discrète (Firefox + standard). */
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,229,255,.4) transparent;
+  scrollbar-color: rgba(var(--accent-cool-rgb),.4) transparent;
 }
 /* Scrollbar Webkit (Chrome / Edge / Safari) — même look. */
 .bio2-console::-webkit-scrollbar {
@@ -896,11 +905,11 @@ button:hover {
   background: transparent;
 }
 .bio2-console::-webkit-scrollbar-thumb {
-  background: rgba(0,229,255,.3);
+  background: rgba(var(--accent-cool-rgb),.3);
   border-radius: 3px;
 }
 .bio2-console::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,229,255,.55);
+  background: rgba(var(--accent-cool-rgb),.55);
 }
 .bio2-console::before {
   content:""; position:absolute; left:-1px; top:-1px; right:-1px; bottom:-1px;
@@ -912,19 +921,19 @@ button:hover {
 
 .bio2-console-head {
   display:flex; align-items:center; gap: 10px; padding-bottom: 14px;
-  border-bottom: 1px dashed rgba(0,229,255,.22);
+  border-bottom: 1px dashed rgba(var(--accent-cool-rgb),.22);
   font-size: 11px; letter-spacing: 2px; color: var(--fg-muted);
 }
 .bio2-led { width:8px; height:8px; border-radius:50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); animation: bio2-blink 2.5s infinite; }
 .bio2-console-tag { color: var(--cyan); font-weight: 700; }
-.bio2-console-spacer { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(0,229,255,.3), transparent); margin: 0 8px; }
+.bio2-console-spacer { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(var(--accent-cool-rgb),.3), transparent); margin: 0 8px; }
 .bio2-console-meta { font-variant-numeric: tabular-nums; color: var(--fg-muted); }
 
 .bio2-wallet {
   display: flex; align-items: center; justify-content: space-between;
   margin-top: 10px; padding: 8px 12px;
-  background: rgba(0,229,255,.06);
-  border: 1px solid rgba(0,229,255,.25);
+  background: rgba(var(--accent-cool-rgb),.06);
+  border: 1px solid rgba(var(--accent-cool-rgb),.25);
   border-radius: 2px;
   font-size: 11px; letter-spacing: 2.5px;
 }
@@ -939,14 +948,14 @@ button:hover {
 .bio2-field-label { display:block; font-size: 10px; letter-spacing: 2.5px; color: var(--fg-muted); margin-bottom: 6px; }
 .bio2-input {
   width: 100%; background: rgba(0,0,0,.5);
-  border: 1px solid rgba(0,229,255,.25);
+  border: 1px solid rgba(var(--accent-cool-rgb),.25);
   color: var(--fg-bright);
   padding: 12px 60px 12px 14px;
   font-family: inherit; font-size: 18px; letter-spacing: 3px; font-weight: 500;
   border-radius: 2px; outline: none;
   transition: border-color .2s, box-shadow .25s, background .2s;
 }
-.bio2-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 18px rgba(0,229,255,.4); }
+.bio2-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px var(--cyan), 0 0 18px rgba(var(--accent-cool-rgb),.4); }
 .bio2-input::placeholder { color: rgba(160,168,196,.45); letter-spacing: 3px; }
 .bio2-field-cnt { display: block; text-align: right; margin-top: 4px; font-size: 11px; color: var(--fg-muted); letter-spacing: 1.5px; transition: color .2s; }
 
@@ -966,8 +975,8 @@ button:hover {
 .bio2-rename-btn {
   margin: 0;
   padding: 4px 10px;
-  background: rgba(0, 229, 255, 0.08);
-  border: 1px solid rgba(0, 229, 255, 0.4);
+  background: rgba(var(--accent-cool-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-cool-rgb), 0.4);
   color: var(--cyan);
   font-family: inherit;
   font-size: 10px;
@@ -977,11 +986,11 @@ button:hover {
   border-radius: 2px;
   transition: background .15s, border-color .15s, color .15s, opacity .15s;
 }
-.bio2-rename-btn:hover { background: rgba(0, 229, 255, 0.18); border-color: var(--cyan); }
+.bio2-rename-btn:hover { background: rgba(var(--accent-cool-rgb), 0.18); border-color: var(--cyan); }
 .bio2-rename-btn:disabled { opacity: 0.45; cursor: progress; }
-.bio2-rename-save { color: var(--cyan); border-color: rgba(0, 229, 255, 0.55); padding: 4px 8px; font-size: 13px; }
-.bio2-rename-cancel { color: var(--pink); border-color: rgba(255, 46, 168, 0.55); background: rgba(255, 46, 168, 0.08); padding: 4px 8px; font-size: 13px; }
-.bio2-rename-cancel:hover { background: rgba(255, 46, 168, 0.18); border-color: var(--pink); }
+.bio2-rename-save { color: var(--cyan); border-color: rgba(var(--accent-cool-rgb), 0.55); padding: 4px 8px; font-size: 13px; }
+.bio2-rename-cancel { color: var(--pink); border-color: rgba(var(--accent-warm-rgb), 0.55); background: rgba(var(--accent-warm-rgb), 0.08); padding: 4px 8px; font-size: 13px; }
+.bio2-rename-cancel:hover { background: rgba(var(--accent-warm-rgb), 0.18); border-color: var(--pink); }
 .bio2-rename-msg {
   display: block;
   margin-top: 6px;
@@ -997,7 +1006,7 @@ button:hover {
   display:flex; flex-direction: column; align-items: flex-start; gap: 4px;
   padding: 10px 12px;
   background: rgba(0,0,0,.5);
-  border: 1px solid rgba(0,229,255,.18);
+  border: 1px solid rgba(var(--accent-cool-rgb),.18);
   color: var(--fg-bright);
   cursor: pointer;
   text-align: left; border-radius: 2px;
@@ -1005,16 +1014,16 @@ button:hover {
   position: relative;
   transition: transform .2s cubic-bezier(.2,.7,.2,1), border-color .2s, background .2s, box-shadow .25s;
 }
-.bio2-mode:hover { border-color: rgba(0,229,255,.45); background: rgba(0,229,255,.05); transform: translateY(-2px); }
+.bio2-mode:hover { border-color: rgba(var(--accent-cool-rgb),.45); background: rgba(var(--accent-cool-rgb),.05); transform: translateY(-2px); }
 .bio2-mode:active { transform: translateY(0); }
-.bio2-mode-on { border-color: var(--cyan); background: rgba(0,229,255,.10); box-shadow: inset 0 0 12px rgba(0,229,255,.15); }
+.bio2-mode-on { border-color: var(--cyan); background: rgba(var(--accent-cool-rgb),.10); box-shadow: inset 0 0 12px rgba(var(--accent-cool-rgb),.15); }
 .bio2-mode-on::before { content:""; position:absolute; left:0; top:0; bottom:0; width: 2px; background: var(--cyan); }
 .bio2-mode-arrow { color: var(--cyan); font-size: 10px; letter-spacing: 1px; }
 .bio2-mode-label { font-weight: 700; letter-spacing: 1.5px; font-size: 12px; white-space: nowrap; }
 .bio2-mode-hint { font-size: 10px; letter-spacing: 1px; color: var(--fg-muted); text-transform: uppercase; }
 .bio2-mode::after {
   content: ""; position: absolute; inset: 0;
-  background: linear-gradient(120deg, transparent 30%, rgba(0,229,255,.18) 50%, transparent 70%);
+  background: linear-gradient(120deg, transparent 30%, rgba(var(--accent-cool-rgb),.18) 50%, transparent 70%);
   transform: translateX(-120%);
   transition: transform .55s cubic-bezier(.2,.7,.2,1);
   pointer-events: none;
@@ -1023,24 +1032,24 @@ button:hover {
 
 .bio2-toggle { display:flex; align-items:center; gap: 10px; cursor: pointer; font-size: 12px; letter-spacing: 2px; color: var(--fg-bright); }
 .bio2-toggle input { display:none; }
-.bio2-toggle-track { width: 36px; height: 18px; background: rgba(0,0,0,.6); border: 1px solid rgba(0,229,255,.3); border-radius: 999px; position: relative; transition: all .15s; }
+.bio2-toggle-track { width: 36px; height: 18px; background: rgba(0,0,0,.6); border: 1px solid rgba(var(--accent-cool-rgb),.3); border-radius: 999px; position: relative; transition: all .15s; }
 .bio2-toggle-thumb { position:absolute; top:1px; left: 1px; width: 14px; height: 14px; border-radius: 50%; background: var(--fg-muted); transition: all .15s; }
-.bio2-toggle input:checked + .bio2-toggle-track { border-color: var(--cyan); box-shadow: inset 0 0 8px rgba(0,229,255,.3); }
+.bio2-toggle input:checked + .bio2-toggle-track { border-color: var(--cyan); box-shadow: inset 0 0 8px rgba(var(--accent-cool-rgb),.3); }
 .bio2-toggle input:checked + .bio2-toggle-track .bio2-toggle-thumb { left: 19px; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
 
 .bio2-code-row { display:flex; gap: 6px; align-items: center; position: relative; }
 .bio2-code-cell {
   flex: 1; height: 50px; display:flex; align-items:center; justify-content:center;
   background: rgba(0,0,0,.5);
-  border: 1px solid rgba(0,229,255,.25);
+  border: 1px solid rgba(var(--accent-cool-rgb),.25);
   font-size: 24px; font-weight: 700; letter-spacing: 0; color: var(--cyan);
   border-radius: 2px;
   transition: border-color .2s, box-shadow .2s, transform .2s;
 }
-.bio2-code-row:focus-within .bio2-code-cell { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,229,255,.3); }
+.bio2-code-row:focus-within .bio2-code-cell { border-color: var(--cyan); box-shadow: 0 0 12px rgba(var(--accent-cool-rgb),.3); }
 .bio2-code-cell.bio2-err { border-color: var(--pink); animation: bio2-shake .35s; }
 @keyframes bio2-shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-.bio2-code-ph { color: rgba(0,229,255,.25); }
+.bio2-code-ph { color: rgba(var(--accent-cool-rgb),.25); }
 .bio2-code-input { position: absolute; inset: 0; opacity: 0; cursor: text; border: none; padding: 0; margin: 0; background: transparent; color: transparent; font-size: 24px; }
 
 .bio2-cta {
@@ -1048,7 +1057,7 @@ button:hover {
   display:flex; align-items:center; justify-content:center; gap: 10px;
   width: 100%;
   padding: 12px 18px;
-  background: linear-gradient(90deg, rgba(0,229,255,.10), rgba(255,46,168,.10));
+  background: linear-gradient(90deg, rgba(var(--accent-cool-rgb),.10), rgba(var(--accent-warm-rgb),.10));
   border: 1px solid var(--cyan);
   color: var(--cyan);
   font-family: inherit; font-size: 16px; letter-spacing: 4px; font-weight: 700;
@@ -1059,18 +1068,18 @@ button:hover {
 }
 .bio2-cta::before {
   content:""; position:absolute; inset:0;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,.3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-cool-rgb),.3), transparent);
   transform: translateX(-100%);
   transition: transform .8s cubic-bezier(.2,.7,.2,1);
 }
-.bio2-cta:hover { color: var(--dark); background: var(--cyan); box-shadow: 0 0 30px rgba(0,229,255,.6); transform: translateY(-2px); letter-spacing: 5px; }
+.bio2-cta:hover { color: var(--dark); background: var(--cyan); box-shadow: 0 0 30px rgba(var(--accent-cool-rgb),.6); transform: translateY(-2px); letter-spacing: 5px; }
 .bio2-cta:hover::before { transform: translateX(100%); }
 .bio2-cta:active { transform: translateY(0); }
 .bio2-cta-bracket { font-weight: 200; opacity: .7; }
 .bio2-cta-arrow { transition: transform .25s cubic-bezier(.2,.7,.2,1); }
 .bio2-cta:hover .bio2-cta-arrow { transform: translateX(8px); }
 
-.bio2-marquee { width: 100%; max-width: 100%; overflow: hidden; mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent); border-top: 1px solid rgba(0,229,255,.15); border-bottom: 1px solid rgba(0,229,255,.15); padding: 8px 0; margin-top: 8px; }
+.bio2-marquee { width: 100%; max-width: 100%; overflow: hidden; mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent); border-top: 1px solid rgba(var(--accent-cool-rgb),.15); border-bottom: 1px solid rgba(var(--accent-cool-rgb),.15); padding: 8px 0; margin-top: 8px; }
 .bio2-marquee-track { display:inline-flex; white-space: nowrap; animation: bio2-marquee 38s linear infinite; font-size: 11px; letter-spacing: 4px; color: var(--fg-muted); }
 .bio2-marquee-track span { padding-right: 40px; }
 @keyframes bio2-marquee { to { transform: translateX(-50%); } }
@@ -1139,8 +1148,8 @@ button:hover {
 .bio2-auth {
   margin: 0 0 14px 0;
   padding: 10px 12px;
-  background: rgba(0, 229, 255, 0.04);
-  border: 1px solid rgba(0, 229, 255, 0.2);
+  background: rgba(var(--accent-cool-rgb), 0.04);
+  border: 1px solid rgba(var(--accent-cool-rgb), 0.2);
   border-radius: 4px;
   display: flex;
   flex-direction: column;
@@ -1155,8 +1164,8 @@ button:hover {
 }
 .bio2-auth-trigger {
   width: 100%;
-  background: rgba(0, 229, 255, 0.04);
-  border: 1px dashed rgba(0, 229, 255, 0.3);
+  background: rgba(var(--accent-cool-rgb), 0.04);
+  border: 1px dashed rgba(var(--accent-cool-rgb), 0.3);
   border-radius: 4px;
   padding: 8px 12px;
   display: flex;
@@ -1171,8 +1180,8 @@ button:hover {
   transition: background 0.15s, border-color 0.15s;
 }
 .bio2-auth-trigger:hover {
-  background: rgba(0, 229, 255, 0.08);
-  border-color: rgba(0, 229, 255, 0.5);
+  background: rgba(var(--accent-cool-rgb), 0.08);
+  border-color: rgba(var(--accent-cool-rgb), 0.5);
   border-style: solid;
 }
 .bio2-auth-trigger-arrow { font-weight: 700; }
@@ -1218,7 +1227,7 @@ button:hover {
 .bio2-auth-tabs { display: flex; gap: 4px; }
 .bio2-auth-tab {
   background: transparent;
-  border: 1px solid rgba(0, 229, 255, 0.3);
+  border: 1px solid rgba(var(--accent-cool-rgb), 0.3);
   color: var(--fg-muted);
   padding: 4px 8px;
   font-size: 10px;
@@ -1235,7 +1244,7 @@ button:hover {
 .bio2-auth-tab.active {
   color: var(--cyan);
   border-color: var(--cyan);
-  background: rgba(0, 229, 255, 0.08);
+  background: rgba(var(--accent-cool-rgb), 0.08);
 }
 
 .bio2-auth-body {
@@ -1258,7 +1267,7 @@ button:hover {
   gap: 10px;
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(0, 229, 255, 0.3);
+  border: 1px solid rgba(var(--accent-cool-rgb), 0.3);
   color: var(--fg-bright);
   font-family: inherit;
   font-size: 13px;
@@ -1268,7 +1277,7 @@ button:hover {
   transition: background 0.12s, border-color 0.12s, transform 0.12s;
 }
 .bio2-auth-provider:hover {
-  background: rgba(0, 229, 255, 0.08);
+  background: rgba(var(--accent-cool-rgb), 0.08);
   border-color: var(--cyan);
 }
 .bio2-auth-provider:disabled {
@@ -1315,13 +1324,13 @@ button:hover {
   content: "";
   flex: 1;
   height: 1px;
-  background: rgba(0, 229, 255, 0.15);
+  background: rgba(var(--accent-cool-rgb), 0.15);
 }
 
 .bio2-auth-cta {
   margin-top: 4px;
   padding: 8px 12px;
-  background: linear-gradient(90deg, rgba(0, 229, 255, 0.15), rgba(255, 46, 168, 0.15));
+  background: linear-gradient(90deg, rgba(var(--accent-cool-rgb), 0.15), rgba(var(--accent-warm-rgb), 0.15));
   border: 1px solid var(--cyan);
   color: var(--cyan);
   font-family: inherit;
@@ -1333,7 +1342,7 @@ button:hover {
   transition: box-shadow 0.12s;
 }
 .bio2-auth-cta:hover {
-  box-shadow: 0 0 14px rgba(0, 229, 255, 0.5);
+  box-shadow: 0 0 14px rgba(var(--accent-cool-rgb), 0.5);
 }
 .bio2-auth-cta:disabled {
   opacity: 0.5;
@@ -1380,12 +1389,12 @@ button:hover {
   border-radius: 3px;
   border: 1px solid var(--pink);
   color: var(--pink);
-  background: rgba(255, 46, 168, 0.08);
+  background: rgba(var(--accent-warm-rgb), 0.08);
 }
 .bio2-auth-msg[data-kind="info"] {
   border-color: var(--cyan);
   color: var(--cyan);
-  background: rgba(0, 229, 255, 0.08);
+  background: rgba(var(--accent-cool-rgb), 0.08);
 }
 
 .bio2-auth-summary {

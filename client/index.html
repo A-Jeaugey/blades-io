@@ -121,10 +121,12 @@
           </div>
 
           <div class="bio2-rarity-strip">
-            <span class="bio2-rarity-dot" style="--c: #ffffff"></span>
-            <span class="bio2-rarity-dot" style="--c: #00e5ff"></span>
-            <span class="bio2-rarity-dot" style="--c: #b14bff"></span>
-            <span class="bio2-rarity-dot" style="--c: #ff2ea8"></span>
+            <!-- Couleurs résolues depuis le thème actif via les CSS vars
+                 --rarity-* (cf. applyThemeCss dans themes/index.ts). -->
+            <span class="bio2-rarity-dot" data-r="common"></span>
+            <span class="bio2-rarity-dot" data-r="rare"></span>
+            <span class="bio2-rarity-dot" data-r="epic"></span>
+            <span class="bio2-rarity-dot" data-r="legendary"></span>
             <span class="bio2-rarity-label">COMMON · RARE · EPIC · LEGENDARY</span>
           </div>
 

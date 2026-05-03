@@ -270,6 +270,8 @@ export const FORGE_VERMEILLE_THEME: Theme = {
     panelBorder: "rgba(255, 138, 62, 0.35)",     // → --panel-border (ember)
     fgBright: "#fff5d4",                         // → --fg-bright (white-hot)
     fgMuted: "#c89976",                          // → --fg-muted (warm beige)
+    accentCoolRgb: "255, 138, 62",               // ember pour les box-shadow / glow
+    accentWarmRgb: "255, 186, 74",               // gold pour les hover / accents
   },
 
   // Caméra légèrement plus plongée que sanctuaire : la forge est un thème

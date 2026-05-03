@@ -163,6 +163,8 @@ export const NEON_THEME: Theme = {
     panelBorder: "rgba(0, 229, 255, 0.35)",
     fgBright: "#e8f7ff",
     fgMuted: "#89bacf",
+    accentCoolRgb: "0, 229, 255",
+    accentWarmRgb: "255, 46, 168",
   },
 
   cameraOffset: { x: 0, y: 22, z: 16 },
