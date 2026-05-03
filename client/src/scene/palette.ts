@@ -1,89 +1,65 @@
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
+import { getActiveTheme } from "../themes";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Palette "Sanctuaire des Esprits"
-// Direction artistique : monde des esprits féérique, mix mystique
-// (violets profonds + roses poudrés + or sacré + crème lunaire).
+// Palette — façade rétro-compatible au-dessus du thème actif.
 //
-// Les couleurs des raretés et power-ups sont volontairement re-mappées ici
-// côté client uniquement — `shared/src/constants.ts` reste intact (les valeurs
-// d'origine y servent de fallback / contrat). Toute couleur affichée par le
-// client doit passer par ce module pour rester cohérente avec le thème.
+// Avant le système de thèmes, ce fichier exportait des constantes statiques.
+// Maintenant tout vient du thème actif (themes/index.ts), ce module ne fait
+// que ré-exporter les valeurs sous les noms historiques pour minimiser la
+// chirurgie dans les call sites de rendu.
+//
+// Note : RARITY_COLOR / POWERUP_COLOR ici sont volontairement nommés à
+// l'identique de ceux dans @bladeio/shared (qu'ils shadowent côté client).
+// Le serveur n'utilise jamais ces constantes — c'est purement cosmétique.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Couleurs de base du monde.
+const theme = getActiveTheme();
+
+// Couleurs "world" exposées comme un objet PALETTE pour les call sites
+// existants qui font PALETTE.shrineAccent etc. Le mapping suit la convention
+// du Sanctuaire mais les valeurs viennent du thème actif (donc neon vs
+// sanctuaire pointe sur des hex différents).
 export const PALETTE = {
   // Atmosphère
-  nightDeep: 0x0e0820,      // fond nuit étoilée (clear color)
-  fogMid: 0x2a1f4a,         // brume mauve mid-distance
-  groundBase: 0x140a26,     // sol au plus profond
-  groundMid: 0x2a1d4a,      // sol mauve nappes
-  groundHighlight: 0xe8d4f0, // wisps lumineux dans le sol
+  nightDeep: theme.palette.clearColor,
+  fogMid: theme.palette.fogColor,
+  groundBase: theme.palette.clearColor, // pas utilisé par neon (shader baked)
+  groundMid: theme.palette.fogColor,
+  groundHighlight: theme.palette.playerLocal.primary,
 
   // Joueurs
-  playerLocalPrimary: 0xf5e8d8,    // crème / clair de lune
-  playerLocalAccent: 0xd8a4e8,     // rose poudré (halo, ring)
-  playerLocalAccentDim: 0x6e4d8a,  // violet sombre (emissive subtle)
-  playerRemotePrimary: 0xe8d4e0,   // crème rosée (légère diff vs local)
-  playerRemoteAccent: 0xa685f4,    // violet vif (accent remote)
-  playerRemoteAccentDim: 0x4a2f7a, // violet sombre
+  playerLocalPrimary: theme.palette.playerLocal.primary,
+  playerLocalAccent: theme.palette.playerLocal.accent,
+  playerLocalAccentDim: theme.palette.playerLocal.accentDim,
+  playerRemotePrimary: theme.palette.playerRemote.primary,
+  playerRemoteAccent: theme.palette.playerRemote.accent,
+  playerRemoteAccentDim: theme.palette.playerRemote.accentDim,
 
-  // Décor
-  shrinePrimary: 0xa685f4,     // pierre violette mystique
-  shrineAccent: 0xd8a4e8,      // veines roses
-  mushroomGlow: 0xa4f0d4,      // champignons mint spirit
-  groveFoliage: 0x3a2a5a,      // bosquets translucides (sombre)
-  groveAccent: 0xc9a4ff,       // halo rose-violet sur les bushes
+  // Décor — exposés depuis decor variant
+  shrinePrimary:
+    theme.decor.kind === "spirit" ? theme.decor.shrineCore : theme.decor.shrineCore,
+  shrineAccent:
+    theme.decor.kind === "spirit" ? theme.decor.shrineHalo : theme.decor.shrineHalo,
+  mushroomGlow:
+    theme.decor.kind === "spirit" ? theme.decor.obeliskInner : theme.decor.obeliskInner,
+  groveFoliage:
+    theme.decor.kind === "spirit" ? theme.decor.mossColor : theme.decor.bushFoliage,
+  groveAccent:
+    theme.decor.kind === "spirit" ? theme.decor.mushroomCap : theme.decor.bushAccent,
 
-  // Limites & danger
-  boundary: 0xff5d8a,        // mur frontière (sakura, zone de mort)
-  dangerAccent: 0xff5d8a,    // toute zone critique
+  // Limites
+  boundary: theme.palette.boundary,
+  dangerAccent: theme.palette.fx.deathExplosion,
 
-  // Or sacré (légendaires, hero items)
-  sacredGold: 0xf4d471,
+  // Or sacré (présent dans les deux thèmes mais utilisé différemment)
+  sacredGold:
+    theme.decor.kind === "spirit"
+      ? theme.decor.shrineCore
+      : theme.palette.fx.tierUpHi,
 } as const;
 
-// Couleurs des raretés de lames (re-mappées spirit-world).
-// Logique de progression :
-//   Common    = wisp pâle (numerous, ambiance)
-//   Rare      = rose poudré (visible mais doux)
-//   Epic      = violet profond (mystique)
-//   Legendary = OR sacré (chaud, contraste fort dans la mer froide)
-export const RARITY_COLOR: Record<BladeRarity, number> = {
-  [BladeRarity.Common]: 0xf0e4f5,
-  [BladeRarity.Rare]: 0xd8a4e8,
-  [BladeRarity.Epic]: 0x9d7dff,
-  [BladeRarity.Legendary]: 0xf4d471,
-};
-
-// Couleurs des power-ups par type (indépendantes des raretés).
-// Re-mappées sur la palette spirit-world tout en gardant 5 teintes
-// distinctes pour la lecture rapide.
-export const POWERUP_COLOR: Record<PowerUpType, number> = {
-  [PowerUpType.Speed]: 0xf9c74f,    // or chaud (vitesse = élan)
-  [PowerUpType.Spin]: 0x9d7dff,     // violet profond
-  [PowerUpType.Magnet]: 0xff8eb5,   // rose vif
-  [PowerUpType.Shield]: 0xf5e8d8,   // crème lunaire (protection)
-  [PowerUpType.Blades]: 0xa4f0d4,   // mint spirit (gain de matière)
-};
-
-// Helper : luminance perçue (Rec. 601) pour compenser le bloom selon la couleur.
-// UnrealBloomPass extrait les pixels au-dessus d'un threshold ; les couleurs
-// très saturées-mais-sombres (violet profond) franchissent moins facilement
-// le seuil que les couleurs claires. On compense avec un multiplicateur
-// d'emissiveIntensity proportionnel à 1 / luminance.
-function luminance(hex: number): number {
-  const r = ((hex >> 16) & 0xff) / 255;
-  const g = ((hex >> 8) & 0xff) / 255;
-  const b = (hex & 0xff) / 255;
-  return 0.299 * r + 0.587 * g + 0.114 * b;
-}
-
-// Compensation glow par rareté, calculée dynamiquement à partir des couleurs.
-// Sécurise : si on retouche RARITY_COLOR, la compensation suit automatiquement.
-export const RARITY_GLOW_COMP: Record<BladeRarity, number> = {
-  [BladeRarity.Common]: 1 / Math.max(0.2, luminance(RARITY_COLOR[BladeRarity.Common])),
-  [BladeRarity.Rare]: 1 / Math.max(0.2, luminance(RARITY_COLOR[BladeRarity.Rare])),
-  [BladeRarity.Epic]: 1 / Math.max(0.2, luminance(RARITY_COLOR[BladeRarity.Epic])),
-  [BladeRarity.Legendary]: 1 / Math.max(0.2, luminance(RARITY_COLOR[BladeRarity.Legendary])),
-};
+// Couleurs raretés / powerups : pointent directement sur le thème.
+export const RARITY_COLOR: Record<BladeRarity, number> = theme.palette.rarityColor;
+export const POWERUP_COLOR: Record<PowerUpType, number> = theme.palette.powerUpColor;
+export const RARITY_GLOW_COMP: Record<BladeRarity, number> = theme.palette.rarityGlowComp;

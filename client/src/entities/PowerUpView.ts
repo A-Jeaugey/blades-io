@@ -5,7 +5,7 @@ import {
   PowerUpType,
 } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
-import { POWERUP_COLOR, PALETTE } from "../scene/palette";
+import { getActiveTheme } from "../themes";
 
 interface PowerUpEntry {
   id: string;
@@ -40,8 +40,13 @@ export class PowerUpRenderer {
     this.octaSeg = simpleMaterials ? 0 : 0; // Octaedre subdivision
     this.geo = new THREE.OctahedronGeometry(1, this.octaSeg);
     this.disposables.push(this.geo);
+    // Couleurs des power-ups + couleur de l'anneau "epic" tirées du thème
+    // actif (palette par type + tier-up high pour la rareté max).
+    const theme = getActiveTheme();
+    const powerUpColor = theme.palette.powerUpColor;
+    const epicRingColor = theme.palette.fx.tierUpHi;
     for (const t of [PowerUpType.Speed, PowerUpType.Spin, PowerUpType.Magnet, PowerUpType.Shield, PowerUpType.Blades]) {
-      const color = POWERUP_COLOR[t];
+      const color = powerUpColor[t];
       const mat = simpleMaterials
         ? new THREE.MeshBasicMaterial({ color })
         : new THREE.MeshPhongMaterial({
@@ -58,9 +63,8 @@ export class PowerUpRenderer {
       const pillarSeg = simpleMaterials ? 8 : 12;
       this.pillarGeo = new THREE.CylinderGeometry(0.35, 0.55, 15, pillarSeg, 1, true);
       this.disposables.push(this.pillarGeo);
-      // Un material par type (couleur différente).
       for (const t of [PowerUpType.Speed, PowerUpType.Spin, PowerUpType.Magnet, PowerUpType.Shield, PowerUpType.Blades]) {
-        const color = POWERUP_COLOR[t];
+        const color = powerUpColor[t];
         const m = new THREE.MeshBasicMaterial({
           color,
           transparent: true,
@@ -73,19 +77,18 @@ export class PowerUpRenderer {
       }
     }
 
-    // Anneaux au sol — toujours présents (visibilité gameplay).
     const ringSeg = simpleMaterials ? 16 : 24;
     this.ringGeoLow = new THREE.RingGeometry(1.2, 1.55, ringSeg);
     this.disposables.push(this.ringGeoLow);
     this.ringMatEpic = new THREE.MeshBasicMaterial({
-      color: PALETTE.sacredGold,
+      color: epicRingColor,
       transparent: true,
       opacity: 0.85,
       side: THREE.DoubleSide,
     });
     this.disposables.push(this.ringMatEpic);
     for (const t of [PowerUpType.Speed, PowerUpType.Spin, PowerUpType.Magnet, PowerUpType.Shield, PowerUpType.Blades]) {
-      const color = POWERUP_COLOR[t];
+      const color = powerUpColor[t];
       const m = new THREE.MeshBasicMaterial({
         color,
         transparent: true,

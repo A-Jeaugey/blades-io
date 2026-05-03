@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { CRATE_SCALE } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
-import { PALETTE } from "../scene/palette";
+import { getActiveTheme } from "../themes";
 
 interface CrateEntry {
   id: string;
@@ -27,13 +27,13 @@ export class CrateRenderer {
     this.wireframeEnabled = q.crateWireframe;
     const s = CRATE_SCALE;
     this.boxGeo = new THREE.BoxGeometry(s * 1.6, s * 1.6, s * 1.6);
-    // Reliquaire spirit-world : noyau violet profond avec pulse rose,
-    // arêtes en or sacré (suggère un objet précieux à briser).
+    // Couleurs de la caisse tirées du thème actif (primary/emissive/edge).
+    const t = getActiveTheme();
     this.innerMat = simpleMaterials
-      ? new THREE.MeshBasicMaterial({ color: PALETTE.shrinePrimary, transparent: true, opacity: 0.4 })
+      ? new THREE.MeshBasicMaterial({ color: t.palette.crate.primary, transparent: true, opacity: 0.4 })
       : new THREE.MeshPhongMaterial({
-          color: PALETTE.shrinePrimary,
-          emissive: PALETTE.shrineAccent,
+          color: t.palette.crate.primary,
+          emissive: t.palette.crate.emissive,
           emissiveIntensity: 0.85,
           shininess: 60,
           transparent: true,
@@ -43,7 +43,7 @@ export class CrateRenderer {
     if (this.wireframeEnabled) {
       this.wireGeo = new THREE.EdgesGeometry(this.boxGeo);
       this.wireMat = new THREE.LineBasicMaterial({
-        color: PALETTE.sacredGold,
+        color: t.palette.crate.edge,
         transparent: true,
         opacity: 0.9,
       });

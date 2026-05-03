@@ -8,7 +8,7 @@ import {
   tierVisualScale,
   bladeCountRotationMult,
 } from "@bladeio/shared";
-import { RARITY_COLOR, RARITY_GLOW_COMP } from "../scene/palette";
+import { getActiveTheme } from "../themes";
 
 // Géométrie d'épée : lame longue et fine en bipyramide losange (pointe
 // en +x, section losange au milieu pour un reflet en arête), garde
@@ -182,12 +182,13 @@ export class BladeRenderer {
 
   constructor(simpleMaterials = false) {
     const geo = createBladeGeometry();
+    const theme = getActiveTheme();
     const rarities: BladeRarity[] = [
       BladeRarity.Common, BladeRarity.Rare, BladeRarity.Epic, BladeRarity.Legendary,
     ];
     for (const r of rarities) {
       for (let t = 0; t < TIER_BUCKETS; t++) {
-        const baseColor = new THREE.Color(RARITY_COLOR[r]);
+        const baseColor = new THREE.Color(theme.palette.rarityColor[r]);
         const tintedColor = baseColor.clone().multiplyScalar(TIER_COLOR_MULT[t]);
         const tintedEmissive = baseColor.clone().multiplyScalar(TIER_COLOR_MULT[t]);
         const mat = simpleMaterials
@@ -195,20 +196,16 @@ export class BladeRenderer {
           : new THREE.MeshPhongMaterial({
               color: tintedColor,
               emissive: tintedEmissive,
-              // Compensation luminance × tier intensity : équilibre le bloom
-              // entre raretés (sinon les blanches dominent visuellement).
-              // Boost +15 % en plus pour pousser le glow spirit-world
-              // (les lames doivent lire comme des "fragments d'âme" lumineux,
-              // pas comme du métal poli).
-              emissiveIntensity: TIER_EMISSIVE[t] * RARITY_GLOW_COMP[r] * 1.15,
-              // Shininess basse (30 au lieu de 80) : highlight spéculaire
-              // plus large et doux → lecture "lumière intérieure" plutôt
-              // que "métal réfléchissant". Plus cohérent avec un objet
-              // spirituel qu'avec une épée d'acier.
-              shininess: 30,
-              specular: 0x4a3a6e, // tint mauve sur le specular pour
-              // unifier avec l'ambiance générale (au lieu du blanc défaut
-              // qui crée des reflets cyberpunk-froids).
+              // Compensation luminance × tier intensity × boost emissif du
+              // thème. Le boost permet aux thèmes "spirit" de pousser le
+              // glow (1.15) tandis que neon reste à 1.0 pour préserver
+              // les reflets net cyberpunk d'origine.
+              emissiveIntensity:
+                TIER_EMISSIVE[t] *
+                theme.palette.rarityGlowComp[r] *
+                theme.blades.emissiveBoost,
+              shininess: theme.blades.shininess,
+              specular: theme.blades.specularColor,
             });
         const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES_PER_BUCKET);
         mesh.count = 0;

@@ -1,12 +1,17 @@
 import * as Tone from "tone";
 import { BladeRarity } from "@bladeio/shared";
+import { getActiveTheme } from "../themes";
 
 // Musiques servies depuis client/public/ (synchronisées au build via le script
 // sync-music). Préfixé par BASE_URL pour survivre aux déploiements en
-// sous-chemin (ex: GitHub Pages).
+// sous-chemin (ex: GitHub Pages). Les noms de fichiers viennent du thème
+// actif — neon utilise lobby.mp3/battle.mp3, sanctuaire pointera sur
+// lobby-sanctuaire.mp3/battle-sanctuaire.mp3 (à fournir via le script
+// sync-music quand les Suno seront générées).
 const BASE = (import.meta as any).env?.BASE_URL ?? "/";
-const LOBBY_TRACK_URL = `${BASE}lobby.mp3`;
-const BATTLE_TRACK_URL = `${BASE}battle.mp3`;
+const themeMusic = getActiveTheme().music;
+const LOBBY_TRACK_URL = `${BASE}${themeMusic.lobby}`;
+const BATTLE_TRACK_URL = `${BASE}${themeMusic.battle}`;
 
 type MusicTrack = "lobby" | "battle";
 

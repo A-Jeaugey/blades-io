@@ -48,7 +48,7 @@ import { Minimap } from "./ui/Minimap";
 import { SettingsPanel } from "./ui/Settings";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
-import { PALETTE, POWERUP_COLOR, RARITY_COLOR } from "./scene/palette";
+import { applyThemeCss, getActiveTheme } from "./themes";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
@@ -90,6 +90,9 @@ class Game {
   private settings: SettingsPanel;
   private sound = new SoundManager();
   private conn: Connection;
+  // Thème actif — résolu une fois à l'init (le système ne supporte pas le
+  // hot-swap, l'utilisateur reload pour changer de thème depuis le lobby).
+  private readonly theme = getActiveTheme();
   private myId = "";
   private myName = "";
   private room: any = null;
@@ -333,7 +336,7 @@ class Game {
     });
 
     room.onMessage("bladeDestroyed", (msg: BladeDestroyedEvent) => {
-      this.particles.spawnSparks(msg.x, 0.9, msg.y, RARITY_COLOR[msg.rarity], 24, 7.5);
+      this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
       if (msg.ownerId === this.myId) this.camera.shake.add(0.18);
       this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
     });
@@ -341,20 +344,20 @@ class Game {
       if (msg.playerId === this.myId) {
         this.sound.pickup(msg.rarity);
         const view = this.players.get(msg.playerId);
-        if (view) this.particles.spawnSparks(view.renderX, 1.2, view.renderY, RARITY_COLOR[msg.rarity], 6, 2);
+        if (view) this.particles.spawnSparks(view.renderX, 1.2, view.renderY, this.theme.palette.rarityColor[msg.rarity], 6, 2);
       }
     });
     room.onMessage("crateHit", (msg: CrateHitEvent) => {
       this.crates.hit(msg.crateId, msg.hp);
-      this.particles.spawnSparks(msg.x, 1.0, msg.y, PALETTE.shrineAccent, 8, 4);
+      this.particles.spawnSparks(msg.x, 1.0, msg.y, this.theme.palette.fx.crateHitSpark, 8, 4);
     });
     room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => {
-      this.particles.spawnExplosion(msg.x, 1.0, msg.y, PALETTE.sacredGold, 28);
+      this.particles.spawnExplosion(msg.x, 1.0, msg.y, this.theme.palette.fx.crateDestroyExplosion, 28);
       this.sound.kill(this.audibleGain(msg.x, msg.y));
     });
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
       // Effet visuel coloré selon le type + son de pickup satisfaisant.
-      const color = POWERUP_COLOR[msg.type as PowerUpType] ?? PALETTE.playerLocalPrimary;
+      const color = this.theme.palette.powerUpColor[msg.type as PowerUpType] ?? this.theme.palette.fx.powerUpFallback;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 22);
       // Le son est plein volume si c'est moi qui ramasse, atténué sinon.
       const g = msg.playerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
@@ -369,7 +372,7 @@ class Game {
     });
     room.onMessage("playerKilled", (msg: PlayerKilledEvent) => {
       const victim = this.players.get(msg.victimId);
-      if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, PALETTE.dangerAccent, 40);
+      if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
       if (msg.killerId === this.myId) { this.camera.shake.add(0.5); this.sound.kill(); }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
     });
@@ -378,7 +381,7 @@ class Game {
       // pas confondre avec les drops (sparks couleur rareté).
       const count = 6 + msg.tier * 6;
       const speed = 4 + msg.tier * 2.5;
-      this.particles.spawnSparks(msg.x, 0.95, msg.y, PALETTE.shrinePrimary, count, speed);
+      this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
       const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
         : msg.tier === 1 ? BladeRarity.Rare
         : BladeRarity.Epic;
@@ -401,7 +404,7 @@ class Game {
     room.onMessage("bladeThrown", (msg: BladeThrownEvent) => {
       // VFX au moment du lancer : burst de sparks à la rareté de la lame +
       // son court (basé sur le synth pickup pour rester satisfaisant).
-      const color = RARITY_COLOR[msg.rarity];
+      const color = this.theme.palette.rarityColor[msg.rarity];
       this.particles.spawnSparks(msg.x, 1.0, msg.y, color, 14, 6);
       // Plein volume pour mon propre lancer, atténué sinon.
       const gain = msg.thrownBy === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
@@ -414,7 +417,7 @@ class Game {
     room.onMessage("projectileImpact", (msg: ProjectileImpactEvent) => {
       // Impact : sparks+son. Si c'est la dernière vie de la lame
       // (destroyed=true), explosion plus dense pour signifier la fin.
-      const color = RARITY_COLOR[msg.rarity];
+      const color = this.theme.palette.rarityColor[msg.rarity];
       const count = msg.destroyed ? 22 : 10;
       const speed = msg.destroyed ? 7 : 4;
       this.particles.spawnSparks(msg.x, 0.95, msg.y, color, count, speed);
@@ -423,7 +426,7 @@ class Game {
     room.onMessage("tierUp", (msg: TierUpEvent) => {
       // Tier-up VFX : ring d'étincelles autour du joueur + shake si local.
       // On utilise une explosion bien dense pour signaler le palier passé.
-      const color = msg.tier >= 2 ? PALETTE.sacredGold : PALETTE.shrineAccent;
+      const color = msg.tier >= 2 ? this.theme.palette.fx.tierUpHi : this.theme.palette.fx.tierUpLo;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 32 + msg.tier * 12);
       if (msg.playerId === this.myId) {
         const intensity = TIER_UP_SHAKE[Math.min(msg.tier, TIER_UP_SHAKE.length - 1)] ?? 0.3;
@@ -509,7 +512,7 @@ class Game {
     this.trailEmitAccum -= ticks * interval;
     this.room.state.blades.forEach((b: any) => {
       if (!b.isProjectile) return;
-      const color = RARITY_COLOR[b.rarity as BladeRarity] ?? PALETTE.playerLocalPrimary;
+      const color = this.theme.palette.rarityColor[b.rarity as BladeRarity] ?? this.theme.palette.fx.bladeFallback;
       this.particles.spawnSparks(b.x, 0.95, b.y, color, 2, 0.8);
     });
   }
@@ -739,10 +742,10 @@ class Game {
         );
       }
     };
-    updateFx("SPEED", POWERUP_COLOR[PowerUpType.Speed], me.speedUntil ?? 0);
-    updateFx("SPIN", POWERUP_COLOR[PowerUpType.Spin], me.spinUntil ?? 0);
-    updateFx("MAGNET", POWERUP_COLOR[PowerUpType.Magnet], me.magnetUntil ?? 0);
-    updateFx("SHIELD", POWERUP_COLOR[PowerUpType.Shield], me.shieldUntil ?? 0);
+    updateFx("SPEED", this.theme.palette.powerUpColor[PowerUpType.Speed], me.speedUntil ?? 0);
+    updateFx("SPIN", this.theme.palette.powerUpColor[PowerUpType.Spin], me.spinUntil ?? 0);
+    updateFx("MAGNET", this.theme.palette.powerUpColor[PowerUpType.Magnet], me.magnetUntil ?? 0);
+    updateFx("SHIELD", this.theme.palette.powerUpColor[PowerUpType.Shield], me.shieldUntil ?? 0);
 
     const now = performance.now();
     if (now - this.lastHudUpdate < 100) return;
@@ -938,6 +941,10 @@ class Game {
   }
 }
 
+// Applique les variables CSS du thème actif AVANT d'instancier le jeu :
+// les UIs créés ensuite (LoginScreen, Hud, etc.) prennent les bonnes
+// couleurs dès leur premier render.
+applyThemeCss();
 new Game();
 
 function powerUpTypeLabel(t: PowerUpType): string {

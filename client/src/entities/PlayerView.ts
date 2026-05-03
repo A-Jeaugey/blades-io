@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { QualityConfig } from "../quality";
-import { PALETTE } from "../scene/palette";
+import { getActiveTheme } from "../themes";
 
 export class PlayerView {
   root: THREE.Group;
@@ -40,13 +40,13 @@ export class PlayerView {
     const detail = q.playerDetail;
     this.hasTrail = q.playerTrail && isLocal;
 
-    // Palette spirit-world : crème lunaire + halo rose poudré pour le joueur
-    // local, crème rosée + halo violet pour les autres. Lecture instantanée
-    // (local plus chaud/clair, autres plus froids/profonds) sans casser
-    // l'unité chromatique du thème.
-    const primary = isLocal ? PALETTE.playerLocalPrimary : PALETTE.playerRemotePrimary;
-    const accent = isLocal ? PALETTE.playerLocalAccent : PALETTE.playerRemoteAccent;
-    const accentDim = isLocal ? PALETTE.playerLocalAccentDim : PALETTE.playerRemoteAccentDim;
+    // Palette joueur tirée du thème actif : local vs remote différenciés
+    // pour la lecture instantanée. Chaque thème définit ses propres teintes
+    // (cf. themes/Theme.ts → palette.playerLocal/playerRemote).
+    const t = getActiveTheme();
+    const primary = isLocal ? t.palette.playerLocal.primary : t.palette.playerRemote.primary;
+    const accent = isLocal ? t.palette.playerLocal.accent : t.palette.playerRemote.accent;
+    const accentDim = isLocal ? t.palette.playerLocal.accentDim : t.palette.playerRemote.accentDim;
 
     const mkMat = (color: number, emissive: number, intensity: number) =>
       simpleMaterials
@@ -127,7 +127,7 @@ export class PlayerView {
       const protSeg = detail === "rich" ? 36 : 20;
       const protGeo = new THREE.RingGeometry(1.0, 1.6, protSeg);
       const protMat = new THREE.MeshBasicMaterial({
-        color: PALETTE.playerLocalAccent,
+        color: t.palette.playerLocal.accent,
         transparent: true,
         opacity: 0.0,
         side: THREE.DoubleSide,

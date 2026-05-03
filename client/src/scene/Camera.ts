@@ -1,16 +1,19 @@
 import * as THREE from "three";
 import { ScreenShake } from "../fx/ScreenShake";
+import { getActiveTheme } from "../themes";
 
 export class CameraRig {
   private target = new THREE.Vector3();
-  // Offset (0, 19, 17) ≈ 48° d'inclinaison depuis l'horizontale. Plus
-  // plongeant que le 54° d'origine (était (0, 22, 16)) pour donner plus de
-  // présence aux décors verticaux (sanctuaires, reliques flottantes) tout
-  // en restant lisible pour un .io où la menace vient de toutes directions.
-  private cameraOffset = new THREE.Vector3(0, 19, 17);
+  private cameraOffset: THREE.Vector3;
   public shake = new ScreenShake();
 
-  constructor(private cam: THREE.PerspectiveCamera) {}
+  constructor(private cam: THREE.PerspectiveCamera) {
+    // Offset (et donc l'angle de plongée) défini par le thème actif. Permet
+    // à chaque ambiance d'avoir son point de vue (neon plus zoom-out, spirit
+    // un peu plus penché pour le décor vertical).
+    const t = getActiveTheme();
+    this.cameraOffset = new THREE.Vector3(t.cameraOffset.x, t.cameraOffset.y, t.cameraOffset.z);
+  }
 
   setTarget(x: number, y: number): void {
     this.target.set(x, 0, y);

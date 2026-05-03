@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { QualityConfig } from "../quality";
-import { PALETTE } from "./palette";
+import { getActiveTheme } from "../themes";
 
 export class SceneStack {
   renderer: THREE.WebGLRenderer;
@@ -34,46 +34,34 @@ export class SceneStack {
     this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // Clear color = nuit étoilée violette. Tout ce qui dépasse le sol
-    // (skybox virtuelle) baigne dans cette teinte.
-    this.renderer.setClearColor(new THREE.Color(PALETTE.nightDeep), 1);
+    const theme = getActiveTheme();
+    // Clear color + fog + lights tirés du thème actif. Tout est paramétrable
+    // par thème (cf. themes/Theme.ts).
+    this.renderer.setClearColor(new THREE.Color(theme.palette.clearColor), 1);
 
     this.scene = new THREE.Scene();
     const fogNear = 60 * q.fogDensity;
     const fogFar = 200 * q.fogDensity;
-    // Brouillard mauve mid : se confond avec la nuit profonde au loin pour
-    // un effet "le monde s'évapore" plutôt qu'un mur de fog visible.
-    this.scene.fog = new THREE.Fog(new THREE.Color(PALETTE.fogMid), fogNear, fogFar);
+    this.scene.fog = new THREE.Fog(new THREE.Color(theme.palette.fogColor), fogNear, fogFar);
 
     this.camera = new THREE.PerspectiveCamera(
       55,
       window.innerWidth / window.innerHeight,
       0.5,
-      // Far plane resserré au-delà du brouillard : tout ce qui dépasse est
-      // déjà invisible via le fog, donc pas la peine de le projeter.
       Math.max(220, fogFar + 40),
     );
-    // Caméra légèrement plus inclinée qu'avant : (0, 19, 17) ≈ 48° depuis
-    // l'horizontale, vs 54° avant. Suffisant pour donner du volume aux
-    // décors verticaux (sanctuaires, champignons, reliques flottantes) sans
-    // casser la lisibilité tactique d'un .io top-down.
-    this.camera.position.set(0, 19, 17);
+    // Position initiale = offset du thème (la CameraRig prendra le relais
+    // dès qu'elle aura une cible joueur).
+    this.camera.position.set(theme.cameraOffset.x, theme.cameraOffset.y, theme.cameraOffset.z);
     this.camera.lookAt(0, 0, 0);
 
-    // Ambient = clair de lune mauve doux. Donne la teinte chaude/froide
-    // unifiée à tous les matériaux PBR en lit (joueurs, décor).
-    const ambient = new THREE.AmbientLight(0xb4a4d8, 0.55);
+    const ambient = new THREE.AmbientLight(theme.lighting.ambient.color, theme.lighting.ambient.intensity);
     this.scene.add(ambient);
-    // Sur "simpleMaterials" (low/ultra), les directional lights sont inutiles
-    // (les matériaux n'utilisent pas de lighting) : on n'ajoute que l'ambient
-    // pour économiser des uniforms/shader.
     if (!q.simpleMaterials) {
-      // Key light : lune chaude (crème) plongeant depuis le haut.
-      const key = new THREE.DirectionalLight(PALETTE.playerLocalPrimary, 0.4);
+      const key = new THREE.DirectionalLight(theme.lighting.key.color, theme.lighting.key.intensity);
       key.position.set(20, 40, 20);
       this.scene.add(key);
-      // Rim light : violet-rose pour souligner les silhouettes côté opposé.
-      const rim = new THREE.DirectionalLight(PALETTE.shrineAccent, 0.3);
+      const rim = new THREE.DirectionalLight(theme.lighting.rim.color, theme.lighting.rim.intensity);
       rim.position.set(-30, 20, -20);
       this.scene.add(rim);
     }
