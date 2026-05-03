@@ -143,8 +143,8 @@ export const NEON_THEME: Theme = {
   },
 
   music: {
-    lobby: "lobby.mp3",
-    battle: "battle.mp3",
+    lobby: "lobby-neon.mp3",
+    battle: "battle-neon.mp3",
   },
 
   ground: {
