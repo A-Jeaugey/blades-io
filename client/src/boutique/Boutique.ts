@@ -69,8 +69,16 @@ export class Boutique {
     this.root.setAttribute("aria-hidden", "false");
     // Subscribe wallet pendant que la boutique est ouverte (sinon on
     // accumule des listeners et le solde se désaligne).
+    // Important : on re-render AUSSI les cartes à chaque update wallet,
+    // pas seulement le badge de solde — sans ça les boutons ACHETER
+    // restent figés sur "FONDS INSUFFISANTS" même après que le solde se
+    // charge depuis le serveur (le premier render se fait avec balance=0
+    // tant que /api/wallet n'a pas répondu).
     this.unsubWallet?.();
-    this.unsubWallet = wallet.subscribe(() => this.refreshBalance());
+    this.unsubWallet = wallet.subscribe(() => {
+      this.refreshBalance();
+      this.renderMaps();
+    });
     this.unsubOwned?.();
     this.unsubOwned = subscribeOwnership(() => {
       this.renderMaps();
