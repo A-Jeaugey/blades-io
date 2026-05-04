@@ -2,6 +2,29 @@ import { Client, Room } from "colyseus.js";
 
 export type RoomState = any;
 
+// Erreur jetée quand client.join() échoue parce qu'aucune room ne matche
+// le code fourni (cf. opts.mustExist). main.ts attrape ce type pour
+// afficher un message clair à l'user au lieu d'un retry réseau.
+export class RoomNotFoundError extends Error {
+  constructor(public readonly code: string) {
+    super(`No private room found with code "${code}"`);
+    this.name = "RoomNotFoundError";
+  }
+}
+
+// Heuristique : Colyseus retourne soit un MatchMakeError avec un code
+// précis, soit une erreur dont le message contient "no rooms found".
+// On capture les deux variantes pour rester robuste aux mises à jour
+// de la lib.
+function isNoRoomFoundError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const err = e as { code?: number; message?: string };
+  // MatchMakeError code 4212 = ERR_MATCHMAKE_INVALID_CRITERIA / no match.
+  if (err.code === 4212) return true;
+  const msg = (err.message ?? "").toLowerCase();
+  return msg.includes("no rooms found") || msg.includes("matchmake");
+}
+
 export class Connection {
   private client: Client;
   public room: Room<RoomState> | null = null;
@@ -12,8 +35,13 @@ export class Connection {
   }
 
   // opts.code : "" pour public, 5 chars pour private. Grâce au filterBy
-  // côté serveur, un joinOrCreate avec code = "ABC12" retrouve (ou crée)
-  // LA room privée avec ce code.
+  // côté serveur, joinOrCreate("arena", { code: "ABC12" }) retrouve LA
+  // room privée qui existe avec ce code, ou en crée une.
+  // opts.mustExist : si true, on utilise client.join() (failfast) au lieu
+  //   de joinOrCreate. Utilisé par le mode JOIN CODE — un user qui tape
+  //   un code ne doit PAS provoquer la création d'une nouvelle room s'il
+  //   se trompe de code (sinon il se retrouve seul dans une room neuve
+  //   en pensant avoir rejoint celle de quelqu'un d'autre).
   // opts.bots : override bots enabled (sinon default serveur : true en
   // public, false en privé).
   // opts.token : JWT Supabase. Si présent, la room appelle onAuth, valide
@@ -23,7 +51,13 @@ export class Connection {
   // ne sont pas trackés.
   async join(
     name: string,
-    opts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null } = {},
+    opts: {
+      code?: string;
+      bots?: boolean;
+      token?: string;
+      guestToken?: string | null;
+      mustExist?: boolean;
+    } = {},
   ): Promise<Room<RoomState>> {
     const maxAttempts = 3;
     let backoff = 500;
@@ -37,11 +71,24 @@ export class Connection {
     else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
     while (this.reconnectAttempts < maxAttempts) {
       try {
-        const room = await this.client.joinOrCreate<RoomState>("arena", joinOpts);
+        // mustExist=true (mode JOIN CODE) → client.join() qui throw si
+        // aucune room ne matche le filterBy. Sinon → joinOrCreate
+        // classique qui crée une room privée à la demande pour CREATE
+        // et matche la lobby publique pour le mode public.
+        const room = opts.mustExist
+          ? await this.client.join<RoomState>("arena", joinOpts)
+          : await this.client.joinOrCreate<RoomState>("arena", joinOpts);
         this.room = room;
         this.reconnectAttempts = 0;
         return room;
       } catch (e) {
+        // En mode JOIN CODE, on NE retry PAS sur "no room found" — c'est
+        // une erreur définitive (l'user a tapé un mauvais code), pas un
+        // hoquet réseau. Le retry ne ferait que masquer l'erreur réelle
+        // pendant 1.5s avant de finalement la propager.
+        if (opts.mustExist && isNoRoomFoundError(e)) {
+          throw new RoomNotFoundError(joinOpts.code);
+        }
         this.reconnectAttempts++;
         if (this.reconnectAttempts >= maxAttempts) throw e;
         await new Promise((r) => setTimeout(r, backoff));

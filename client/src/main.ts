@@ -27,7 +27,7 @@ import {
   tierClashShake,
 } from "@bladeio/shared";
 import { getStateCallbacks } from "colyseus.js";
-import { Connection, resolveServerEndpoint } from "./net/Connection";
+import { Connection, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
 import { SceneStack } from "./scene/Scene";
 import { createGround, createBoundaryWall } from "./scene/Ground";
 import { createDecor } from "./scene/Decor";
@@ -202,12 +202,17 @@ class Game {
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
     void this.sound.playBattleMusic();
     try {
-      const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null } = {};
+      const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null; mustExist?: boolean } = {};
       if (res.mode === "create") {
         joinOpts.code = res.code;
         joinOpts.bots = res.bots;
       } else if (res.mode === "join") {
         joinOpts.code = res.code;
+        // En JOIN CODE, on REFUSE la création de nouvelle room : si le code
+        // tapé n'existe pas, on l'apprend tout de suite (RoomNotFoundError)
+        // au lieu de spawn une room neuve où l'user serait seul en pensant
+        // avoir rejoint quelqu'un.
+        joinOpts.mustExist = true;
       }
       // Joueurs authentifiés → JWT passé au join, le serveur valide via
       // onAuth puis stocke userId sur le Player → score + wallet persistés.
@@ -222,6 +227,9 @@ class Game {
       this.room = await this.conn.join(res.name, joinOpts);
     } catch (e) {
       console.error("could not join", e);
+      if (e instanceof RoomNotFoundError) {
+        alert(`Aucune room avec le code "${e.code}" — vérifie le code ou demande à l'hôte d'en créer une.`);
+      }
       this.login.show();
       this.hud.hide();
       return;
