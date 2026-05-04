@@ -1535,30 +1535,57 @@ button:hover {
   text-shadow: 0 0 8px rgba(var(--accent-warm-rgb), .5);
 }
 .boutique-close {
-  width: 32px; height: 32px;
+  position: relative;
+  width: 36px; height: 36px;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--fg-muted);
+  background: rgba(0, 0, 0, .25);
   border-radius: 4px;
-  /* font-size 16 + line-height 1 = caractère ✕ centré pile dans le carré
-     32×32. Sans line-height: 1, les fonts modernes ajoutent du leading
-     vertical qui pousse le glyphe vers le haut. */
-  font-size: 16px;
-  line-height: 1;
-  font-family: inherit;
   padding: 0;
   cursor: pointer;
-  transition: all .2s;
-  /* Évite que le hover scale ou box-shadow déborde en bas et casse
-     l'alignement avec le wallet badge à gauche. */
   flex: 0 0 auto;
+  transition:
+    border-color .25s,
+    background .25s,
+    box-shadow .25s,
+    transform .25s cubic-bezier(.2, .7, .2, 1);
 }
+/* X dessiné en CSS pur via 2 pseudo-éléments — épaisseur, longueur et
+   centrage parfaitement contrôlés (au lieu de dépendre du glyphe ✕ Unicode
+   dont le rendu varie d'une font système à l'autre, et qui finit toujours
+   un peu de travers). */
+.boutique-close-x {
+  position: relative;
+  width: 14px; height: 14px;
+  display: block;
+}
+.boutique-close-x::before,
+.boutique-close-x::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 0; right: 0;
+  height: 2px;
+  background: var(--fg-muted);
+  border-radius: 2px;
+  transform-origin: center;
+  transition: background .25s;
+}
+.boutique-close-x::before { transform: translateY(-50%) rotate(45deg); }
+.boutique-close-x::after  { transform: translateY(-50%) rotate(-45deg); }
+
 .boutique-close:hover {
   border-color: var(--cyan);
-  color: var(--cyan);
-  background: rgba(var(--accent-cool-rgb), .08);
-  box-shadow: 0 0 12px rgba(var(--accent-cool-rgb), .3);
+  background: rgba(var(--accent-cool-rgb), .15);
+  box-shadow: 0 0 16px rgba(var(--accent-cool-rgb), .35);
+  transform: rotate(90deg); /* petite délice à l'hover */
+}
+.boutique-close:hover .boutique-close-x::before,
+.boutique-close:hover .boutique-close-x::after {
+  background: var(--cyan);
+  box-shadow: 0 0 4px rgba(var(--accent-cool-rgb), .6);
+}
+.boutique-close:active {
+  transform: rotate(90deg) scale(.92);
 }
 
 /* TABS */
