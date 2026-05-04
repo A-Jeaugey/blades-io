@@ -137,3 +137,61 @@ export async function claimGuestWallet(userId: string, guestId: string): Promise
     return { error: "claim_failed" };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boutique : achat atomique d'un item + lecture de l'inventaire.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface PurchaseResult {
+  ok: boolean;
+  error?: string;
+  new_balance?: number;
+}
+
+export async function purchaseItem(
+  userId: string,
+  itemId: string,
+  price: number,
+): Promise<PurchaseResult> {
+  const admin = getAdminClient();
+  if (!admin) return { ok: false, error: "supabase_not_configured" };
+  try {
+    const { data, error } = await admin.rpc("purchase_item", {
+      p_user_id: userId,
+      p_item_id: itemId,
+      p_price: Math.floor(price),
+    });
+    if (error) {
+      console.warn("[blade.io] purchase_item failed", error.message);
+      return { ok: false, error: "rpc_failed" };
+    }
+    const obj = (data ?? {}) as { ok?: boolean; error?: string; new_balance?: number };
+    return {
+      ok: !!obj.ok,
+      error: obj.error,
+      new_balance: obj.new_balance != null ? Number(obj.new_balance) : undefined,
+    };
+  } catch (e) {
+    console.warn("[blade.io] purchase_item threw", (e as Error).message);
+    return { ok: false, error: "purchase_failed" };
+  }
+}
+
+export async function getInventory(userId: string): Promise<string[]> {
+  const admin = getAdminClient();
+  if (!admin) return [];
+  try {
+    const { data, error } = await admin
+      .from("inventory")
+      .select("item_id")
+      .eq("user_id", userId);
+    if (error) {
+      console.warn("[blade.io] getInventory failed", error.message);
+      return [];
+    }
+    return (data ?? []).map((r) => String((r as { item_id: unknown }).item_id));
+  } catch (e) {
+    console.warn("[blade.io] getInventory threw", (e as Error).message);
+    return [];
+  }
+}

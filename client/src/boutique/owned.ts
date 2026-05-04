@@ -78,3 +78,28 @@ export function subscribeOwnership(cb: () => void): () => void {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
+
+// Synchronise l'inventaire serveur dans le set local. Appelé après login /
+// au boot quand le user est authed. Les items serveur sont mergés (pas
+// remplacés) pour ne pas écraser les thèmes auto-owned.
+//
+// Inversement : les items présents en local mais absents du serveur ne
+// sont PAS supprimés. Permet au user de garder ses achats en mode guest
+// jusqu'à ce qu'il se connecte (puis claim transfère le wallet, puis ses
+// nouveaux achats sont serveur). Acceptable pour V1.
+export function mergeServerInventory(itemIds: string[]): void {
+  let changed = false;
+  for (const id of itemIds) {
+    if (typeof id !== "string") continue;
+    if (!ownedSet.has(id)) {
+      ownedSet.add(id);
+      changed = true;
+    }
+  }
+  if (changed) {
+    persist();
+    for (const l of listeners) {
+      try { l(); } catch { /* noop */ }
+    }
+  }
+}

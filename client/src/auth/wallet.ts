@@ -35,6 +35,17 @@ class WalletService {
     }
   }
 
+  // Optimistic local debit + setState — utilisé si on veut refléter un
+  // changement de solde sans round-trip serveur. PAS la voie principale
+  // pour les achats : préférer purchase() qui passe par le serveur.
+  private applyBalance(newBalance: number): void {
+    if (this.current == null) return;
+    this.setState({
+      balance: Math.max(0, newBalance),
+      total_earned: this.current.total_earned,
+    });
+  }
+
   async refresh(): Promise<Wallet | null> {
     const token = auth.getAccessToken();
     if (!token) {
@@ -101,6 +112,51 @@ class WalletService {
       return result;
     } catch {
       return null;
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Boutique : achat atomique + lecture inventaire.
+  // ───────────────────────────────────────────────────────────────────────
+
+  async purchase(itemId: string, price: number): Promise<{ ok: boolean; error?: string; newBalance?: number }> {
+    const token = auth.getAccessToken();
+    if (!token) return { ok: false, error: "unauthorized" };
+    try {
+      const r = await fetch("/api/wallet/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ item_id: itemId, price }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; new_balance?: number };
+      const newBalance = j?.new_balance != null ? Number(j.new_balance) : undefined;
+      // Synchronise le solde local sur la nouvelle valeur retournée par le
+      // serveur (qu'il y ait succès ou erreur "already_owned/insufficient_funds"
+      // — toutes ces réponses incluent le solde authoritative).
+      if (newBalance != null) this.applyBalance(newBalance);
+      if (!r.ok || !j?.ok) {
+        return { ok: false, error: j?.error ?? "http_error", newBalance };
+      }
+      return { ok: true, newBalance };
+    } catch {
+      return { ok: false, error: "network_error" };
+    }
+  }
+
+  // Liste des item_id possédés côté serveur. [] si pas authed ou erreur.
+  async fetchInventory(): Promise<string[]> {
+    const token = auth.getAccessToken();
+    if (!token) return [];
+    try {
+      const r = await fetch("/api/wallet/inventory", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return [];
+      const j = (await r.json().catch(() => ({}))) as { items?: unknown };
+      if (!Array.isArray(j?.items)) return [];
+      return j.items.filter((x): x is string => typeof x === "string");
+    } catch {
+      return [];
     }
   }
 }

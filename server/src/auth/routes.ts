@@ -1,7 +1,14 @@
 import { Router, Request, Response } from "express";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
-import { claimGuestWallet, createGuestWallet, getGuestWalletBalance, getWallet } from "./wallet";
+import {
+  claimGuestWallet,
+  createGuestWallet,
+  getGuestWalletBalance,
+  getInventory,
+  getWallet,
+  purchaseItem,
+} from "./wallet";
 
 const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
 
@@ -194,6 +201,75 @@ export function buildAuthRouter(): Router {
       return;
     }
     res.json({ transferred: result.transferred, new_balance: result.new_balance });
+  });
+
+  // --------------------------------------------------------------------- //
+  // POST /api/wallet/purchase  { item_id, price }
+  // Achat atomique : vérifie le solde + débite + ajoute à l'inventaire,
+  // tout dans la même transaction Postgres (cf. RPC purchase_item).
+  //
+  // Returns :
+  //   200 { ok: true, new_balance }                              → succès
+  //   400 { error: 'insufficient_funds', new_balance }           → solde insuffisant
+  //   400 { error: 'already_owned', new_balance }                → idempotent (déjà dans inventaire)
+  //   400 { error: 'invalid_price' | 'invalid_item' | … }        → input refusé
+  //   401 { error: 'unauthorized' }                              → non authed
+  //   503 { error: 'auth_unavailable' }                          → Supabase off
+  //
+  // Note : le PRIX vient du client. Le serveur ne le vérifie PAS contre
+  // une table de prix officielle pour l'instant — un attaquant pourrait
+  // envoyer price=0 et acheter un thème gratuitement. Acceptable en V1
+  // (cosmétique non-gameplay), à durcir quand on aura une table items
+  // côté DB qui fait foi.
+  // --------------------------------------------------------------------- //
+  router.post("/wallet/purchase", async (req: Request, res: Response) => {
+    if (!isSupabaseConfigured()) {
+      res.status(503).json({ error: "auth_unavailable" });
+      return;
+    }
+    const user = await verifyAccessToken(bearerToken(req));
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const body = (req.body ?? {}) as { item_id?: unknown; price?: unknown };
+    const itemId = typeof body.item_id === "string" ? body.item_id : "";
+    const price = typeof body.price === "number" ? body.price : NaN;
+    if (!itemId || itemId.length > 64) {
+      res.status(400).json({ error: "invalid_item" });
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0 || price > 1_000_000) {
+      res.status(400).json({ error: "invalid_price" });
+      return;
+    }
+    const result = await purchaseItem(user.id, itemId, price);
+    if (!result.ok) {
+      res.status(400).json({
+        error: result.error ?? "purchase_failed",
+        new_balance: result.new_balance,
+      });
+      return;
+    }
+    res.json({ ok: true, new_balance: result.new_balance });
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/wallet/inventory
+  // Liste des items possédés par l'user authed.
+  // --------------------------------------------------------------------- //
+  router.get("/wallet/inventory", async (req: Request, res: Response) => {
+    if (!isSupabaseConfigured()) {
+      res.status(503).json({ error: "auth_unavailable" });
+      return;
+    }
+    const user = await verifyAccessToken(bearerToken(req));
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const items = await getInventory(user.id);
+    res.json({ items });
   });
 
   return router;

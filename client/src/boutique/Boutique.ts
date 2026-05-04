@@ -255,7 +255,7 @@ export class Boutique {
     }
   }
 
-  private buy(theme: Theme): void {
+  private async buy(theme: Theme): Promise<void> {
     const price = theme.price ?? 0;
     if (this.pendingPurchase.has(theme.id)) return;
     if (isOwned(theme.id)) return;
@@ -265,12 +265,40 @@ export class Boutique {
     this.pendingPurchase.add(theme.id);
     this.renderMaps();
 
-    // V1 : achat purement client-side. localStorage marque comme owned ;
-    // le wallet serveur n'est PAS débité (on n'a pas encore l'endpoint
-    // /api/wallet/purchase). Conséquence : pour l'instant tu peux acheter
-    // tous les thèmes sans dépenser de trophées. Quand le serveur aura le
-    // endpoint, on remplacera ce bloc par un fetch authed qui débite.
-    grantOwnership(theme.id);
+    // Achat serveur-authoritative : POST /api/wallet/purchase débite le
+    // wallet et insère dans inventory dans la même transaction Postgres.
+    // Le wallet local est mis à jour automatiquement via le setState
+    // déclenché côté wallet.purchase().
+    const result = await wallet.purchase(theme.id, price);
+
+    if (result.ok) {
+      grantOwnership(theme.id);
+    } else {
+      // Cas d'erreur : on synchronise quand même l'état local avec le
+      // serveur (already_owned → grant local pour réconcilier ; les
+      // autres erreurs → on affiche un message au user).
+      switch (result.error) {
+        case "already_owned":
+          // Le serveur dit déjà possédé : on aligne le local pour éviter
+          // que le bouton ACHETER reste affiché à tort.
+          grantOwnership(theme.id);
+          break;
+        case "insufficient_funds":
+          alert(
+            "Fonds insuffisants — ton solde a peut-être changé entre temps.",
+          );
+          break;
+        case "unauthorized":
+          alert("Connecte-toi pour acheter des thèmes.");
+          break;
+        case "no_wallet":
+          alert("Ton wallet n'est pas initialisé. Recharge la page et réessaie.");
+          break;
+        default:
+          alert(`Achat impossible : ${result.error ?? "erreur réseau"}`);
+      }
+    }
+
     this.pendingPurchase.delete(theme.id);
     this.renderMaps();
   }

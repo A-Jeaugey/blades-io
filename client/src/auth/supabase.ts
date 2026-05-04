@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient, Session } from "@supabase/supabase-js";
 import { wallet } from "./wallet";
+import { mergeServerInventory } from "../boutique/owned";
 
 // Public profile resolved from /api/auth/me (joined username, fresher than
 // the JWT user_metadata which can be stale after a username change).
@@ -64,6 +65,9 @@ class AuthService {
       // user vient de jouer en mode invité avant de se reconnecter.
       void wallet.claimGuestIfAny();
       void wallet.refresh();
+      // Sync l'inventaire boutique du serveur vers le set local — assure
+      // que les achats fait sur un autre device suivent le user.
+      void this.syncInventory();
     } else {
       this.setState({ status: "signed_out" });
     }
@@ -81,6 +85,7 @@ class AuthService {
         if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
           void wallet.claimGuestIfAny();
           void wallet.refresh();
+          void this.syncInventory();
         }
       } else {
         this.setState({ status: "signed_out" });
@@ -97,6 +102,18 @@ class AuthService {
   // /api/auth/me renvoie l'utilisateur joint avec le profile (username
   // actuel). On préfère ça à user.user_metadata qui peut désynchroniser
   // après un POST /api/profile.
+  // Récupère l'inventaire serveur et le merge dans le set local. Appelé
+  // après signin / au boot quand le user est authed. Best-effort : silent
+  // sur erreur réseau (le user reste avec son set local en attendant).
+  private async syncInventory(): Promise<void> {
+    try {
+      const items = await wallet.fetchInventory();
+      if (items.length > 0) mergeServerInventory(items);
+    } catch {
+      // noop — le user garde son set local
+    }
+  }
+
   private async fetchProfile(accessToken: string): Promise<Profile | null> {
     if (this.profileFetchInFlight) return this.profileFetchInFlight;
     this.profileFetchInFlight = (async () => {
