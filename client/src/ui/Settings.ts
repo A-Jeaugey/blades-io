@@ -1,5 +1,6 @@
 import { QualityPreset, detectPreset, savePresetChoice } from "../quality";
 import { getActiveTheme, listThemes, setActiveTheme } from "../themes";
+import { isOwned } from "../boutique/owned";
 
 export interface SettingsState {
   master: number;
@@ -74,15 +75,16 @@ export class SettingsPanel {
       });
     }
 
-    // Sélecteur de thème — populated depuis themes/index.ts. Un reload est
-    // nécessaire car les shaders, matériaux, lumières et CSS sont construits
-    // au boot selon le thème actif (cf. getActiveTheme appelé à l'init de
-    // chaque module de rendu).
+    // Sélecteur de thème — limité aux thèmes POSSÉDÉS (via boutique). Pour
+    // débloquer un thème non listé, l'user doit passer par la boutique.
+    // Un reload est nécessaire car les shaders/matériaux/lumières/CSS sont
+    // construits au boot.
     const themeSel = document.getElementById("theme-select") as HTMLSelectElement | null;
     if (themeSel) {
       themeSel.innerHTML = "";
       const activeId = getActiveTheme().id;
-      for (const t of listThemes()) {
+      const ownedThemes = listThemes().filter((t) => isOwned(t.id));
+      for (const t of ownedThemes) {
         const opt = document.createElement("option");
         opt.value = t.id;
         opt.textContent = t.displayName;

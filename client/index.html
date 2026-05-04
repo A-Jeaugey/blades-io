@@ -221,6 +221,10 @@
               <span class="bio2-cta-arrow">→</span>
               <span class="bio2-cta-bracket">]</span>
             </button>
+            <button id="open-boutique-btn" class="bio2-cta-secondary" type="button">
+              <span class="bio2-cta-secondary-icon">⌬</span>
+              <span class="bio2-cta-secondary-label">BOUTIQUE</span>
+            </button>
           </section>
 
           <div class="bio2-marquee">
@@ -231,6 +235,75 @@
           </div>
           <div class="login-footer"><span id="login-fps"></span></div>
         </main>
+      </div>
+
+      <!-- Boutique : modal plein écran, accessible depuis le main menu (login)
+           via le bouton BOUTIQUE et plus tard depuis Settings → Boutique. -->
+      <div id="boutique" class="boutique hidden" aria-hidden="true">
+        <div class="boutique-backdrop" data-close></div>
+        <div class="boutique-shell">
+          <header class="boutique-head">
+            <div class="boutique-head-left">
+              <span class="boutique-logo">BOUTIQUE</span>
+              <span class="boutique-sub" id="boutique-active-theme">— —</span>
+            </div>
+            <div class="boutique-head-right">
+              <div class="boutique-wallet">
+                <span class="boutique-wallet-icon">🏆</span>
+                <span class="boutique-wallet-val" id="boutique-balance">0</span>
+              </div>
+              <button class="boutique-close" id="boutique-close" data-close aria-label="Fermer">✕</button>
+            </div>
+          </header>
+
+          <nav class="boutique-tabs" role="tablist">
+            <button class="boutique-tab active" data-tab="maps" role="tab" aria-selected="true">
+              <span class="boutique-tab-label">MAPS</span>
+              <span class="boutique-tab-count" id="boutique-count-maps">0/0</span>
+            </button>
+            <button class="boutique-tab" data-tab="skins" role="tab" aria-selected="false">
+              <span class="boutique-tab-label">SKINS</span>
+              <span class="boutique-tab-soon">BIENTÔT</span>
+            </button>
+            <button class="boutique-tab" data-tab="blades" role="tab" aria-selected="false">
+              <span class="boutique-tab-label">ÉPÉES</span>
+              <span class="boutique-tab-soon">BIENTÔT</span>
+            </button>
+          </nav>
+
+          <main class="boutique-content">
+            <!-- MAPS : grille de cartes injectées par Boutique.ts -->
+            <section class="boutique-pane active" data-pane="maps">
+              <div class="boutique-grid" id="boutique-maps-grid"></div>
+            </section>
+
+            <!-- SKINS placeholder -->
+            <section class="boutique-pane" data-pane="skins">
+              <div class="boutique-coming">
+                <div class="boutique-coming-glyph">⚔︎</div>
+                <h2>Skins de Personnage</h2>
+                <p>Personnalise ton avatar : silhouette, couleurs, halo, trail.</p>
+                <p class="boutique-coming-eta">EN COURS DE DÉVELOPPEMENT</p>
+              </div>
+            </section>
+
+            <!-- BLADES placeholder -->
+            <section class="boutique-pane" data-pane="blades">
+              <div class="boutique-coming">
+                <div class="boutique-coming-glyph">✦</div>
+                <h2>Skins d'Épées</h2>
+                <p>Géométrie, glow, traînée — change l'identité de ton arsenal.</p>
+                <p class="boutique-coming-eta">EN COURS DE DÉVELOPPEMENT</p>
+              </div>
+            </section>
+          </main>
+
+          <footer class="boutique-foot">
+            <span class="boutique-foot-hint">
+              Gagne plus de trophées en jouant — kills et survie te rapportent à chaque match.
+            </span>
+          </footer>
+        </div>
       </div>
 
       <div id="death-screen" class="hidden">

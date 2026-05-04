@@ -219,6 +219,8 @@ function buildGlaceesUniforms(detail: "rich" | "simple" | "flat"): Record<string
 export const PROFONDEURS_GLACEES_THEME: Theme = {
   id: "profondeurs-glacees",
   displayName: "Profondeurs Glacées",
+  price: 500,
+  tagline: "Cathédrale gelée, aurores boréales, beauté dangereuse",
 
   palette: {
     clearColor: NIGHT_DEEP,

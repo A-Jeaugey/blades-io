@@ -112,9 +112,14 @@ export const TEMPLATE_THEME: Theme = {
   // ID stable utilisé en localStorage et dans le registre. Lowercase, court,
   // sans espaces. Doit être unique parmi tous les thèmes enregistrés.
   id: "template",
-  // Nom affiché à l'utilisateur dans le dropdown Settings et la future
-  // boutique. Garde-le court (s'affiche dans une <option>).
+  // Nom affiché à l'utilisateur dans le dropdown Settings et la boutique.
+  // Garde-le court (s'affiche dans une carte de boutique).
   displayName: "Thème vierge",
+  // Prix en trophées (0 = gratuit). Indicatif : 200 (entrée de gamme)
+  // → 350 (intermédiaire) → 500+ (premium / signature).
+  price: 0, // ← TODO : prix de ton thème
+  // Tagline courte (1 phrase max) affichée sous le nom dans la boutique.
+  tagline: "Description courte de ton thème", // ← TODO
 
   // ─── Palette monde + entités + FX ───
   palette: {

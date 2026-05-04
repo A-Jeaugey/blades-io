@@ -1443,3 +1443,431 @@ button:hover {
   opacity: 0.7;
   cursor: not-allowed;
 }
+
+/* =====================================================================
+   BOUTIQUE — modal full-screen pour cosmétiques.
+   Toutes les couleurs viennent des CSS vars du thème actif (--cyan, --pink,
+   --dark, etc. — cf. themes/index.ts → applyThemeCss). Donc le look de la
+   boutique change automatiquement selon le thème équipé.
+   ===================================================================== */
+
+.boutique {
+  position: fixed; inset: 0;
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+  color: var(--fg-bright);
+  animation: boutique-fade-in .25s ease-out;
+}
+.boutique.hidden { display: none; }
+
+@keyframes boutique-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Backdrop : floute le menu derrière + grille subtile pour rester
+   cohérent avec le bio2-screen. */
+.boutique-backdrop {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(var(--accent-cool-rgb), .10), transparent 55%),
+    radial-gradient(ellipse at 80% 90%, rgba(var(--accent-warm-rgb), .08), transparent 50%),
+    rgba(0, 0, 0, .72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+}
+
+.boutique-shell {
+  position: relative;
+  width: min(1100px, 92vw);
+  max-height: 88vh;
+  display: flex; flex-direction: column;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-cool-rgb), .04), transparent 40%),
+    var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  box-shadow:
+    0 0 80px rgba(var(--accent-cool-rgb), .15),
+    inset 0 0 40px rgba(var(--accent-cool-rgb), .04);
+  overflow: hidden;
+  animation: boutique-shell-in .3s cubic-bezier(.2, .8, .25, 1);
+}
+
+@keyframes boutique-shell-in {
+  from { opacity: 0; transform: translateY(20px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* HEADER */
+.boutique-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--panel-border);
+  background: linear-gradient(180deg, rgba(var(--accent-cool-rgb), .06), transparent);
+}
+.boutique-head-left { display: flex; align-items: baseline; gap: 14px; }
+.boutique-head-right { display: flex; align-items: center; gap: 14px; }
+.boutique-logo {
+  font-size: 22px; font-weight: 700; letter-spacing: 4px;
+  color: var(--fg-bright);
+  text-shadow: 0 0 14px rgba(var(--accent-cool-rgb), .5);
+}
+.boutique-sub {
+  font-size: 11px; letter-spacing: 2.5px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+.boutique-wallet {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .35);
+  font-variant-numeric: tabular-nums;
+}
+.boutique-wallet-icon { font-size: 14px; opacity: .9; }
+.boutique-wallet-val {
+  font-size: 16px; font-weight: 700;
+  color: var(--pink); /* warm accent → trophée */
+  text-shadow: 0 0 8px rgba(var(--accent-warm-rgb), .5);
+}
+.boutique-close {
+  width: 32px; height: 32px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--fg-muted);
+  border-radius: 4px;
+  font-size: 14px; cursor: pointer;
+  transition: all .2s;
+}
+.boutique-close:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(var(--accent-cool-rgb), .08);
+  box-shadow: 0 0 12px rgba(var(--accent-cool-rgb), .3);
+}
+
+/* TABS */
+.boutique-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--panel-border);
+  padding: 0 16px;
+  gap: 4px;
+  background: rgba(0, 0, 0, .25);
+}
+.boutique-tab {
+  position: relative;
+  padding: 14px 22px;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12px; font-weight: 600; letter-spacing: 2.5px;
+  cursor: pointer;
+  transition: color .2s;
+  display: flex; align-items: center; gap: 8px;
+}
+.boutique-tab:hover { color: var(--fg-bright); }
+.boutique-tab.active {
+  color: var(--cyan);
+}
+.boutique-tab.active::after {
+  content: "";
+  position: absolute; left: 16px; right: 16px; bottom: -1px;
+  height: 2px;
+  background: var(--cyan);
+  box-shadow: 0 0 10px rgba(var(--accent-cool-rgb), .8);
+}
+.boutique-tab-count {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(var(--accent-cool-rgb), .15);
+  color: var(--cyan);
+  letter-spacing: 1px;
+}
+.boutique-tab-soon {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(var(--accent-warm-rgb), .15);
+  color: var(--pink);
+  letter-spacing: 1.5px;
+  font-weight: 700;
+}
+
+/* CONTENT */
+.boutique-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--accent-cool-rgb), .4) transparent;
+}
+.boutique-content::-webkit-scrollbar { width: 8px; }
+.boutique-content::-webkit-scrollbar-track { background: transparent; }
+.boutique-content::-webkit-scrollbar-thumb {
+  background: rgba(var(--accent-cool-rgb), .3);
+  border-radius: 4px;
+}
+.boutique-pane {
+  display: none;
+  padding: 28px;
+  min-height: 360px;
+  animation: boutique-pane-in .3s ease-out;
+}
+.boutique-pane.active { display: block; }
+
+@keyframes boutique-pane-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* GRID DE CARTES */
+.boutique-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+/* CARD */
+.boutique-card {
+  display: flex; flex-direction: column;
+  background: rgba(0, 0, 0, .35);
+  border: 1px solid rgba(var(--accent-cool-rgb), .15);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: transform .25s cubic-bezier(.2, .8, .25, 1),
+              border-color .25s,
+              box-shadow .25s;
+}
+.boutique-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--accent-cool-rgb), .4);
+  box-shadow: 0 8px 24px rgba(var(--accent-cool-rgb), .15);
+}
+.boutique-card.equipped {
+  border-color: var(--cyan);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), .35);
+}
+.boutique-card.locked .boutique-card-preview {
+  filter: saturate(.6);
+}
+
+.boutique-card-preview {
+  position: relative;
+  height: 140px;
+  border-bottom: 1px solid rgba(var(--accent-cool-rgb), .15);
+  overflow: hidden;
+}
+.boutique-card-dots {
+  position: absolute; left: 14px; bottom: 14px;
+  display: flex; gap: 8px;
+}
+.boutique-card-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+}
+.boutique-card-state {
+  position: absolute; right: 12px; top: 12px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  background: rgba(0, 0, 0, .6);
+  backdrop-filter: blur(4px);
+  border: 1px solid transparent;
+}
+.boutique-card-state.state-equipped {
+  background: rgba(var(--accent-cool-rgb), .85);
+  color: var(--dark);
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(var(--accent-cool-rgb), .6);
+}
+.boutique-card-state.state-owned {
+  color: var(--cyan);
+  border-color: rgba(var(--accent-cool-rgb), .5);
+}
+.boutique-card-state.state-locked {
+  color: var(--fg-muted);
+  font-size: 14px; padding: 4px 8px;
+}
+
+.boutique-card-body {
+  flex: 1;
+  display: flex; flex-direction: column;
+  padding: 14px 16px 16px;
+  gap: 8px;
+}
+.boutique-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--fg-bright);
+}
+.boutique-card-tagline {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: .5px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  flex: 1;
+}
+.boutique-card-action {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 6px;
+  gap: 10px;
+}
+.boutique-card-price {
+  display: flex; align-items: center; gap: 4px;
+  color: var(--pink);
+  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(var(--accent-warm-rgb), .4);
+}
+.boutique-card-price-icon { font-size: 13px; }
+
+/* BUTTONS */
+.boutique-btn {
+  padding: 8px 18px;
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all .2s;
+  background: transparent;
+  flex: 0 0 auto;
+}
+.boutique-btn.primary {
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+}
+.boutique-btn.primary:hover {
+  background: var(--cyan);
+  color: var(--dark);
+  box-shadow: 0 0 18px rgba(var(--accent-cool-rgb), .55);
+}
+.boutique-btn.buy {
+  border: 1px solid var(--pink);
+  color: var(--pink);
+}
+.boutique-btn.buy:hover:not(:disabled) {
+  background: var(--pink);
+  color: var(--dark);
+  box-shadow: 0 0 18px rgba(var(--accent-warm-rgb), .55);
+}
+.boutique-btn.equipped {
+  border: 1px dashed var(--cyan);
+  color: var(--cyan);
+  background: rgba(var(--accent-cool-rgb), .12);
+  cursor: default;
+}
+.boutique-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+  border-color: var(--fg-muted);
+  color: var(--fg-muted);
+}
+.boutique-btn:disabled:hover { background: transparent; box-shadow: none; }
+
+/* COMING SOON pane (Skins / Épées) */
+.boutique-coming {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 60px 30px;
+  min-height: 320px;
+  gap: 12px;
+}
+.boutique-coming-glyph {
+  font-size: 64px;
+  color: var(--cyan);
+  text-shadow: 0 0 30px rgba(var(--accent-cool-rgb), .6);
+  margin-bottom: 8px;
+  animation: boutique-glyph-float 4s ease-in-out infinite;
+}
+@keyframes boutique-glyph-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.boutique-coming h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--fg-bright);
+}
+.boutique-coming p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-muted);
+  max-width: 480px;
+  line-height: 1.5;
+}
+.boutique-coming-eta {
+  margin-top: 16px !important;
+  padding: 6px 14px;
+  border: 1px solid var(--pink);
+  border-radius: 3px;
+  color: var(--pink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  background: rgba(var(--accent-warm-rgb), .08);
+}
+
+/* FOOTER */
+.boutique-foot {
+  padding: 12px 24px;
+  border-top: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, .35);
+}
+.boutique-foot-hint {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--fg-muted);
+}
+
+/* OPEN BOUTIQUE BUTTON (login screen secondary CTA) */
+.bio2-cta-secondary {
+  margin-top: 10px;
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid rgba(var(--accent-cool-rgb), .35);
+  border-radius: 3px;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 3px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.bio2-cta-secondary:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(var(--accent-cool-rgb), .06);
+  box-shadow: 0 0 14px rgba(var(--accent-cool-rgb), .25);
+}
+.bio2-cta-secondary-icon {
+  font-size: 14px;
+  opacity: .9;
+}
+
+@media (max-width: 720px) {
+  .boutique-grid { grid-template-columns: 1fr; }
+  .boutique-shell { width: 96vw; max-height: 92vh; }
+  .boutique-pane { padding: 18px; }
+  .boutique-head { padding: 12px 16px; }
+  .boutique-tab { padding: 12px 14px; font-size: 11px; }
+}

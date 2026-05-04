@@ -139,6 +139,12 @@ export interface ThemeUiPalette {
 export interface Theme {
   id: string;
   displayName: string;
+  // Prix en trophées dans la boutique. 0 = gratuit (auto-owned).
+  // Optionnel : si absent, traité comme gratuit (legacy / themes système).
+  price?: number;
+  // Description courte affichée sous le nom dans la boutique.
+  // Optionnel : fallback générique si absent.
+  tagline?: string;
   palette: ThemePalette;
   lighting: ThemeLighting;
   blades: ThemeBladeStyle;

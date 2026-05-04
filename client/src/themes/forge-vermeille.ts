@@ -171,6 +171,8 @@ function buildForgeUniforms(detail: "rich" | "simple" | "flat"): Record<string, 
 export const FORGE_VERMEILLE_THEME: Theme = {
   id: "forge-vermeille",
   displayName: "Forge Vermeille",
+  price: 350,
+  tagline: "Volcan ardent, fissures de lave, agression dorée",
 
   palette: {
     clearColor: COAL_DEEP,

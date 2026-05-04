@@ -49,6 +49,7 @@ import { SettingsPanel } from "./ui/Settings";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
+import { Boutique } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
@@ -945,6 +946,9 @@ class Game {
 // les UIs créés ensuite (LoginScreen, Hud, etc.) prennent les bonnes
 // couleurs dès leur premier render.
 applyThemeCss();
+// Boutique instanciée tôt pour brancher le bouton "BOUTIQUE" du login
+// screen + écouter Échap. Reste cachée tant que l'user ne l'ouvre pas.
+new Boutique();
 new Game();
 
 function powerUpTypeLabel(t: PowerUpType): string {
