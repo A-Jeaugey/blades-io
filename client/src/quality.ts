@@ -289,14 +289,24 @@ export function detectPreset(): QualityPreset {
     return "medium";
   }
 
-  // GPU dédiés connus.
+  // GPU AMD : on distingue iGPU (intégré aux APU Ryzen) et dGPU (cartes
+  // Radeon RX). Avant : tout "radeon" finissait en high — faux pour les
+  // Radeon 780M/880M/890M des Ryzen AI 7000/8000/9000+ qui sont de bons
+  // iGPU mais pas un niveau dGPU. Identifie le dGPU au pattern "RX <nb>".
+  const isAmdDiscrete = /\brx\s*\d/.test(gpu);
+  const isAmdIntegrated = !isAmdDiscrete && /\bamd\b|\bradeon\b|\bvega\b/.test(gpu);
+  // GPU NVIDIA : pas d'iGPU NVIDIA en pratique (tous dédiés). Traités en
+  // bloc côté dédié.
   const hasNvidia = /nvidia|geforce|gtx|rtx|quadro/.test(gpu);
-  const hasAmd = /amd|radeon|rx |vega/.test(gpu);
-  if (hasNvidia || hasAmd) {
+  if (hasNvidia || isAmdDiscrete) {
     if (mem !== undefined && mem <= 3) return "medium";
     if (cores >= 6) return "high";
     return "medium";
   }
+  // iGPU AMD moderne (Radeon Graphics, Vega Mobile, Radeon 7xxM/8xxM/9xxM) :
+  // bon pour medium mais pas pour high. Le high (avec MSAA + bloom + pixel
+  // ratio 2x) tank une iGPU même quand le CPU autour est un Ryzen 9.
+  if (isAmdIntegrated) return "medium";
 
   // Sans info GPU et CPU faible → low. Sans info GPU mais CPU costaud →
   // medium (pari raisonnable).
