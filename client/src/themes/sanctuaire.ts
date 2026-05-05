@@ -64,54 +64,58 @@ const FRAG_RICH_SANCT = /* glsl */ `
   void main() {
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 60.0, r);
-    vec2 drift = vec2(uTime * 0.025, uTime * 0.018);
+    // Drift global ralenti (×0.5 vs précédent) — quand le joueur bouge,
+    // la motion de parallax doit DOMINER vs la motion intrinsèque du sol.
+    // Sinon le sol "swim" sous nous (deux sources de mouvement qui se
+    // contrarient).
+    vec2 drift = vec2(uTime * 0.012, uTime * 0.009);
 
     // ─── 1. Brume de fond (FBM smooth, large échelle) ───
-    // Garde le gradient mauve organique pour la profondeur. C'est
-    // l'élément qui donne le "monde des esprits", on ne touche pas.
     float mistDeep = fbm(vWorld * 0.012 - drift * 0.6);
 
-    // ─── 2. Bandes quantifiées (cell-shading) ───
-    // Au lieu d'un dégradé continu, on quantifie le bruit en 5 niveaux
-    // discrets → bandes de couleur avec des transitions FRANCHES. Donne
-    // l'aspect "stylisé peinture" plutôt que "blur uniforme".
+    // ─── 2. Bandes "soft-quantifiées" ───
+    // Avant : floor(noise * 5) / 5 donnait des arêtes 1-pixel dures qui
+    // rampent visiblement quand le joueur se déplace (chaque pixel
+    // traverse les seuils → "scrolling lines" perçus comme sol qui bouge).
+    // Maintenant : smoothstep entre niveaux → transitions de ~5 pixels
+    // de large, perceptibles comme bandes mais sans aliasing crawl.
     float bandsRaw = fbm(vWorld * 0.025 + drift);
-    float bands = floor(bandsRaw * 5.0) / 5.0;
+    float scaled = bandsRaw * 5.0;
+    float bandFloor = floor(scaled);
+    float bandFract = fract(scaled);
+    float bands = (bandFloor + smoothstep(0.7, 1.0, bandFract)) / 5.0;
 
-    // ─── 3. Edge contours entre bandes ───
-    // Détecte les frontières entre deux niveaux de bands → fines lignes
-    // lumineuses qui soulignent la silhouette de chaque "couche" de
-    // brume. Look topo map / hand-painted.
-    float bandFract = fract(bandsRaw * 5.0);
-    float bandEdge = 1.0 - smoothstep(0.0, 0.06, abs(bandFract - 0.0));
-    bandEdge += 1.0 - smoothstep(0.0, 0.06, abs(bandFract - 1.0));
-    bandEdge = clamp(bandEdge * 0.8, 0.0, 1.0);
+    // ─── 3. Edge contours (renforcés vs précédent) ───
+    // Bandes moins contrastées → on compense en boostant les contours pour
+    // garder le look "topo map / hand-painted" sans le "color blocks moving".
+    float bandEdge = 1.0 - smoothstep(0.0, 0.08, abs(bandFract - 1.0));
+    bandEdge = clamp(bandEdge, 0.0, 1.0);
 
-    // ─── 4. Dust motes (haute fréquence, points discrets) ───
-    // Avant : un seul wispField smoothstep → grosses taches floues. Maintenant
-    // un bruit haute fréquence threshold serré → multitude de petits points
-    // brillants comme des lucioles ou de la poussière magique. Sharp edges,
-    // ne baveent pas avec le bloom.
-    vec2 motePos = vWorld * 0.45 + drift * 6.0;
+    // ─── 4. Dust motes (drift très ralenti) ───
+    // Avant : drift * 6.0 → motes glissent vite en world-space, perçues
+    // comme "sable qui coule" quand on bouge. Maintenant drift * 1.0 →
+    // motes quasi-fixes en world, ne concurrencent plus la parallax du
+    // joueur.
+    vec2 motePos = vWorld * 0.45 + drift * 1.0;
     float moteField = vnoise(motePos);
     float motesScint = 0.7 + 0.3 * sin(uTime * 1.2 + moteField * 12.0);
     float motes = smoothstep(0.84, 0.88, moteField) * motesScint;
 
-    // ─── 5. Cercles rituels (déjà discrets) ───
+    // ─── 5. Cercles rituels ───
     float rings = 0.5 + 0.5 * sin(r * 0.18 - uTime * 0.4);
     rings = pow(rings, 8.0) * 0.12;
 
-    // Composition finale.
+    // Composition : bandes plus discrètes (0.55→0.32), edges plus marqués
+    // (0.18→0.32). L'œil voit la structure via les contours fins, pas via
+    // des grands blocs colorés qui bougent.
     vec3 col = uBase;
-    col = mix(col, uMid, mistDeep * 0.7);                  // brume profonde
-    col = mix(col, uMid * 1.45, bands * 0.55);             // bandes quantifiées
-    col += uHighlight * bandEdge * 0.18;                   // contours fins
-    col += uHighlight * motes * 0.85;                      // dust motes
-    col += uSacred * rings;                                // cercles rituels
+    col = mix(col, uMid, mistDeep * 0.7);
+    col = mix(col, uMid * 1.35, bands * 0.32);
+    col += uHighlight * bandEdge * 0.32;
+    col += uHighlight * motes * 0.85;
+    col += uSacred * rings;
 
     col *= edgeFade;
-    // Dithering anti-banding (sur les gradients restants — la brume profonde
-    // et l'edgeFade sont encore continus).
     float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
     col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
