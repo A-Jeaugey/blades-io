@@ -91,4 +91,9 @@ export class Player extends Schema {
   // qu'il vient de gagner. Capé à RECENT_LOSS_BUFFER_CAP pour éviter
   // l'accumulation sur les longs combats.
   recentLosses: Array<{ rarity: number; ts: number }> = [];
+  // Timestamps (ms) des messages chat récents, sliding window pour le
+  // rate limit. La logique : à chaque chat reçu on prune les entries
+  // < (now - CHAT_RATE_LIMIT_WINDOW_MS), si le tableau a déjà
+  // CHAT_RATE_LIMIT_COUNT entrées le message est rejeté silencieusement.
+  chatTimestamps: number[] = [];
 }

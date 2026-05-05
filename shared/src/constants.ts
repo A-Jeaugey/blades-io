@@ -397,6 +397,20 @@ export const SCORE_SURVIVAL_INTERVAL = 10; // secondes
 export const SCORE_CRATE = 3;
 export const SCORE_POWERUP = 2;
 
+// --- Chat ---
+// Longueur max d'un message — coupe au-delà côté serveur. 200 est
+// largement assez pour une réplique courte sans permettre du spam de
+// pavés qui inonderaient le panneau.
+export const CHAT_MESSAGE_MAX_LENGTH = 200;
+// Rate limit : N messages par fenêtre de WINDOW_MS par joueur. Protège
+// contre le spam (un user/bot ne peut pas crever le débit en envoyant
+// 100 msg/s). Au-delà, le serveur rejette silencieusement.
+export const CHAT_RATE_LIMIT_COUNT = 4;
+export const CHAT_RATE_LIMIT_WINDOW_MS = 5000;
+// Plafond de messages côté client. Au-delà, on drop les plus anciens
+// (FIFO). Évite que la log grossisse indéfiniment en mémoire / DOM.
+export const CHAT_LOG_CAP = 50;
+
 // --- Divers ---
 export const NAME_MIN_LENGTH = 3;
 export const NAME_MAX_LENGTH = 16;

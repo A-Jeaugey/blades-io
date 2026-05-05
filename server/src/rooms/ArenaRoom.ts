@@ -32,6 +32,11 @@ import {
   InputMessage,
   SetNameMessage,
   RespawnMessage,
+  ChatMessage,
+  ChatEvent,
+  CHAT_MESSAGE_MAX_LENGTH,
+  CHAT_RATE_LIMIT_COUNT,
+  CHAT_RATE_LIMIT_WINDOW_MS,
   resolveDecorCollision,
   tierFromBladeCount,
 } from "@bladeio/shared";
@@ -147,7 +152,40 @@ export class ArenaRoom extends Room<ArenaState> {
       if (p) p.name = sanitizeName(msg?.name ?? "");
     });
     this.onMessage<RespawnMessage>("respawn", (client, msg) => this.handleRespawn(client, msg));
+    this.onMessage<ChatMessage>("chat", (client, msg) => this.handleChat(client, msg));
     this.onMessage("ping", (client) => client.send("pong", { t: Date.now() }));
+  }
+
+  // Validation + rate limit + broadcast d'un message chat.
+  // Tout est silencieusement rejeté en cas de violation (pas de réponse
+  // d'erreur au sender) — évite de signaler aux spammers que leur
+  // payload a été détecté.
+  private handleChat(client: Client, msg: ChatMessage): void {
+    const p = this.state.players.get(client.sessionId);
+    if (!p || !p.alive) return;
+    const raw = (msg?.text ?? "").toString();
+    // Trim + collapse whitespace (newlines / tabs deviennent espaces, pas
+    // de pavé multiligne dans un overlay 1-line).
+    const cleaned = raw.replace(/\s+/g, " ").trim();
+    if (cleaned.length === 0) return;
+    const text = cleaned.length > CHAT_MESSAGE_MAX_LENGTH
+      ? cleaned.slice(0, CHAT_MESSAGE_MAX_LENGTH)
+      : cleaned;
+
+    // Sliding-window rate limit. Prune les vieilles entries puis check.
+    const now = Date.now();
+    const cutoff = now - CHAT_RATE_LIMIT_WINDOW_MS;
+    p.chatTimestamps = p.chatTimestamps.filter((ts) => ts > cutoff);
+    if (p.chatTimestamps.length >= CHAT_RATE_LIMIT_COUNT) return;
+    p.chatTimestamps.push(now);
+
+    const event: ChatEvent = {
+      playerId: p.id,
+      playerName: p.name,
+      text,
+      ts: now,
+    };
+    this.broadcast("chat", event);
   }
 
   // Hook officiel Colyseus : exécuté AVANT onJoin. Si on rejette ici, le

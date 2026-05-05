@@ -15,6 +15,28 @@
       <canvas id="game"></canvas>
 
       <div id="hud" class="hidden">
+        <!-- Chat overlay : bas-gauche, fade auto. Initialement caché (pas de
+             messages → rien à montrer). Devient visible au premier message
+             reçu / au focus de l'input. -->
+        <div id="chat" class="chat hidden" aria-live="polite">
+          <div id="chat-log" class="chat-log"></div>
+          <div id="chat-input-row" class="chat-input-row hidden">
+            <span class="chat-prompt">›</span>
+            <input
+              id="chat-input"
+              class="chat-input"
+              type="text"
+              maxlength="200"
+              placeholder="Tapez votre message…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span class="chat-cnt" id="chat-cnt">0/200</span>
+          </div>
+          <div id="chat-hint" class="chat-hint">
+            <kbd>Entrée</kbd> pour discuter
+          </div>
+        </div>
         <div id="top-right">
           <canvas id="minimap" width="170" height="170"></canvas>
           <div id="leaderboard"></div>

@@ -106,12 +106,34 @@ export interface ProjectileImpactEvent {
   destroyed: boolean;
 }
 
+// Client → Server : message envoyé quand l'user tape dans le chat.
+// Le serveur valide la longueur, applique le rate limit, et rebroadcaste
+// un ChatEvent à toute la room (avec sender info enrichi).
+export interface ChatMessage {
+  text: string;
+}
+
+// Server → Clients : message broadcasté à toute la room après qu'un joueur
+// a envoyé un ChatMessage validé. Inclut pseudo + ID + timestamp pour
+// l'affichage côté client (pas besoin de re-lookup).
+export interface ChatEvent {
+  playerId: string;
+  playerName: string;
+  text: string;
+  ts: number;
+  // True si c'est un message système (ex : "X a rejoint la room"). Pas
+  // utilisé côté serveur pour l'instant, l'option est ouverte pour de
+  // futures notifs.
+  system?: boolean;
+}
+
 
 
 export type RoomMessageType =
   | "input"
   | "respawn"
   | "setName"
+  | "chat"
   | "bladeDestroyed"
   | "playerKilled"
   | "pickup"

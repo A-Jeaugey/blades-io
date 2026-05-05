@@ -10,6 +10,7 @@ import {
   PLAYER_BODY_RADIUS,
   PLAYER_SPEED,
   TIER_UP_SHAKE,
+  ChatEvent,
   TierUpEvent,
   WALL_KILL_THICKNESS,
   BladeDestroyedEvent,
@@ -46,6 +47,7 @@ import { DeathScreen } from "./ui/DeathScreen";
 import { Leaderboard } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
 import { SettingsPanel } from "./ui/Settings";
+import { ChatPanel } from "./ui/ChatPanel";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
@@ -95,6 +97,7 @@ class Game {
   private leaderboard: Leaderboard;
   private minimap: Minimap;
   private settings: SettingsPanel;
+  private chat!: ChatPanel;
   private sound = new SoundManager();
   private conn: Connection;
   // Thème actif — résolu une fois à l'init (le système ne supporte pas le
@@ -163,6 +166,13 @@ class Game {
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
     this.settings = new SettingsPanel();
+    this.chat = new ChatPanel();
+    this.chat.setSendCallback((text) => {
+      // L'envoi traverse Colyseus comme tous les autres messages. Le
+      // serveur valide longueur + rate limit, puis rebroadcaste un
+      // ChatEvent à toute la room.
+      try { this.room?.send("chat", { text }); } catch { /* noop */ }
+    });
     this.login = new LoginScreen((res) => this.start(res));
     this.death = new DeathScreen(() => this.respawn(), () => this.returnToMenu());
     this.input = new InputManager(
@@ -204,6 +214,7 @@ class Game {
     this.myName = res.name;
     this.login.hide();
     this.hud.show();
+    this.chat.show();
     this.settings.setInGame(true);
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
     void this.sound.playBattleMusic();
@@ -238,9 +249,11 @@ class Game {
       }
       this.login.show();
       this.hud.hide();
+      this.chat.hide();
       return;
     }
     this.myId = this.room.sessionId;
+    this.chat.setLocalPlayerId(this.myId);
     // Si on a un code (create ou join), on met à jour l'URL pour que le lien
     // soit partageable.
     if (res.mode === "create" || res.mode === "join") {
@@ -449,6 +462,9 @@ class Game {
         this.sound.pickup(msg.tier >= 2 ? BladeRarity.Legendary : BladeRarity.Epic);
       }
     });
+    room.onMessage("chat", (msg: ChatEvent) => {
+      this.chat.onChatEvent(msg);
+    });
     room.onLeave((code: number) => {
       // Ignorer cet événement s'il provient d'une ancienne room (ex: on a 
       // cliqué sur "Back to menu" puis "Enter" très vite, et le onLeave de
@@ -611,6 +627,7 @@ class Game {
     this.hud.hide();
     this.hud.setRoomCode("");
     this.hud.clearEffects();
+    this.chat.hide();
     this.effectDurations.clear();
     this.settings.setInGame(false);
     // Détache d'abord les listeners (élimine les callbacks fantômes), puis

@@ -63,7 +63,23 @@ export class InputManager {
     });
   }
 
+  // Quand un champ texte (chat, rename, code rejoint…) est focused, on
+  // ignore les inputs gameplay. Sinon les frappes ZQSD/WASD/space pendant
+  // qu'on tape se propagent au mouvement → le perso part dans tous les
+  // sens et écrit dans le chat en même temps. document.activeElement
+  // est suffisant (pas besoin d'injecter un callback ChatPanel).
+  private isTypingInTextField(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return true;
+    return (el as HTMLElement).isContentEditable === true;
+  }
+
   getInput(): FrameInput {
+    if (this.isTypingInTextField()) {
+      return { dx: 0, dy: 0, boost: false, throwPressed: false };
+    }
     // Le throw est universel : Espace clavier, clic droit souris, ou bouton
     // THROW touch. On combine les 3 sources pour qu'aucun appui ne soit
     // perdu selon le mode actif.
@@ -94,6 +110,9 @@ export class InputManager {
   // à 30 Hz). Sans ça, l'appui Espace est consommé par la prédiction et
   // jamais transmis au serveur.
   peekDirBoost(): { dx: number; dy: number; boost: boolean } {
+    if (this.isTypingInTextField()) {
+      return { dx: 0, dy: 0, boost: false };
+    }
     if (this.isTouch) {
       const d = this.touch.getDir();
       return { dx: d.x, dy: d.y, boost: this.touch.boost };

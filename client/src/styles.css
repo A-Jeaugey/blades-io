@@ -1909,3 +1909,148 @@ button:hover {
   .boutique-head { padding: 12px 16px; }
   .boutique-tab { padding: 12px 14px; font-size: 11px; }
 }
+
+/* =====================================================================
+   CHAT — overlay bas-gauche pendant le match.
+   Tous les accents tirent des CSS vars (--cyan, --pink, etc.) → restyle
+   automatiquement avec le thème actif.
+   ===================================================================== */
+
+.chat {
+  position: fixed;
+  left: 16px; bottom: 16px;
+  width: min(380px, 38vw);
+  z-index: 8;
+  font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+  color: var(--fg-bright);
+  pointer-events: none; /* le log laisse cliquer à travers (combat) */
+  opacity: .35;
+  transition: opacity .35s ease;
+}
+.chat.hidden { display: none; }
+/* Mode "actif" = activé soit par focus de l'input, soit par message
+   récent (ChatPanel ajoute/retire .active sur fade timer). */
+.chat.active { opacity: 1; }
+
+.chat-log {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--accent-cool-rgb), .4) transparent;
+}
+.chat-log::-webkit-scrollbar { width: 4px; }
+.chat-log::-webkit-scrollbar-track { background: transparent; }
+.chat-log::-webkit-scrollbar-thumb {
+  background: rgba(var(--accent-cool-rgb), .3);
+  border-radius: 2px;
+}
+
+.chat-row {
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 4px 10px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-left: 2px solid rgba(var(--accent-cool-rgb), .4);
+  word-wrap: break-word;
+  /* Animation discrète d'entrée — slide depuis la gauche. */
+  animation: chat-row-in .25s ease-out;
+}
+@keyframes chat-row-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+.chat-row-self {
+  border-left-color: var(--pink);
+  background: rgba(var(--accent-warm-rgb), .15);
+}
+.chat-row-system {
+  font-style: italic;
+  color: var(--fg-muted);
+  border-left-color: var(--purple);
+}
+.chat-name {
+  color: var(--cyan);
+  font-weight: 700;
+  margin-right: 2px;
+}
+.chat-row-self .chat-name { color: var(--pink); }
+.chat-text {
+  color: var(--fg-bright);
+}
+
+.chat-input-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, .75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--cyan);
+  border-radius: 3px;
+  box-shadow: 0 0 14px rgba(var(--accent-cool-rgb), .3);
+  pointer-events: auto;
+}
+.chat-input-row.hidden { display: none; }
+.chat-prompt {
+  color: var(--cyan);
+  font-weight: 700;
+  font-size: 16px;
+}
+.chat-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--fg-bright);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: .3px;
+  caret-color: var(--cyan);
+}
+.chat-input::placeholder {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+.chat-cnt {
+  font-size: 10px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.chat-hint {
+  margin-top: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  letter-spacing: 1px;
+  text-align: left;
+  pointer-events: none;
+}
+.chat-hint.hidden { display: none; }
+.chat-hint kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(var(--accent-cool-rgb), .15);
+  border: 1px solid rgba(var(--accent-cool-rgb), .35);
+  border-radius: 3px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 1px;
+  margin-right: 4px;
+}
+
+@media (max-width: 720px) {
+  .chat { width: 70vw; left: 8px; bottom: 100px; }
+  .chat-log { max-height: 120px; }
+  .chat-row { font-size: 12px; }
+}
