@@ -67,33 +67,58 @@ const FRAG_RICH_FORGE = /* glsl */ `
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 60.0, r);
 
-    // Drift très lent — la lave bouge à peine, on n'est pas dans la brume.
-    vec2 drift = vec2(uTime * 0.012, uTime * 0.008);
+    // Drift très lent — la lave bouge à peine + parallax du joueur doit
+    // dominer. Drift × 0.5 vs version précédente.
+    vec2 drift = vec2(uTime * 0.006, uTime * 0.004);
 
-    // Fissures de lave : bandes étroites où le FBM passe par 0.5. L'effet
-    // "smoothstep up - smoothstep down" donne un pic narrow centré sur 0.5
-    // → fissures lumineuses qui se ramifient comme des éclairs gelés.
+    // ─── 1. Stone strates (cell-shaded bands de pierre charbon) ───
+    // Au lieu d'un sol uniforme, on stratifie la pierre en 4 niveaux de
+    // luminosité → rendu peint stylisé. Soft-quantize pour éviter le
+    // crawl d'arêtes dures à 1 pixel.
+    float stoneRaw = fbm(vWorld * 0.018);
+    float stoneScaled = stoneRaw * 4.0;
+    float stoneFloor = floor(stoneScaled);
+    float stoneFract = fract(stoneScaled);
+    float stoneBands = (stoneFloor + smoothstep(0.7, 1.0, stoneFract)) / 4.0;
+
+    // Edge contours entre strates : fines lignes orange sombre qui
+    // soulignent les "couches" géologiques.
+    float stoneEdge = 1.0 - smoothstep(0.0, 0.08, abs(stoneFract - 1.0));
+    stoneEdge = clamp(stoneEdge, 0.0, 1.0);
+
+    // ─── 2. Fissures de lave (déjà sharp — on garde) ───
+    // L'effet "smoothstep up - smoothstep down" donne un pic narrow
+    // centré sur 0.5 → fissures lumineuses qui se ramifient comme des
+    // éclairs gelés. Naturellement à arête nette, pas besoin de toucher.
     float crackBase = fbm(vWorld * 0.05 + drift);
     float crackBand = smoothstep(0.43, 0.50, crackBase) - smoothstep(0.50, 0.57, crackBase);
     crackBand *= 1.6;
 
-    // Mares de magma : où le FBM est élevé, glow stable + pulse subtil.
+    // ─── 3. Mares de magma (stylisées) ───
+    // Avant : smoothstep continue → flaques qui glissent visiblement.
+    // Maintenant : seuil dur (step) + halo soft autour → flaques
+    // distinctes qui ressemblent à de vraies coulées de magma figées.
     float poolField = fbm(vWorld * 0.022 - drift * 0.6);
-    float pool = smoothstep(0.62, 0.85, poolField) * (0.85 + 0.15 * sin(uTime * 0.4 + r * 0.06));
+    float poolCore = smoothstep(0.65, 0.72, poolField);
+    float poolHalo = smoothstep(0.55, 0.65, poolField) * 0.4;
+    float pool = (poolCore + poolHalo) * (0.85 + 0.15 * sin(uTime * 0.4 + r * 0.06));
 
-    // Braises : taches lumineuses fines qui pulsent rapidement, donnent
-    // l'impression que la pierre respire.
-    float emberField = fbm(vWorld * 0.11 + vec2(uTime * 0.06, -uTime * 0.04));
-    float embers = smoothstep(0.72, 0.92, emberField) * (0.5 + 0.5 * sin(uTime * 1.8 + r * 0.2));
+    // ─── 4. Braises (haute fréquence, drift × 1 au lieu de × 6) ───
+    // Avant : drift × 6 sur le emberField → braises glissaient en
+    // world-space au rythme du player → "sand under foot" effet. Maintenant
+    // drift × 1 → quasi-statiques, pulsent juste en luminosité.
+    vec2 emberPos = vWorld * 0.11 + drift * 1.0;
+    float emberField = fbm(emberPos);
+    float embers = smoothstep(0.78, 0.86, emberField) * (0.5 + 0.5 * sin(uTime * 1.8 + r * 0.2));
 
     vec3 col = uBase;
-    col += uPool * pool * 0.7;
-    col += uCrack * crackBand;
-    col += uEmber * embers * 0.85;
+    col = mix(col, uBase * 1.6, stoneBands * 0.35);          // strates
+    col += uCrack * stoneEdge * 0.20;                         // contours strates (lava-tint)
+    col += uPool * pool * 0.7;                                // mares
+    col += uCrack * crackBand;                                // fissures
+    col += uEmber * embers * 0.85;                            // braises
     col *= edgeFade;
 
-    // Dithering anti-banding (cf. CLAUDE.md, obligatoire sur les thèmes
-    // avec gradients étendus).
     float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
     col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);

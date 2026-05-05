@@ -93,29 +93,48 @@ const FRAG_RICH_GLACEES = /* glsl */ `
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 60.0, r);
 
-    // Tessellation cristalline. Échelle 0.18 → cellules de ~5.5 unités
-    // monde (assez grand pour être lisible vue plongée, assez petit pour
-    // remplir l'écran).
+    // ─── 1. Tessellation Voronoï (déjà à arêtes dures, on garde) ───
+    // Échelle 0.18 → cellules de ~5.5 unités monde (assez grand pour
+    // être lisible vue plongée, assez petit pour remplir l'écran).
     vec2 v = voronoi(vWorld * 0.18);
     float edgeStrength = 1.0 - smoothstep(0.0, 0.08, v.y - v.x);
 
-    // Variation interne aux cellules — bruit doux pour casser l'aspect
-    // "couleur unie" entre deux arêtes.
-    float interior = fbm(vWorld * 0.04);
+    // ─── 2. Variation interne SOFT-QUANTIFIÉE en 3 niveaux ───
+    // Avant : interior FBM continu → cellules avec dégradé smooth (mush
+    // au centre des cellules). Maintenant : 3 niveaux de luminosité
+    // avec smoothstep entre eux → "facets" plates dans chaque cellule
+    // → look glace fracturée.
+    float interiorRaw = fbm(vWorld * 0.04);
+    float intScaled = interiorRaw * 3.0;
+    float intFloor = floor(intScaled);
+    float intFract = fract(intScaled);
+    float interiorBands = (intFloor + smoothstep(0.7, 1.0, intFract)) / 3.0;
 
-    // Aurore boréale : bande FBM qui dérive horizontalement très lentement.
-    // Smoothstep "double-edged" → pic centré sur 0.55, chute douce des deux
-    // côtés → ondes lumineuses qui semblent serpenter. Pulse sinusoïdal
-    // global pour la respiration.
-    vec2 auroraDrift = vec2(uTime * 0.025, uTime * 0.045);
+    // ─── 3. Frost crystals (poussières scintillantes) ───
+    // Petits points brillants haute fréquence à travers le sol — comme
+    // des cristaux de glace qui captent la lumière. Drift × 0 (statiques
+    // en world) → ne concurrencent pas la parallax du joueur.
+    vec2 crystalPos = vWorld * 0.55;
+    float crystalField = vnoise(crystalPos);
+    float crystalScint = 0.6 + 0.4 * sin(uTime * 1.5 + crystalField * 18.0);
+    float crystals = smoothstep(0.86, 0.90, crystalField) * crystalScint;
+
+    // ─── 4. Aurores (drift × 0.4 — beaucoup plus lent) ───
+    // Avant : drift 0.025/0.045 → aurore glissait visiblement quand le
+    // joueur bouge (deux mouvements en compétition). Maintenant
+    // 0.010/0.018 → drift quasi-imperceptible, parallax du joueur
+    // domine. Atmosphère préservée car l'aurore pulse aussi en
+    // intensité.
+    vec2 auroraDrift = vec2(uTime * 0.010, uTime * 0.018);
     float a1 = fbm(vWorld * 0.018 + auroraDrift);
     float auroraBand = smoothstep(0.40, 0.55, a1) * (1.0 - smoothstep(0.55, 0.72, a1));
     auroraBand *= 0.7 + 0.3 * sin(uTime * 0.5);
 
     vec3 col = uBase;
-    col = mix(col, uMid, interior * 0.45);
-    col += uCrystal * edgeStrength * 0.95;
-    col += uAurora * auroraBand * 0.55;
+    col = mix(col, uMid, interiorBands * 0.55);              // facets glace
+    col += uCrystal * edgeStrength * 0.95;                    // arêtes Voronoï
+    col += uCrystal * crystals * 0.9;                         // cristaux scintillants
+    col += uAurora * auroraBand * 0.55;                       // aurores
     col *= edgeFade;
 
     // Dithering anti-banding sur les gradients aurore.

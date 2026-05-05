@@ -300,7 +300,11 @@ export const POWERUP_BLADES_COUNT: Record<BladeRarity, number> = {
 // Spawn : plusieurs power-ups toujours sur la map, bien visibles (pilier
 // lumineux côté client). Density suffisante pour que le joueur en croise
 // un en 20-30 s de jeu.
-export const POWERUP_HITBOX = 1.4;            // rayon de ramassage (généreux)
+// HITBOX 2.8 (vs 1.4 avant) : passer "à proximité" d'un power-up suffit
+// maintenant à le ramasser sans avoir à viser pile son centre. Plus
+// gameplay-friendly à 60 joueurs où on bouge vite et où rater un
+// power-up ramassé par l'ennemi à 0.3u près était frustrant.
+export const POWERUP_HITBOX = 2.8;            // rayon de ramassage (très généreux)
 export const POWERUP_SCALE = 1.3;             // taille visuelle (octaèdre)
 export const POWERUP_SPAWN_INTERVAL = 2.0;    // s
 export const POWERUP_MAX_TOTAL = 12;
