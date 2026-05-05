@@ -76,40 +76,30 @@ export interface QualityConfig {
 const PRESETS: Record<QualityPreset, QualityConfig> = {
   high: {
     preset: "high",
-    // 2.0 = on exploite pleinement les écrans Retina/4K — DPR système
-    // jusqu'à 2x. Avec resScale 1.0, c'est l'équivalent rendering full
-    // native. Désactive le syndrome "everything is mushy" sur écran HiDPI.
-    pixelRatio: 2.0,
+    // 1.5 (et pas 2.0) : à 2.0 sur 4K, chaque imperfection sub-pixel
+    // saute aux yeux et le rendu lit comme "clinique". 1.5 garde la
+    // netteté sans révéler chaque défaut. dynamicResolution remonte à
+    // 1.0 effectif si fps tient, baisse vers 0.75 sinon.
+    pixelRatio: 1.5,
     resScale: 1.0,
     antialias: true,
     postFx: true,
     bloomEnabled: true,
-    // Bloom plus discret : strength 0.5 (vs 0.9), radius 0.35 (vs 0.7
-    // hardcoded avant), threshold 0.85 (vs 0.65). Conséquence : seuls les
-    // vrais highlights émissifs bloom, et leur halo reste serré au lieu
-    // de baver sur tous les edges. Identité "néon glow" préservée mais
-    // sans wash.
-    bloomStrength: 0.5,
-    // bloomResScale 0.5 (et pas 0.75) : avec threshold 0.85 + radius 0.35,
-    // les halos sont déjà petits et précis, donc 0.5 ne se voit plus comme
-    // blocky. ~3x moins cher que 0.75 sur les passes bloom.
+    // Bloom intermediaire : strength 0.65 (entre 0.9 wash et 0.5 cru),
+    // mais avec radius 0.35 + threshold 0.85 → les halos restent serrés.
+    // L'image garde la chaleur émissive sans baver sur les edges.
+    bloomStrength: 0.65,
     bloomResScale: 0.5,
     bloomThreshold: 0.85,
     bloomRadius: 0.35,
-    // MSAA 2x : Three.js l'expose via WebGLRenderTarget({ samples }) sur le
-    // composer. Donne un vrai anti-aliasing hardware sur les arêtes des
-    // géométries. 2x au lieu de 4x : 4x plus cher pour un gain marginal vs
-    // 2x, et le coût ne peut pas être downscale dynamiquement (contrairement
-    // à resScale). 2x est safe sur GPU de génération 1060+, et le système
-    // auto-downgrade vers medium si même 2x est trop pour la machine.
     samples: 2,
-    // Chroma + film grain : DÉSACTIVÉS par défaut en high. Ces deux
-    // effets ajoutent volontairement du blur RGB et du bruit, ce qui
-    // lit comme "low qualité" sur les écrans modernes. L'utilisateur
-    // peut les rallumer individuellement plus tard si besoin (champ
-    // Settings dédié).
-    chroma: false,
-    filmGrain: false,
+    // Chroma + filmGrain RÉACTIVÉS mais à très faible intensité. Sans
+    // eux, l'image lit comme un viewport DCC (rendu CGI brut). Ces deux
+    // effets ajoutent une "matière" filmique qui masque la sterilité du
+    // rendu temps réel et lisse la perception du mouvement à haut fps.
+    // Valeurs précises tunées dans PostFX.ts (chroma 0.0006, grain 0.025).
+    chroma: true,
+    filmGrain: true,
     vignette: true,
     groundDetail: "rich",
     fogDensity: 1,

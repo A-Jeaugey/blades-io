@@ -180,6 +180,12 @@ export class PlayerView {
       this.renderX = this.targetX;
       this.renderY = this.targetY;
     } else {
+      // Lerp linéaire : vélocité constante dans un segment, discontinue à
+      // chaque transition de snapshot. Sur écran 240+Hz les kinks sont
+      // visibles ("pas fluide" malgré 480fps). Le vrai fix demanderait
+      // de stocker 3+ snapshots et faire Catmull-Rom (continuité de
+      // vélocité). Smoothstep n'est pas la solution : il met la vélocité
+      // à 0 aux extrémités → micro stop-and-go pire que les kinks.
       const alpha = Math.max(0, Math.min(1, (renderTime - this.prevTime) / span));
       this.renderX = this.prevX + (this.targetX - this.prevX) * alpha;
       this.renderY = this.prevY + (this.targetY - this.prevY) * alpha;
