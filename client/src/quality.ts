@@ -90,14 +90,19 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     // de baver sur tous les edges. Identité "néon glow" préservée mais
     // sans wash.
     bloomStrength: 0.5,
-    bloomResScale: 0.75,
+    // bloomResScale 0.5 (et pas 0.75) : avec threshold 0.85 + radius 0.35,
+    // les halos sont déjà petits et précis, donc 0.5 ne se voit plus comme
+    // blocky. ~3x moins cher que 0.75 sur les passes bloom.
+    bloomResScale: 0.5,
     bloomThreshold: 0.85,
     bloomRadius: 0.35,
-    // MSAA 4x : Three.js l'expose via WebGLRenderTarget({ samples: 4 })
-    // sur le composer. Donne une vraie anti-aliasing hardware sur les
-    // arêtes des géométries (cônes, cubes, capsules). Coût négligeable
-    // sur GPU dédié.
-    samples: 4,
+    // MSAA 2x : Three.js l'expose via WebGLRenderTarget({ samples }) sur le
+    // composer. Donne un vrai anti-aliasing hardware sur les arêtes des
+    // géométries. 2x au lieu de 4x : 4x plus cher pour un gain marginal vs
+    // 2x, et le coût ne peut pas être downscale dynamiquement (contrairement
+    // à resScale). 2x est safe sur GPU de génération 1060+, et le système
+    // auto-downgrade vers medium si même 2x est trop pour la machine.
+    samples: 2,
     // Chroma + film grain : DÉSACTIVÉS par défaut en high. Ces deux
     // effets ajoutent volontairement du blur RGB et du bruit, ce qui
     // lit comme "low qualité" sur les écrans modernes. L'utilisateur
