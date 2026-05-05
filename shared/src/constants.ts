@@ -6,10 +6,16 @@ export const MAP_RADIUS = 250;
 export const WALL_KILL_THICKNESS = 2; // épaisseur de la zone fatale au bord
 
 // --- Tick / réseau ---
-export const SERVER_TICKRATE = 20; // Hz
+// 60Hz tick : 16.7ms entre chaque update serveur, vs 50ms à 20Hz. Sur
+// changement de direction / arrêt-reprise / spam de sprint, l'input
+// se propage 3× plus vite à la simulation → plus de saccade perçue.
+// Coût serveur : ~3× la conso CPU vs 20Hz (toujours < 5% sur 1 core
+// moderne). Bandwidth : ~3× aussi (~120 KB/s par client en peak).
+// Acceptable sur serveur dédié, marginal sur cloud à 60 joueurs.
+export const SERVER_TICKRATE = 60; // Hz
 export const SERVER_DT = 1 / SERVER_TICKRATE;
-export const CLIENT_INPUT_RATE = 30; // Hz
-export const MAX_INPUT_RATE = 40; // rejets au-delà
+export const CLIENT_INPUT_RATE = 60; // Hz (matche le tickrate)
+export const MAX_INPUT_RATE = 80; // rejets au-delà
 export const MAX_INPUT_VIOLATIONS = 3;
 
 // --- Joueur ---

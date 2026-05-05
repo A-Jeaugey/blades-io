@@ -54,7 +54,13 @@ import { auth } from "./auth/supabase";
 import { ensureGuestToken, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
 
-const RENDER_DELAY = 150;
+// Buffer d'interpolation : on rend la simu serveur avec ce délai pour
+// que les snapshots à interpoler soient déjà en mémoire (sinon
+// extrapolation, plus jittery sur jitter réseau). 80ms = ~5 ticks à
+// 60Hz, suffisant pour absorber 30-50ms de jitter normal sans bourrer
+// le buffer. Avant : 150ms, sentait le lag à chaque direction change
+// (le perso continue d'avancer "dans le passé" 150ms après l'input).
+const RENDER_DELAY = 80;
 
 class Game {
   private canvas: HTMLCanvasElement;
