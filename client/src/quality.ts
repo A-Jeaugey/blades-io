@@ -17,6 +17,16 @@ export interface QualityConfig {
   bloomEnabled: boolean;
   bloomStrength: number;
   bloomResScale: number;
+  // Threshold UnrealBloom : pixels au-dessus de cette luminance bloomeront.
+  // 0.85 = seuls les vrais highlights → image nette. 0.65 = tout glow → wash.
+  bloomThreshold: number;
+  // Radius du bloom : taille du halo autour des bright pixels. 0.35 = serré,
+  // 0.7 = très diffus. Petit + threshold haut = bloom subtil et précis.
+  bloomRadius: number;
+  // Samples MSAA pour le RT du composer (0 = off, 4 = standard, 8 = max).
+  // Activable seulement quand postFx = true (sinon on rend en direct, l'AA
+  // par defaut du WebGLRenderer suffit).
+  samples: number;
   chroma: boolean;
   filmGrain: boolean;
   vignette: boolean;
@@ -66,15 +76,35 @@ export interface QualityConfig {
 const PRESETS: Record<QualityPreset, QualityConfig> = {
   high: {
     preset: "high",
-    pixelRatio: 1.5,
+    // 2.0 = on exploite pleinement les écrans Retina/4K — DPR système
+    // jusqu'à 2x. Avec resScale 1.0, c'est l'équivalent rendering full
+    // native. Désactive le syndrome "everything is mushy" sur écran HiDPI.
+    pixelRatio: 2.0,
     resScale: 1.0,
     antialias: true,
     postFx: true,
     bloomEnabled: true,
-    bloomStrength: 0.9,
-    bloomResScale: 0.5,
-    chroma: true,
-    filmGrain: true,
+    // Bloom plus discret : strength 0.5 (vs 0.9), radius 0.35 (vs 0.7
+    // hardcoded avant), threshold 0.85 (vs 0.65). Conséquence : seuls les
+    // vrais highlights émissifs bloom, et leur halo reste serré au lieu
+    // de baver sur tous les edges. Identité "néon glow" préservée mais
+    // sans wash.
+    bloomStrength: 0.5,
+    bloomResScale: 0.75,
+    bloomThreshold: 0.85,
+    bloomRadius: 0.35,
+    // MSAA 4x : Three.js l'expose via WebGLRenderTarget({ samples: 4 })
+    // sur le composer. Donne une vraie anti-aliasing hardware sur les
+    // arêtes des géométries (cônes, cubes, capsules). Coût négligeable
+    // sur GPU dédié.
+    samples: 4,
+    // Chroma + film grain : DÉSACTIVÉS par défaut en high. Ces deux
+    // effets ajoutent volontairement du blur RGB et du bruit, ce qui
+    // lit comme "low qualité" sur les écrans modernes. L'utilisateur
+    // peut les rallumer individuellement plus tard si besoin (champ
+    // Settings dédié).
+    chroma: false,
+    filmGrain: false,
     vignette: true,
     groundDetail: "rich",
     fogDensity: 1,
@@ -96,11 +126,14 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     preset: "medium",
     pixelRatio: 1.0,
     resScale: 1.0,
-    antialias: false,
+    antialias: true,
     postFx: true,
     bloomEnabled: true,
-    bloomStrength: 0.6,
-    bloomResScale: 0.3,
+    bloomStrength: 0.5,
+    bloomResScale: 0.5,
+    bloomThreshold: 0.85,
+    bloomRadius: 0.35,
+    samples: 0, // pas de MSAA en medium pour économiser le coût GPU
     chroma: false,
     filmGrain: false,
     vignette: true,
@@ -133,6 +166,9 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     bloomEnabled: false,
     bloomStrength: 0,
     bloomResScale: 0.25,
+    bloomThreshold: 0.85,
+    bloomRadius: 0.35,
+    samples: 0,
     chroma: false,
     filmGrain: false,
     vignette: false,
@@ -163,6 +199,9 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     bloomEnabled: false,
     bloomStrength: 0,
     bloomResScale: 0.2,
+    bloomThreshold: 0.85,
+    bloomRadius: 0.35,
+    samples: 0,
     chroma: false,
     filmGrain: false,
     vignette: false,

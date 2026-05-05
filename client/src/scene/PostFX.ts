@@ -10,8 +10,12 @@ import { QualityConfig } from "../quality";
 const VignetteShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
-    offset: { value: 1.05 },
-    darkness: { value: 1.1 },
+    // Vignette plus légère : darkness 1.1 → 0.65 (moins d'assombrissement
+    // global), offset 1.05 → 1.15 (vignette plus dans les coins, pas dans
+    // les 2/3 de l'écran). Évite l'effet "tunnel" qui mangeait les détails
+    // en périphérie.
+    offset: { value: 1.15 },
+    darkness: { value: 0.65 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -34,7 +38,11 @@ const VignetteShader = {
 const ChromaShader = {
   uniforms: {
     tDiffuse: { value: null as THREE.Texture | null },
-    amount: { value: 0.002 },
+    // Aberration chromatique RÉDUITE (0.002 → 0.0008). À 0.002 c'était
+    // visible sur tous les edges et ça blurrait les détails fins ; à
+    // 0.0008 c'est juste un soupçon de RGB shift en bordure, l'écran
+    // reste net.
+    amount: { value: 0.0008 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -81,8 +89,19 @@ export class PostFX {
       return;
     }
 
-    this.composer = new EffectComposer(renderer);
-    this.composer.setSize(window.innerWidth, window.innerHeight);
+    // Render target avec MSAA si demandé. Sans MSAA, EffectComposer rend
+    // dans un FBO sans anti-aliasing, et les arêtes des géométries finissent
+    // crénelées même quand antialias:true sur le WebGLRenderer (parce que
+    // l'AA du WebGLRenderer s'applique au framebuffer de présentation, pas
+    // aux RT intermédiaires). Avec samples > 0, on a un vrai MSAA hardware.
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const rt = new THREE.WebGLRenderTarget(w, h, {
+      samples: q.samples > 0 ? q.samples : 0,
+      type: THREE.HalfFloatType, // évite le banding sur les gradients bloom
+    });
+    this.composer = new EffectComposer(renderer, rt);
+    this.composer.setSize(w, h);
     const renderPass = new RenderPass(scene, camera);
     this.composer.addPass(renderPass);
 
@@ -93,8 +112,8 @@ export class PostFX {
           window.innerHeight * q.bloomResScale,
         ),
         q.bloomStrength,
-        0.7,
-        0.65,
+        q.bloomRadius,
+        q.bloomThreshold,
       );
       this.composer.addPass(this.bloom);
     }
@@ -107,7 +126,9 @@ export class PostFX {
       this.composer.addPass(this.vignette);
     }
     if (q.filmGrain) {
-      this.film = new FilmPass(0.08, false);
+      // Film grain réduit (0.08 → 0.035) : à pleine intensité ça lit comme
+      // "compression VHS" sur écrans modernes au lieu de "grain cinéma".
+      this.film = new FilmPass(0.035, false);
       this.composer.addPass(this.film);
     }
     this.composer.addPass(new OutputPass());
