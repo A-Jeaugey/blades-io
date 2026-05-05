@@ -65,19 +65,53 @@ const FRAG_RICH_SANCT = /* glsl */ `
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 60.0, r);
     vec2 drift = vec2(uTime * 0.025, uTime * 0.018);
-    float mist = fbm(vWorld * 0.025 + drift);
+
+    // ─── 1. Brume de fond (FBM smooth, large échelle) ───
+    // Garde le gradient mauve organique pour la profondeur. C'est
+    // l'élément qui donne le "monde des esprits", on ne touche pas.
     float mistDeep = fbm(vWorld * 0.012 - drift * 0.6);
-    float wispField = fbm(vWorld * 0.08 + vec2(uTime * 0.04, -uTime * 0.03));
-    float wisps = smoothstep(0.62, 0.85, wispField) * (0.7 + 0.3 * sin(uTime * 0.6 + r * 0.04));
+
+    // ─── 2. Bandes quantifiées (cell-shading) ───
+    // Au lieu d'un dégradé continu, on quantifie le bruit en 5 niveaux
+    // discrets → bandes de couleur avec des transitions FRANCHES. Donne
+    // l'aspect "stylisé peinture" plutôt que "blur uniforme".
+    float bandsRaw = fbm(vWorld * 0.025 + drift);
+    float bands = floor(bandsRaw * 5.0) / 5.0;
+
+    // ─── 3. Edge contours entre bandes ───
+    // Détecte les frontières entre deux niveaux de bands → fines lignes
+    // lumineuses qui soulignent la silhouette de chaque "couche" de
+    // brume. Look topo map / hand-painted.
+    float bandFract = fract(bandsRaw * 5.0);
+    float bandEdge = 1.0 - smoothstep(0.0, 0.06, abs(bandFract - 0.0));
+    bandEdge += 1.0 - smoothstep(0.0, 0.06, abs(bandFract - 1.0));
+    bandEdge = clamp(bandEdge * 0.8, 0.0, 1.0);
+
+    // ─── 4. Dust motes (haute fréquence, points discrets) ───
+    // Avant : un seul wispField smoothstep → grosses taches floues. Maintenant
+    // un bruit haute fréquence threshold serré → multitude de petits points
+    // brillants comme des lucioles ou de la poussière magique. Sharp edges,
+    // ne baveent pas avec le bloom.
+    vec2 motePos = vWorld * 0.45 + drift * 6.0;
+    float moteField = vnoise(motePos);
+    float motesScint = 0.7 + 0.3 * sin(uTime * 1.2 + moteField * 12.0);
+    float motes = smoothstep(0.84, 0.88, moteField) * motesScint;
+
+    // ─── 5. Cercles rituels (déjà discrets) ───
     float rings = 0.5 + 0.5 * sin(r * 0.18 - uTime * 0.4);
     rings = pow(rings, 8.0) * 0.12;
+
+    // Composition finale.
     vec3 col = uBase;
-    col = mix(col, uMid, mistDeep * 0.85);
-    col = mix(col, uMid * 1.4, mist * 0.55);
-    col += uHighlight * wisps * 0.7;
-    col += uSacred * rings;
+    col = mix(col, uMid, mistDeep * 0.7);                  // brume profonde
+    col = mix(col, uMid * 1.45, bands * 0.55);             // bandes quantifiées
+    col += uHighlight * bandEdge * 0.18;                   // contours fins
+    col += uHighlight * motes * 0.85;                      // dust motes
+    col += uSacred * rings;                                // cercles rituels
+
     col *= edgeFade;
-    // Dithering anti-banding sur le gradient mauve.
+    // Dithering anti-banding (sur les gradients restants — la brume profonde
+    // et l'edgeFade sont encore continus).
     float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
     col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
