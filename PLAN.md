@@ -175,3 +175,31 @@ Ordre d'exécution recommandé :
 - **Bushes** : thème Glitch Fields
 - **Visuel global** : cyberpunk néon conservé
 - **Leaderboard** : score composite `kills×50 + maxBlades×1 + survivalSec×0.5 + crates×10 + powerups×5`
+
+---
+
+## Backlog post-V1 (en attente)
+
+Améliorations validées en concept mais pas encore planifiées en sprint.
+
+### Module 8 — Chat & commandes
+
+- [ ] **Panneau de chat en bas à gauche** — overlay non-intrusif, semi-transparent, fade in/out automatique après inactivité
+- [ ] **Input texte** : touche Entrée ouvre/ferme la zone de saisie ; texte limité (e.g. 200 chars)
+- [ ] **Diffusion via Colyseus** : message broadcast à toute la room, rate-limit serveur-side (~3 messages / 5s par joueur)
+- [ ] **Filtrage** : longueur max, anti-spam, blacklist mots interdits, mute par session pour les abusers
+- [ ] **Commandes slash** : `/help`, `/me <action>`, `/r <code>` (changer de room), `/mute <pseudo>`, etc. — préfixe `/` parsé client-side, commandes admin gardées pour plus tard
+- [ ] **Affichage** : nom du joueur (couleur de son skin), texte du message, timestamp relatif. Auto-scroll avec scrollback
+- [ ] **Mobile-friendly** : keyboard ne masque pas le jeu, taille de texte adaptée
+
+### Module 9 — Modes de jeu
+
+Actuellement seul le mode FFA (free-for-all) existe. À ajouter :
+
+- [ ] **Team Deathmatch** — 2 équipes (ex : rouge vs bleu), score par équipe = somme des kills, victoire à X kills ou timer. Skin auto-tinté par équipe pour reconnaissance rapide
+- [ ] **Capture the Flag** — un objet "drapeau" au centre, le ramasser puis le rapporter à sa base = point. Bridé pour qui le porte (vitesse réduite, pas de boost ?)
+- [ ] **Last Team Standing** — élimination par équipe, dernier groupe vivant gagne, respawn limité
+- [ ] **Free-for-All** — actuel, gardé en mode par défaut
+- [ ] **Architecture serveur** : un type de mode par room (filterBy mode), choix au moment du CREATE ROOM, pas en plein match. Le score persisté inclut le mode (`matches` table → colonne `game_mode`)
+- [ ] **Map symétrique pour les modes équipe** : les positions de spawn/objectifs doivent garantir l'équité (pas d'avantage de map à l'équipe rouge ou bleue)
+- [ ] **UI de fin de match** : tableau des scores par équipe + MVP par équipe
