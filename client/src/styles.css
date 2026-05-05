@@ -2054,3 +2054,68 @@ button:hover {
   .chat-log { max-height: 120px; }
   .chat-row { font-size: 12px; }
 }
+
+/* =====================================================================
+   NAMETAGS — labels 2D positionnés en screen-space au-dessus des joueurs
+   distants (cf. NametagOverlay.ts). Le conteneur full-screen capture les
+   positions absolues ; chaque .nametag est positionné en pixel via
+   transform: translate(...).
+   ===================================================================== */
+
+.nametag-layer {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  overflow: hidden;
+}
+.nametag-layer.hidden { display: none; }
+
+.nametag {
+  position: absolute;
+  left: 0; top: 0;
+  /* translate appliqué en JS pour chaque frame — on n'utilise pas left/top
+     pour éviter le layout reflow à chaque update (transform = compositor
+     only). */
+  white-space: nowrap;
+  padding: 2px 9px;
+  font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--fg-bright);
+  background: rgba(0, 0, 0, .65);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  border: 1px solid rgba(var(--accent-cool-rgb), .45);
+  border-radius: 3px;
+  text-shadow:
+    0 0 6px rgba(0, 0, 0, .8),
+    0 1px 2px rgba(0, 0, 0, .8);
+  box-shadow: 0 0 10px rgba(var(--accent-cool-rgb), .25);
+  /* Petite flèche down vers la tête pour ancrer visuellement. */
+  --arrow-color: rgba(var(--accent-cool-rgb), .45);
+}
+.nametag::after {
+  content: "";
+  position: absolute;
+  left: 50%; bottom: -5px;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--arrow-color);
+}
+
+/* Toggle Settings (réutilisable pour d'autres bool settings futurs). */
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.settings-toggle input[type="checkbox"] {
+  accent-color: var(--cyan);
+  width: 16px; height: 16px;
+  cursor: pointer;
+}

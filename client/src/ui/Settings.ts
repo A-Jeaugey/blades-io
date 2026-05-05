@@ -8,6 +8,10 @@ export interface SettingsState {
   sfx: number;
   qualityChoice: "auto" | QualityPreset;
   joystickSens: number;
+  // Affichage des nametags au-dessus des joueurs distants (le local player
+  // n'a jamais de nametag — tu sais qui tu es). Off par défaut pour ne pas
+  // surcharger l'écran d'un .io 60 joueurs ; opt-in via Settings.
+  showNametags: boolean;
 }
 
 export class SettingsPanel {
@@ -19,6 +23,7 @@ export class SettingsPanel {
     sfx: 0.8,
     qualityChoice: "auto",
     joystickSens: 1,
+    showNametags: false,
   };
   private listeners: Array<(s: SettingsState) => void> = [];
   private quitListeners: Array<() => void> = [];
@@ -98,6 +103,18 @@ export class SettingsPanel {
         if (confirm("Le changement de thème nécessite un reload. Recharger maintenant ?")) {
           window.location.reload();
         }
+      });
+    }
+
+    // Toggle "afficher les nametags". Pas de reload nécessaire — main.ts
+    // observe l'état via onChange et fait la bascule live.
+    const nametagsToggle = document.getElementById("nametags-toggle") as HTMLInputElement | null;
+    if (nametagsToggle) {
+      nametagsToggle.checked = this.state.showNametags;
+      nametagsToggle.addEventListener("change", () => {
+        this.state.showNametags = nametagsToggle.checked;
+        this.persist();
+        this.emit();
       });
     }
 

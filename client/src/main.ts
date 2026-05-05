@@ -48,6 +48,7 @@ import { Leaderboard } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
+import { NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
@@ -98,6 +99,7 @@ class Game {
   private minimap: Minimap;
   private settings: SettingsPanel;
   private chat!: ChatPanel;
+  private nametags = new NametagOverlay();
   private sound = new SoundManager();
   private conn: Connection;
   // Thème actif — résolu une fois à l'init (le système ne supporte pas le
@@ -191,6 +193,7 @@ class Game {
     this.settings.onChange((s) => {
       this.sound.setVolumes(s.master, s.music, s.sfx);
       this.input.setSensitivity(s.joystickSens);
+      this.nametags.setEnabled(s.showNametags);
     });
     this.settings.onQuit(() => {
       this.returnToMenu();
@@ -628,6 +631,7 @@ class Game {
     this.hud.setRoomCode("");
     this.hud.clearEffects();
     this.chat.hide();
+    this.nametags.clear();
     this.effectDurations.clear();
     this.settings.setInGame(false);
     // Détache d'abord les listeners (élimine les callbacks fantômes), puis
@@ -935,6 +939,22 @@ class Game {
       const wispCx = localView ? localView.renderX : 0;
       const wispCz = localView ? localView.renderY : 0;
       this.wisps.update(wispCx, wispCz, dt, this.elapsed * 0.001);
+      // Nametags : update juste avant le render pour que les positions
+      // projettées correspondent à la frame qu'on affiche. No-op si le
+      // toggle Settings est off.
+      this.nametags.update(
+        this.players,
+        this.myId,
+        (id) => !!this.room?.state?.players?.get(id)?.alive,
+        (id) => this.room?.state?.players?.get(id)?.name ?? "?",
+        (id) => {
+          const p = this.room?.state?.players?.get(id);
+          return !!p && isInBush(p.x, p.y);
+        },
+        this.sceneStack.camera,
+        window.innerWidth,
+        window.innerHeight,
+      );
       this.updateHud();
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
 
