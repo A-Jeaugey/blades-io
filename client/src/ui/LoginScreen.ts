@@ -325,8 +325,13 @@ export class LoginScreen {
   private async saveRename(): Promise<void> {
     if (!this.renaming || this.renameBusy) return;
     const next = this.input.value.trim();
-    if (!/^[A-Za-z0-9_.\-]{3,16}$/.test(next)) {
-      this.setRenameMessage("3–16 chars (letters, digits, _ . -).");
+    // Validation alignée avec le sanitizeName serveur : accepte n'importe
+    // quelle lettre Unicode (\p{L} → kïppa, ééé, ñoño, 漢字…), n'importe
+    // quel chiffre Unicode (\p{N}), et les séparateurs _-. Avant : ASCII
+    // strict, donc tout pseudo avec accents était rejeté côté client mais
+    // accepté côté serveur — incohérent.
+    if (!/^[\p{L}\p{N}_.\-]{3,16}$/u.test(next)) {
+      this.setRenameMessage("3–16 chars (lettres, chiffres, _ . -).");
       return;
     }
     if (next === this.renameOriginal) {

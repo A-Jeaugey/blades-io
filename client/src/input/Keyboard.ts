@@ -1,3 +1,15 @@
+// Helper partagé : détecte si l'élément focused est un champ texte. Quand
+// c'est le cas, le handler keyboard global doit s'effacer pour ne pas
+// manger les frappes (Space, flèches…) avec preventDefault. Dupliqué
+// volontairement de InputManager pour éviter une dépendance circulaire.
+function isTypingInTextField(): boolean {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return true;
+  return (el as HTMLElement).isContentEditable === true;
+}
+
 export class Keyboard {
   private keys = new Set<string>();
   public used = false;
@@ -8,6 +20,14 @@ export class Keyboard {
 
   constructor() {
     window.addEventListener("keydown", (e) => {
+      // Quand l'user tape dans un input texte (chat, rename, code rejoint…),
+      // on ne touche pas aux events. Avant : preventDefault sur Space coupait
+      // les espaces dans le chat ; les flèches déplaçaient le caret du
+      // joueur au lieu du caret texte. Garde tout ce qui est gameplay
+      // (throw pending, dir, etc.) intact pour le moment où l'input
+      // perdra le focus.
+      if (isTypingInTextField()) return;
+
       this.used = true;
       // Edge-trigger : on capture l'appui Space/F UNIQUEMENT lors du
       // premier événement keydown (e.repeat = false), sinon le maintien
@@ -19,6 +39,9 @@ export class Keyboard {
       }
     });
     window.addEventListener("keyup", (e) => {
+      // Symétrie avec keydown : si on lâche une touche pendant qu'un input
+      // a le focus, on la retire quand même de notre Set pour éviter des
+      // touches "fantômes" coincées en pressed après défocus.
       this.keys.delete(e.code);
     });
     window.addEventListener("blur", () => this.keys.clear());
