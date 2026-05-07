@@ -2079,11 +2079,13 @@ button:hover {
    boost/throw (eux-mêmes en bas-droite). */
 .chat-fab {
   position: fixed;
-  /* bottom: 320px = bien au-dessus du joystick (24+140 = 164px de haut)
-     ET du chat panel (qui est à 180-340 environ) → l'icône reste
-     accessible sans chevaucher le panel quand il s'agrandit. */
-  bottom: 320px;
-  right: 20px;
+  /* Empilé sur la colonne gauche au-dessus du chat panel et du joystick.
+     bottom: 350px = clair de la pile (joystick 24-164, chat 180-330,
+     FAB 350-394). Sur mobile uniquement (cf. .hidden par défaut sur
+     desktop dans le constructeur). */
+  bottom: 350px;
+  left: 14px;
+  right: auto;
   width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center;
   font-size: 19px;
