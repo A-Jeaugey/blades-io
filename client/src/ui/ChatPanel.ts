@@ -19,6 +19,13 @@ import { CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent } from "@bladeio/share
 // ─────────────────────────────────────────────────────────────────────────────
 
 const FADE_DELAY_MS = 6000;
+// Durée d'affichage d'un message individuel à l'écran. Au-delà, le
+// message s'efface (fade out 400ms + suppression DOM) pour ne pas
+// encombrer la vue. Comme dans la plupart des jeux à chat in-game
+// (Slither.io, Among Us, etc.) : messages éphémères, pas de scrollback.
+// 7s = lisibilité confortable mais pas envahissant.
+const MESSAGE_DISPLAY_MS = 7000;
+const MESSAGE_FADE_MS = 400;
 
 type SendFn = (text: string) => void;
 
@@ -217,6 +224,20 @@ export class ChatPanel {
     }
     // Scroll vers le bas (le plus récent).
     this.logEl.scrollTop = this.logEl.scrollHeight;
+
+    // Auto-effacement après MESSAGE_DISPLAY_MS pour ne pas obstruer la
+    // vision. Fade out de MESSAGE_FADE_MS juste avant suppression →
+    // disparition graduelle, pas un blink. Si le row a déjà été éjecté
+    // par le FIFO cap entre-temps, parentNode est null et on no-op.
+    window.setTimeout(() => {
+      row.classList.add("fading");
+      window.setTimeout(() => {
+        if (row.parentNode === this.logEl) {
+          this.logEl.removeChild(row);
+        }
+        this.updateMobileVisibility();
+      }, MESSAGE_FADE_MS);
+    }, MESSAGE_DISPLAY_MS - MESSAGE_FADE_MS);
   }
 
   // Cache complètement le panel (sortie de match). Reset state interne.
