@@ -188,6 +188,13 @@ export const AMBIENT_MIN_DIST_FROM_PLAYER = 10;
 export const AMBIENT_SPAWN_BURST = 20; // max de spawns par tick
 export const AMBIENT_MIN_FLOOR = 35; // toujours au moins N lames au sol
 
+// Multiplicateur de densité appliqué dans les rooms privées : plus de
+// lames au sol, plus de caisses, plus de power-ups. Privées = setup
+// "fun avec les potes" → on veut qu'il y ait toujours du loot à
+// portée. S'applique uniformément aux 3 systèmes (ambient, crates,
+// powerups).
+export const PRIVATE_ROOM_DENSITY_MULT = 2.5;
+
 // --- Mort / drop ---
 // Fraction des lames en orbite dropées au sol à la mort. 0.7 → le tueur
 // peut récupérer 70 % du stockpile orbital de la victime (en plus des

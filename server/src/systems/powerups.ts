@@ -12,6 +12,7 @@ import {
   POWERUP_RARITY_WEIGHTS,
   POWERUP_SPAWN_INTERVAL,
   POWERUP_TYPE_WEIGHTS,
+  PRIVATE_ROOM_DENSITY_MULT,
   PowerUpType,
   RARITY_HP,
   WALL_KILL_THICKNESS,
@@ -43,9 +44,10 @@ function pickType(): PowerUpType {
   return PowerUpType.Speed;
 }
 
-function targetCount(playerCount: number): number {
-  const scaled = POWERUP_PER_PLAYER * Math.max(1, playerCount);
-  return Math.min(POWERUP_MAX_TOTAL, Math.max(POWERUP_MIN_FLOOR, scaled));
+function targetCount(playerCount: number, isPrivate: boolean): number {
+  const mult = isPrivate ? PRIVATE_ROOM_DENSITY_MULT : 1;
+  const scaled = POWERUP_PER_PLAYER * Math.max(1, playerCount) * mult;
+  return Math.min(POWERUP_MAX_TOTAL * mult, Math.max(POWERUP_MIN_FLOOR * mult, scaled));
 }
 
 function insideAnyDecor(x: number, y: number, margin: number): boolean {
@@ -95,11 +97,11 @@ export class PowerUpSystem {
   // Spawn + pickup + expiration des effets. Le pickup applique l'effet
   // directement via setFields sur le Player : le client lit les `*Until`
   // sur son propre state et affiche les badges d'effet.
-  update(dt: number, state: ArenaState, onPickup: (p: Player, pu: PowerUp) => void): void {
+  update(dt: number, state: ArenaState, isPrivate: boolean, onPickup: (p: Player, pu: PowerUp) => void): void {
     this.timer += dt;
     if (this.timer >= POWERUP_SPAWN_INTERVAL) {
       this.timer = 0;
-      const want = targetCount(state.players.size);
+      const want = targetCount(state.players.size, isPrivate);
       const have = state.powerups.size;
       // Burst 4 pour remplir vite au début + combler rapidement les pickups.
       const spawns = Math.min(4, Math.max(0, want - have));

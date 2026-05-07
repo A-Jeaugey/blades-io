@@ -5,6 +5,7 @@ import {
   AMBIENT_PER_PLAYER,
   AMBIENT_SPAWN_BURST,
   AMBIENT_SPAWN_INTERVAL,
+  PRIVATE_ROOM_DENSITY_MULT,
   BladeRarity,
   DECOR_COLLIDERS,
   GROUND_BLADE_TTL_MS,
@@ -27,9 +28,13 @@ export function pickRarity(): BladeRarity {
   return BladeRarity.Common;
 }
 
-export function ambientCap(playerCount: number): number {
-  const scaled = AMBIENT_PER_PLAYER * Math.max(1, playerCount);
-  return Math.min(AMBIENT_MAX_BASE, Math.max(AMBIENT_MIN_FLOOR, scaled));
+export function ambientCap(playerCount: number, isPrivate: boolean): number {
+  // Multiplicateur 2.5× pour les rooms privées (cf. PRIVATE_ROOM_DENSITY_MULT).
+  // Floor + cap + per-player tous boostés ensemble pour garder les ratios
+  // mais à un niveau plus généreux. Public reste calibré comme avant.
+  const mult = isPrivate ? PRIVATE_ROOM_DENSITY_MULT : 1;
+  const scaled = AMBIENT_PER_PLAYER * Math.max(1, playerCount) * mult;
+  return Math.min(AMBIENT_MAX_BASE * mult, Math.max(AMBIENT_MIN_FLOOR * mult, scaled));
 }
 
 export function countGroundBlades(state: ArenaState): number {
@@ -75,12 +80,12 @@ function randomPositionAwayFromPlayers(state: ArenaState): { x: number; y: numbe
 
 export class SpawnSystem {
   private timer = 0;
-  update(dt: number, state: ArenaState): void {
+  update(dt: number, state: ArenaState, isPrivate: boolean): void {
     this.timer += dt;
     if (this.timer < AMBIENT_SPAWN_INTERVAL) return;
     this.timer = 0;
 
-    const cap = ambientCap(state.players.size);
+    const cap = ambientCap(state.players.size, isPrivate);
     const current = countGroundBlades(state);
     // Gros burst autorisé pour remplir rapidement quand la map est vide.
     const spawns = Math.min(AMBIENT_SPAWN_BURST, Math.max(0, cap - current));

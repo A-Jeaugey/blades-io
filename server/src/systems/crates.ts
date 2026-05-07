@@ -10,6 +10,7 @@ import {
   CRATE_MIN_FLOOR,
   CRATE_PER_PLAYER,
   CRATE_SPAWN_INTERVAL,
+  PRIVATE_ROOM_DENSITY_MULT,
   DECOR_COLLIDERS,
   GROUND_BLADE_TTL_MS,
   MAP_RADIUS,
@@ -31,9 +32,10 @@ function pickCrateRarity(): BladeRarity {
   return BladeRarity.Common;
 }
 
-function targetCrateCount(playerCount: number): number {
-  const scaled = CRATE_PER_PLAYER * Math.max(1, playerCount);
-  return Math.min(CRATE_MAX_TOTAL, Math.max(CRATE_MIN_FLOOR, scaled));
+function targetCrateCount(playerCount: number, isPrivate: boolean): number {
+  const mult = isPrivate ? PRIVATE_ROOM_DENSITY_MULT : 1;
+  const scaled = CRATE_PER_PLAYER * Math.max(1, playerCount) * mult;
+  return Math.min(CRATE_MAX_TOTAL * mult, Math.max(CRATE_MIN_FLOOR * mult, scaled));
 }
 
 function insideAnyDecor(x: number, y: number, margin: number): boolean {
@@ -78,11 +80,11 @@ function pickSpawnPoint(state: ArenaState): { x: number; y: number } | null {
 export class CrateSystem {
   private timer = 0;
 
-  update(dt: number, state: ArenaState): void {
+  update(dt: number, state: ArenaState, isPrivate: boolean): void {
     this.timer += dt;
     if (this.timer < CRATE_SPAWN_INTERVAL) return;
     this.timer = 0;
-    const want = targetCrateCount(state.players.size);
+    const want = targetCrateCount(state.players.size, isPrivate);
     const have = state.crates.size;
     const spawns = Math.min(3, Math.max(0, want - have));
     for (let i = 0; i < spawns; i++) {

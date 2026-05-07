@@ -429,9 +429,9 @@ export class ArenaRoom extends Room<ArenaState> {
     // joueurs aussi). Les projectiles consomment leur "pierce" sur chaque
     // contact et se détruisent quand il atteint 0.
     resolveProjectileCollisions(this.state, throwCb, this.orbitCache);
-    this.spawning.update(dt, this.state);
-    this.crates.update(dt, this.state);
-    this.powerups.update(dt, this.state, (player, pu) => this.handlePowerUpPickup(player, pu));
+    this.spawning.update(dt, this.state, this.isPrivate);
+    this.crates.update(dt, this.state, this.isPrivate);
+    this.powerups.update(dt, this.state, this.isPrivate, (player, pu) => this.handlePowerUpPickup(player, pu));
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
     this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
