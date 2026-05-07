@@ -2079,13 +2079,14 @@ button:hover {
    boost/throw (eux-mêmes en bas-droite). */
 .chat-fab {
   position: fixed;
-  /* Empilé sur la colonne gauche au-dessus du chat panel et du joystick.
-     bottom: 350px = clair de la pile (joystick 24-164, chat 180-330,
-     FAB 350-394). Sur mobile uniquement (cf. .hidden par défaut sur
-     desktop dans le constructeur). */
-  bottom: 350px;
-  left: 14px;
-  right: auto;
+  /* Pile à droite, au-dessus du chat panel et de la stack boost/throw.
+     bottom: 380px → BOOST (18-114) + THROW (124-220) + chat panel
+     (230-360) tiennent dans la colonne sans chevauchement. Le FAB est
+     l'affordance "ouvrir chat" en haut de la pile droite. Mobile only
+     (cf. .hidden par défaut, ChatPanel le révèle si touch). */
+  bottom: 380px;
+  right: 18px;
+  left: auto;
   width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center;
   font-size: 19px;
@@ -2106,15 +2107,16 @@ button:hover {
   box-shadow: 0 0 30px rgba(var(--accent-cool-rgb), .6);
 }
 
-/* Mobile : chat panel positionné JUSTE AU-DESSUS du joystick (joystick
-   = bottom 24px + 140px hauteur, donc top du joystick à 164px). Le chat
-   commence à bottom: 180px → clair des 16px au-dessus du joystick. Petit
-   en taille pour ne pas cacher la zone de combat. */
+/* Mobile : chat panel sur la colonne droite, juste au-dessus de la pile
+   BOOST (18-114) + THROW (124-220) → chat à bottom: 230, FAB au-dessus
+   (380). Le joystick à gauche reste libre, le centre est dégagé pour
+   le combat. */
 @media (max-width: 720px) {
   .chat {
     width: 220px;
-    left: 8px;
-    bottom: 180px;
+    right: 8px;
+    left: auto;
+    bottom: 230px;
     top: auto;
   }
   .chat-log { max-height: 90px; }
@@ -2125,12 +2127,13 @@ button:hover {
   .chat-cnt { display: none; }  /* manque de place sur mobile */
 
   /* Quand l'input est ouvert : on grossit légèrement la largeur (mais
-     on reste à gauche pour ne pas masquer les boutons boost/throw à
-     droite) et on agrandit un peu la zone d'écriture. La log reste
-     petite — l'attention est sur ce qu'on écrit, pas sur ce qu'on lit. */
+     on reste ancré à droite pour ne pas masquer le joystick à gauche)
+     et on agrandit un peu la zone d'écriture. La log reste petite —
+     l'attention est sur ce qu'on écrit, pas sur ce qu'on lit. */
   .chat.editing {
     width: 280px;
-    bottom: 180px;
+    right: 8px;
+    bottom: 230px;
   }
   .chat.editing .chat-log { max-height: 60px; }
 }
