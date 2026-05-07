@@ -27,20 +27,33 @@ export class ChatPanel {
   private logEl: HTMLElement;
   private inputRow: HTMLElement;
   private input: HTMLInputElement;
+  private sendBtn: HTMLButtonElement;
   private cntEl: HTMLElement;
   private hintEl: HTMLElement;
+  private fab: HTMLButtonElement;
   private localPlayerId = "";
   private send: SendFn = () => {};
   private fadeTimer: number | null = null;
   private isOpenFlag = false;
+  // Mobile = pas de touche Entrée, on s'appuie sur le FAB + bouton send
+  // dans la barre input + enterkeyhint="send" du clavier virtuel.
+  private readonly isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
   constructor() {
     this.root = document.getElementById("chat")!;
     this.logEl = document.getElementById("chat-log")!;
     this.inputRow = document.getElementById("chat-input-row")!;
     this.input = document.getElementById("chat-input") as HTMLInputElement;
+    this.sendBtn = document.getElementById("chat-send") as HTMLButtonElement;
     this.cntEl = document.getElementById("chat-cnt")!;
     this.hintEl = document.getElementById("chat-hint")!;
+    this.fab = document.getElementById("chat-fab") as HTMLButtonElement;
+
+    // Mobile : FAB visible, hint avec wording adapté.
+    if (this.isTouch) {
+      this.fab.classList.remove("hidden");
+      this.hintEl.innerHTML = "Touche pour discuter";
+    }
 
     // Compteur de chars en temps réel.
     this.input.addEventListener("input", () => {
@@ -48,7 +61,7 @@ export class ChatPanel {
       this.cntEl.textContent = `${len}/${CHAT_MESSAGE_MAX_LENGTH}`;
     });
 
-    // Submit / annulation depuis l'input.
+    // Submit / annulation depuis l'input (clavier physique).
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -61,9 +74,34 @@ export class ChatPanel {
       }
     });
 
-    // Entrée GLOBALE : ouvre le chat si pas déjà ouvert et qu'on n'est pas
-    // en train de taper dans un AUTRE input (ex : login screen, rename,
-    // join code…). On n'ouvre que si le HUD est visible (= en match).
+    // Bouton "envoyer" — pour mobile (clavier virtuel ne donne pas
+    // toujours un Enter fiable selon les keyboard apps) et accessibilité.
+    this.sendBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.submit();
+    });
+
+    // FAB mobile : tap = ouvre l'input.
+    this.fab.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.open();
+    });
+
+    // Tap sur la zone de log (mobile) → ouvre aussi le chat. Pratique
+    // quand l'user veut répondre à un message qu'il vient de voir
+    // passer.
+    this.logEl.addEventListener("click", () => {
+      if (this.isTouch && !this.isOpenFlag) this.open();
+    });
+
+    // Tap/click sur le hint → ouvre l'input. Hover desktop "Entrée pour
+    // discuter" reste actif comme rappel, mais le hint est aussi
+    // cliquable au cas où.
+    this.hintEl.addEventListener("click", () => this.open());
+
+    // Entrée GLOBALE (desktop) : ouvre le chat si pas déjà ouvert et
+    // qu'on n'est pas en train de taper dans un AUTRE input. Ne déclenche
+    // pas sur mobile (pas de touche Entrée physique).
     window.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       if (this.isOpenFlag) return; // déjà ouvert, le handler local s'en charge
@@ -88,11 +126,15 @@ export class ChatPanel {
   // ou potentiellement par un bouton mobile (à brancher plus tard).
   open(): void {
     if (this.isOpenFlag) return;
+    const hud = document.getElementById("hud");
+    if (!hud || hud.classList.contains("hidden")) return; // pas en jeu, on n'ouvre pas
     this.isOpenFlag = true;
     this.root.classList.remove("hidden");
     this.root.classList.add("active");
+    this.root.classList.add("editing"); // CSS hook pour repositionner sur mobile
     this.inputRow.classList.remove("hidden");
     this.hintEl.classList.add("hidden");
+    if (this.isTouch) this.fab.classList.add("hidden");
     this.input.value = "";
     this.cntEl.textContent = `0/${CHAT_MESSAGE_MAX_LENGTH}`;
     this.input.focus();
@@ -103,8 +145,10 @@ export class ChatPanel {
     if (!this.isOpenFlag) return;
     this.isOpenFlag = false;
     this.root.classList.remove("active");
+    this.root.classList.remove("editing");
     this.inputRow.classList.add("hidden");
     this.hintEl.classList.remove("hidden");
+    if (this.isTouch) this.fab.classList.remove("hidden");
     this.input.blur();
     this.scheduleFade();
   }
@@ -164,15 +208,18 @@ export class ChatPanel {
     this.close();
     this.root.classList.add("hidden");
     this.root.classList.remove("active");
+    if (this.isTouch) this.fab.classList.add("hidden");
     this.cancelFade();
     this.logEl.innerHTML = "";
   }
 
   // Re-affiche le panel sans messages — appelé à l'entrée en match. Le
   // hint "Entrée pour discuter" est visible, le panel est en mode "idle"
-  // (subtle, fade out après FADE_DELAY_MS).
+  // (subtle, fade out après FADE_DELAY_MS). Sur mobile, le FAB devient
+  // visible aussi.
   show(): void {
     this.root.classList.remove("hidden");
+    if (this.isTouch) this.fab.classList.remove("hidden");
     this.scheduleFade();
   }
 

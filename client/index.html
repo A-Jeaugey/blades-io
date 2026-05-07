@@ -19,9 +19,9 @@
       <div id="nametag-layer" class="nametag-layer hidden" aria-hidden="true"></div>
 
       <div id="hud" class="hidden">
-        <!-- Chat overlay : bas-gauche, fade auto. Initialement caché (pas de
-             messages → rien à montrer). Devient visible au premier message
-             reçu / au focus de l'input. -->
+        <!-- Chat overlay : bas-gauche desktop, top-left mobile (cf. CSS).
+             Initialement caché (pas de messages → rien à montrer). Devient
+             visible au premier message reçu / au focus de l'input. -->
         <div id="chat" class="chat hidden" aria-live="polite">
           <div id="chat-log" class="chat-log"></div>
           <div id="chat-input-row" class="chat-input-row hidden">
@@ -34,13 +34,19 @@
               placeholder="Tapez votre message…"
               autocomplete="off"
               spellcheck="false"
+              enterkeyhint="send"
             />
+            <button id="chat-send" class="chat-send" type="button" aria-label="Envoyer">↵</button>
             <span class="chat-cnt" id="chat-cnt">0/200</span>
           </div>
           <div id="chat-hint" class="chat-hint">
             <kbd>Entrée</kbd> pour discuter
           </div>
         </div>
+        <!-- Bouton chat flottant mobile : visible uniquement sur écran touch.
+             Tap → ouvre l'input chat. Évite d'avoir à appuyer Entrée
+             (inexistant sur clavier virtuel). -->
+        <button id="chat-fab" class="chat-fab hidden" type="button" aria-label="Ouvrir le chat">💬</button>
         <div id="top-right">
           <canvas id="minimap" width="170" height="170"></canvas>
           <div id="leaderboard"></div>

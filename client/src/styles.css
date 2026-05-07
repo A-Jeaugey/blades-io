@@ -2049,10 +2049,85 @@ button:hover {
   margin-right: 4px;
 }
 
+/* Bouton "envoyer" dans la barre input. Visible toujours, utile mobile
+   pour quand le clavier virtuel ne donne pas un Enter fiable. Sur
+   desktop il sert d'alternative à Entrée pour les souris-only users. */
+.chat-send {
+  flex: 0 0 auto;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(var(--accent-cool-rgb), .15);
+  border: 1px solid rgba(var(--accent-cool-rgb), .5);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  transition: all .2s;
+}
+.chat-send:hover, .chat-send:active {
+  background: var(--cyan);
+  color: var(--dark);
+  box-shadow: 0 0 12px rgba(var(--accent-cool-rgb), .5);
+}
+
+/* FAB mobile : icône flottante bottom-right, ouvre le chat sur tap.
+   Cachée par défaut + class .hidden, ChatPanel la révèle si c'est un
+   device touch. Positionnée pour ne pas overlap avec les boutons
+   boost/throw (eux-mêmes en bas-droite). */
+.chat-fab {
+  position: fixed;
+  bottom: 200px;
+  right: 24px;
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  background: rgba(0, 0, 0, .7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--cyan);
+  border-radius: 50%;
+  color: var(--cyan);
+  cursor: pointer;
+  z-index: 9;
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), .35);
+  transition: transform .2s, box-shadow .2s;
+}
+.chat-fab.hidden { display: none; }
+.chat-fab:active {
+  transform: scale(.92);
+  box-shadow: 0 0 30px rgba(var(--accent-cool-rgb), .6);
+}
+
+/* Mobile : repositionner tout le système chat pour ne pas overlap avec
+   le joystick (bottom-left, 24px+140px) ni les boutons boost/throw
+   (bottom-right). Top-left est la zone la plus libre. */
 @media (max-width: 720px) {
-  .chat { width: 70vw; left: 8px; bottom: 100px; }
-  .chat-log { max-height: 120px; }
-  .chat-row { font-size: 12px; }
+  .chat {
+    width: 60vw;
+    max-width: 320px;
+    left: 8px;
+    /* Position au top : au-dessus du joystick + survit au keyboard
+       virtuel qui pousse le contenu. */
+    top: 8px;
+    bottom: auto;
+  }
+  .chat-log { max-height: 110px; }
+  .chat-row { font-size: 12px; padding: 3px 8px; }
+  .chat-hint { font-size: 10px; padding: 4px 10px; cursor: pointer; }
+  .chat-input-row { padding: 6px 10px; gap: 6px; }
+  .chat-input { font-size: 14px; }
+  .chat-cnt { display: none; }  /* manque de place sur mobile */
+
+  /* Quand le chat est en mode édition (input ouvert) : on grossit un
+     peu le panel pour que ce soit lisible avec le clavier virtuel. */
+  .chat.editing {
+    width: 92vw;
+    max-width: 92vw;
+  }
+  .chat.editing .chat-log { max-height: 80px; }
 }
 
 /* =====================================================================
