@@ -151,6 +151,21 @@ export class ChatPanel {
     if (this.isTouch) this.fab.classList.remove("hidden");
     this.input.blur();
     this.scheduleFade();
+    // Sur mobile, si la log est vide, on cache complètement le panel
+    // pour ne laisser que le FAB. Pas de "Touche pour discuter" qui
+    // flotte au milieu de l'écran.
+    this.updateMobileVisibility();
+  }
+
+  // Sur mobile, le panel est caché par défaut (pas de hint affichée). Il
+  // ne devient visible que quand y a du contenu (un message dans la log)
+  // ou quand on est en édition. Desktop : toujours visible (la hint sert
+  // d'affordance "Entrée pour discuter").
+  private updateMobileVisibility(): void {
+    if (!this.isTouch) return;
+    const hasMessages = this.logEl.children.length > 0;
+    const shouldShow = this.isOpenFlag || hasMessages;
+    this.root.classList.toggle("hidden", !shouldShow);
   }
 
   // Indique à InputManager si le chat capture les frappes (auquel cas
@@ -174,6 +189,7 @@ export class ChatPanel {
     this.root.classList.remove("hidden");
     this.root.classList.add("active");
     this.scheduleFade();
+    this.updateMobileVisibility();
   }
 
   // Pousse un message dans la log. FIFO : si on dépasse CHAT_LOG_CAP, on
@@ -213,13 +229,18 @@ export class ChatPanel {
     this.logEl.innerHTML = "";
   }
 
-  // Re-affiche le panel sans messages — appelé à l'entrée en match. Le
-  // hint "Entrée pour discuter" est visible, le panel est en mode "idle"
-  // (subtle, fade out après FADE_DELAY_MS). Sur mobile, le FAB devient
-  // visible aussi.
+  // Re-affiche le panel à l'entrée en match. Sur desktop, le hint
+  // "Entrée pour discuter" est visible (panel en mode idle). Sur mobile,
+  // SEULEMENT le FAB est visible — le panel reste caché tant qu'y a pas
+  // de contenu (message reçu ou input ouvert).
   show(): void {
-    this.root.classList.remove("hidden");
-    if (this.isTouch) this.fab.classList.remove("hidden");
+    if (this.isTouch) {
+      this.fab.classList.remove("hidden");
+      // Le panel reste caché s'il n'y a aucun message en log.
+      this.updateMobileVisibility();
+    } else {
+      this.root.classList.remove("hidden");
+    }
     this.scheduleFade();
   }
 
