@@ -19,5 +19,8 @@
     "concurrently": "^8.2.2",
     "typescript": "^5.4.5",
     "prettier": "^3.2.5"
+  },
+  "overrides": {
+    "ws": "8.21.3"
   }
 }
