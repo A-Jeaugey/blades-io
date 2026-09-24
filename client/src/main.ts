@@ -582,11 +582,13 @@ class Game {
     this.camera.shake.add(0.8);
     const earned = me.score;
     const isAuthed = auth.getAccessToken() !== null;
+    // Room privée : le serveur ne crédite rien (cf. persistMatchIfAuthed).
+    const isPrivate = !!this.room?.state?.isPrivate;
     // Solde local connu à l'instant de la mort, +ce qu'on vient de gagner.
     // Le vrai total côté serveur peut différer si plusieurs onglets
     // jouent en parallèle ; on rafraîchit en background pour reconverger.
     const cached = wallet.get();
-    const optimisticTotal = isAuthed && cached ? cached.balance + earned : null;
+    const optimisticTotal = isAuthed && !isPrivate && cached ? cached.balance + earned : null;
     this.death.show({
       lifeSeconds: Math.max(0, lifeMs / 1000),
       maxBlades: me.maxBladeCount,
@@ -599,8 +601,9 @@ class Game {
       // Le serveur persiste seulement si le joueur a fourni un token au
       // join. Côté client, le state d'auth au moment de la mort est la
       // meilleure approximation.
-      scorePersisted: isAuthed,
+      scorePersisted: isAuthed && !isPrivate,
       walletTotal: optimisticTotal,
+      privateRoom: isPrivate,
     });
     // Refresh asynchrone du solde authoritative pour le prochain affichage
     // (login screen au retour menu, prochaine mort).

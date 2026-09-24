@@ -24,6 +24,10 @@ export interface DeathStats {
   // Solde total après cette partie (cumul lifetime). Optionnel : si non
   // fourni, on n'affiche pas la ligne TOTAL.
   walletTotal?: number | null;
+  // Room privée : le serveur ne crédite aucun trophée et ne classe pas la
+  // partie. On affiche le score brut, sans le « 🏆 +N » qui laisserait
+  // croire à un gain.
+  privateRoom?: boolean;
 }
 
 export class DeathScreen {
@@ -48,16 +52,21 @@ export class DeathScreen {
 
   show(s: DeathStats): void {
     const killedBy = s.killerName ? `<div class="row"><span class="label">killed by</span><span>${escapeHtml(s.killerName)}</span></div>` : "";
-    const persisted = s.scorePersisted
-      ? `<div class="row death-saved"><span class="label">trophées</span><span>added to leaderboard</span></div>`
-      : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to keep your trophées</span></div>`;
-    const total = (s.walletTotal !== undefined && s.walletTotal !== null && s.walletTotal > 0)
+    const persisted = s.privateRoom
+      ? `<div class="row death-guest"><span class="label">private room</span><span>no trophées · unranked</span></div>`
+      : s.scorePersisted
+        ? `<div class="row death-saved"><span class="label">trophées</span><span>added to leaderboard</span></div>`
+        : `<div class="row death-guest"><span class="label">guest mode</span><span>sign in to keep your trophées</span></div>`;
+    const total = (!s.privateRoom && s.walletTotal !== undefined && s.walletTotal !== null && s.walletTotal > 0)
       ? `<div class="row rank-row"><span class="label">total</span><span>🏆 ${s.walletTotal}</span></div>`
       : "";
+    const headline = s.privateRoom
+      ? `${s.score} <span class="score-total-unit">PTS</span>`
+      : `🏆 +${s.score}`;
 
     this.stats.innerHTML = `
       <div class="score-total-container">
-        <div class="score-total">🏆 +${s.score}</div>
+        <div class="score-total">${headline}</div>
         <div class="score-sub">💀 ${s.kills} &nbsp;&nbsp;&nbsp; 🗡️ ${s.maxBlades}</div>
       </div>
       <div class="row rank-row"><span class="label">rank</span><span>#${s.rank}</span></div>

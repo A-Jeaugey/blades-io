@@ -578,6 +578,12 @@ button:hover {
   letter-spacing: 3px;
   line-height: 1;
 }
+#death-stats .score-total-unit {
+  font-size: 18px;
+  color: var(--fg-muted);
+  text-shadow: none;
+  letter-spacing: 2px;
+}
 #death-stats .score-sub {
   font-size: 20px;
   color: var(--fg-muted);

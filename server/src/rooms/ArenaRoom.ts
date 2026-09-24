@@ -292,10 +292,14 @@ export class ArenaRoom extends Room<ArenaState> {
   // - si le joueur est guest avec un token signé -> credit dans
   //   guest_wallets (sera transféré au compte au sign-in).
   // - sinon (bot, anonyme sans token, Supabase down) -> no-op.
+  // - room privée -> no-op : ni trophées ni classement. Seul dans sa room
+  //   avec une densité de loot ×2,5 et sans ennemi, le score se farmait
+  //   sans aucun risque et remontait au leaderboard.
   // Idempotent par appelant : on n'appelle qu'une fois (à la mort, au
   // leave en vie, ou au timeout de reconnect).
   private persistMatchIfAuthed(p: Player): void {
     if (p.isBot) return;
+    if (this.isPrivate) return;
     const trophies = Math.max(0, Math.floor(p.score));
     if (p.userId) {
       const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
