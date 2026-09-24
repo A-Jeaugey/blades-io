@@ -17,6 +17,11 @@ export const SERVER_DT = 1 / SERVER_TICKRATE;
 export const CLIENT_INPUT_RATE = 60; // Hz (matche le tickrate)
 export const MAX_INPUT_RATE = 80; // rejets au-delà
 export const MAX_INPUT_VIOLATIONS = 3;
+// Au-delà de ce délai sans message d'input, le serveur considère un joueur
+// humain immobile (inputs remis à zéro). Sans ça, une coupure réseau ou un
+// onglet mis en arrière-plan laissait le personnage avancer seul sur son
+// dernier input, jusqu'au mur ou dans un ennemi.
+export const INPUT_STALE_MS = 500;
 
 // --- Joueur ---
 export const PLAYER_SPEED = 11; // unités / seconde

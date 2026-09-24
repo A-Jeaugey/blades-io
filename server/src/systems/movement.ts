@@ -1,4 +1,5 @@
 import {
+  INPUT_STALE_MS,
   KNOCKBACK_DECAY,
   PLAYER_BOOST_MULT,
   PLAYER_BODY_RADIUS,
@@ -73,6 +74,15 @@ export function updateMovement(
   const now = Date.now();
   state.players.forEach((p) => {
     if (!p.alive) return;
+
+    // Humain muet depuis INPUT_STALE_MS (réseau coupé, onglet en arrière-
+    // plan) : on l'immobilise. Les bots écrivent leurs inputs directement,
+    // sans passer par handleInput, donc sans lastInputAt.
+    if (!p.isBot && now - p.lastInputAt > INPUT_STALE_MS) {
+      p.inputDx = 0;
+      p.inputDy = 0;
+      p.inputBoost = false;
+    }
 
     // Knockback : amortissement exponentiel constant (e^(-dt/τ)). Calculé
     // même en hitlag pour que la décroissance ne saute pas après dégel.

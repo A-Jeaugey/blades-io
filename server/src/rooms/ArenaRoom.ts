@@ -267,7 +267,12 @@ export class ArenaRoom extends Room<ArenaState> {
     }
     // Disconnect involontaire (réseau qui hoquète, proxy, mobile qui dort) :
     // on garde l'état 20 s pour permettre au client de se reconnecter via
-    // client.reconnect(token) sans retour au menu.
+    // client.reconnect(token) sans retour au menu. Le perso est immobilisé
+    // pendant l'attente : avant, il continuait sur son dernier input.
+    p.inputDx = 0;
+    p.inputDy = 0;
+    p.inputBoost = false;
+    p.inputThrow = false;
     try {
       await this.allowReconnection(client, 20);
     } catch {
