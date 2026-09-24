@@ -188,11 +188,14 @@ class Game {
       document.getElementById("boost-btn")!,
       document.getElementById("throw-btn"),
     );
-    if (this.input.isTouch) {
-      document.getElementById("joystick")!.classList.remove("hidden");
-      document.getElementById("boost-btn")!.classList.remove("hidden");
-      document.getElementById("throw-btn")!.classList.remove("hidden");
-    }
+    // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
+    // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
+    this.input.onModeChange((touch) => {
+      for (const id of ["joystick", "boost-btn", "throw-btn"]) {
+        document.getElementById(id)?.classList.toggle("hidden", !touch);
+      }
+      this.chat.setTouchMode(touch);
+    });
     this.settings.onChange((s) => {
       this.sound.setVolumes(s.master, s.music, s.sfx);
       this.input.setSensitivity(s.joystickSens);

@@ -43,8 +43,10 @@ export class ChatPanel {
   private fadeTimer: number | null = null;
   private isOpenFlag = false;
   // Mobile = pas de touche Entrée, on s'appuie sur le FAB + bouton send
-  // dans la barre input + enterkeyhint="send" du clavier virtuel.
-  private readonly isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  // dans la barre input + enterkeyhint="send" du clavier virtuel. Piloté
+  // par le mode d'entrée courant (setTouchMode), pas par la simple présence
+  // d'un écran tactile : un PC tactile utilisé au clavier garde le hint.
+  private isTouch = false;
 
   constructor() {
     this.root = document.getElementById("chat")!;
@@ -55,12 +57,6 @@ export class ChatPanel {
     this.cntEl = document.getElementById("chat-cnt")!;
     this.hintEl = document.getElementById("chat-hint")!;
     this.fab = document.getElementById("chat-fab") as HTMLButtonElement;
-
-    // Mobile : FAB visible, hint avec wording adapté.
-    if (this.isTouch) {
-      this.fab.classList.remove("hidden");
-      this.hintEl.innerHTML = "Touche pour discuter";
-    }
 
     // Compteur de chars en temps réel.
     this.input.addEventListener("input", () => {
@@ -119,6 +115,19 @@ export class ChatPanel {
       e.preventDefault();
       this.open();
     });
+  }
+
+  // Appelé par main.ts au démarrage puis à chaque bascule du mode d'entrée.
+  setTouchMode(touch: boolean): void {
+    this.isTouch = touch;
+    this.hintEl.innerHTML = touch ? "Touche pour discuter" : "<kbd>Entrée</kbd> pour discuter";
+    this.fab.classList.toggle("hidden", !touch || this.isOpenFlag);
+    if (touch) {
+      this.updateMobileVisibility();
+    } else {
+      const hud = document.getElementById("hud");
+      if (hud && !hud.classList.contains("hidden")) this.root.classList.remove("hidden");
+    }
   }
 
   setLocalPlayerId(id: string): void {

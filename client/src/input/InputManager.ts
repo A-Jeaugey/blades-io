@@ -13,11 +13,35 @@ export interface FrameInput {
   throwPressed: boolean;
 }
 
+// Touches qui font passer en déplacement clavier. Espace (lancer) n'en fait
+// pas partie : un joueur souris qui lance avec Espace doit continuer à
+// suivre son curseur.
+const MOVE_KEYS = [
+  "KeyW", "KeyA", "KeyS", "KeyD",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "ShiftLeft", "ShiftRight",
+];
+
+// Mode de départ, avant toute interaction. Les téléphones se reconnaissent
+// à l'user agent ; un iPad se présente comme un Mac mais n'a qu'un pointeur
+// grossier. Un PC à écran tactile a un pointeur principal fin (souris ou
+// pavé tactile) : il démarre en mode desktop.
+function initialTouchMode(): boolean {
+  if (/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)) return true;
+  const mm = window.matchMedia?.bind(window);
+  if (!mm) return false;
+  return mm("(pointer: coarse)").matches && !mm("(any-pointer: fine)").matches;
+}
+
 export class InputManager {
   keyboard: Keyboard;
   mouse: Mouse;
   touch: TouchJoystick;
-  public isTouch: boolean;
+  // Le mode suit le DERNIER périphérique utilisé. Avant, il était figé au
+  // boot sur « l'écran est-il tactile ? » : sur un PC à écran tactile, le
+  // clavier et la souris étaient alors ignorés pendant toute la session.
+  private touchMode: boolean;
+  private modeListeners: Array<(touch: boolean) => void> = [];
   // Mode sticky desktop : dès qu'on touche le clavier, on ignore la souris
   // jusqu'à ce qu'on re-clique. Et inversement.
   private desktopMode: "keyboard" | "mouse" = "mouse";
@@ -33,34 +57,45 @@ export class InputManager {
     this.keyboard = new Keyboard();
     this.mouse = new Mouse(gameCanvas);
     this.touch = new TouchJoystick(joyContainer, joyBase, joyThumb, boostBtn, throwBtn);
-    this.isTouch =
-      "ontouchstart" in window ||
-      (navigator.maxTouchPoints ?? 0) > 0 ||
-      /android|iphone|ipad|mobile/i.test(navigator.userAgent);
+    this.touchMode = initialTouchMode();
 
-    // Clavier → mode clavier
+    // Clavier → mode clavier, et sortie du mode tactile pour toute touche
+    // de jeu (lancer compris).
     window.addEventListener("keydown", (e) => {
-      if (
-        [
-          "KeyW",
-          "KeyA",
-          "KeyS",
-          "KeyD",
-          "ArrowUp",
-          "ArrowDown",
-          "ArrowLeft",
-          "ArrowRight",
-          "ShiftLeft",
-          "ShiftRight",
-        ].includes(e.code)
-      ) {
-        this.desktopMode = "keyboard";
-      }
+      if (this.isTypingInTextField()) return;
+      const move = MOVE_KEYS.includes(e.code);
+      if (move) this.desktopMode = "keyboard";
+      if (move || e.code === "Space") this.setTouchMode(false);
     });
+    // pointerType distingue un vrai doigt d'une vraie souris, là où les
+    // évènements souris sont aussi émis (par compatibilité) après un tap.
+    window.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch") this.setTouchMode(true);
+      else if (e.pointerType === "mouse") this.setTouchMode(false);
+    }, { capture: true, passive: true });
+    window.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse" && (e.movementX !== 0 || e.movementY !== 0)) this.setTouchMode(false);
+    }, { passive: true });
     // Clic souris → repasse en mode souris
     gameCanvas.addEventListener("mousedown", () => {
       this.desktopMode = "mouse";
     });
+  }
+
+  get isTouch(): boolean {
+    return this.touchMode;
+  }
+
+  // Appelé immédiatement avec le mode courant, puis à chaque bascule.
+  onModeChange(cb: (touch: boolean) => void): void {
+    this.modeListeners.push(cb);
+    cb(this.touchMode);
+  }
+
+  private setTouchMode(touch: boolean): void {
+    if (this.touchMode === touch) return;
+    this.touchMode = touch;
+    for (const cb of this.modeListeners) cb(touch);
   }
 
   // Quand un champ texte (chat, rename, code rejoint…) est focused, on
