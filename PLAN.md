@@ -33,7 +33,7 @@ Il découle de l'audit du 2026-09-24 : [`docs/AUDIT-2026-09.md`](docs/AUDIT-2026
 
 | Phase | Objectif | Sortie de phase | Effort total estimé |
 |---|---|---|---|
-| **0. Urgences** | Plus de faille économique, plus de donnée factice, plus de run perdue bêtement | Toutes les tâches P0 de l'audit fermées | ~4 jours |
+| **0. Urgences** | Plus de faille économique, plus de donnée factice, plus de run perdue bêtement | Tous les constats P0 de l'audit fermés, sauf `FEEL-01` (tâche 1.1) | ~4 jours |
 | **1. Combat fiable** | Ce qu'on voit = ce qui se passe ; réponse immédiate aux inputs ; visée libre | Duel 3 contre 3 où chaque clash visible est réel | ~2,5 semaines |
 | **2. Performance et réseau** | Tenir 60 joueurs confortablement, diviser la bande passante | Bench 60 joueurs : tick moyen < 4 ms, < 45 Ko/s par client | ~2 semaines (+ 2.5 optionnelle) |
 | **3. Première expérience et UX** | Un nouveau joueur comprend, survit et progresse | Temps médian avant la première mort > 45 s en session scriptée | ~2 semaines |
@@ -85,50 +85,57 @@ Semaines indicatives pour un rythme de développement régulier. Les phases 1 et
 
 Objectif : fermer les failles et les défauts qui ne doivent pas vivre une semaine de plus. Tâches courtes et indépendantes.
 
-- [ ] **0.1 — Prix des items côté serveur** · S · `ECO-01` `SEC-01`
+**Statut : terminée le 2026-09-24.** Le seul constat P0 encore ouvert, `FEEL-01`, relève de la tâche 1.1.
+
+- [x] **0.1 — Prix des items côté serveur** · S · `ECO-01` `SEC-01` · 2026-09-24 · `241911c`
   - Quoi : le serveur devient la seule source de vérité pour le prix et l'existence d'un item. Migration `supabase/migrations/0004_shop_items.sql` : table `shop_items(id text primary key, kind text, price bigint, active boolean)` seedée avec les thèmes actuels (sanctuaire 1500, forge-vermeille 3500, profondeurs-glacees 6000) ; nouvelle version de `purchase_item(p_user_id, p_item_id)` qui lit le prix en base et refuse un item inconnu ou inactif. `/api/wallet/purchase` n'accepte plus de `price`. Ajouter `GET /api/shop/catalog` pour que la boutique affiche les prix du serveur.
   - Fichiers : `supabase/migrations/`, `server/src/auth/routes.ts`, `server/src/auth/wallet.ts`, `client/src/auth/wallet.ts`, `client/src/boutique/Boutique.ts`.
   - Acceptation : une requête avec `price: 0` débite le vrai prix ; un `item_id` inconnu renvoie `400 invalid_item` ; l'achat depuis l'interface fonctionne comme avant ; les prix affichés viennent du catalogue.
+  - Réalisé : catalogue partagé `SHOP_ITEMS` (`shared/src/shop.ts`) au lieu d'une table SQL et d'un endpoint de catalogue. `purchase_item` n'est appelable que par le service role, donc la validation serveur suffit, et le déploiement ne dépend pas d'une migration. La boutique affiche les prix du même catalogue.
 
-- [ ] **0.2 — Pas de trophées ni de classement en room privée** · S · `ECO-02` `META-02` · Décision D2
+- [x] **0.2 — Pas de trophées ni de classement en room privée** · S · `ECO-02` `META-02` · Décision D2 · 2026-09-24 · `ad4f834`
   - Quoi : dans `persistMatchIfAuthed`, ne créditer aucun wallet (authentifié ou invité) si la room est privée. Recréer la vue `leaderboard_top` en excluant `room_code is not null`. Écran de mort en privé : « Partie privée : pas de trophées ».
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, nouvelle migration SQL, `client/src/ui/DeathScreen.ts`, `client/src/main.ts`.
   - Acceptation : une mort en room privée ne change pas le solde ; le classement n'affiche que des parties publiques ; le message en privé est explicite.
+  - Réalisé : **migration `0004_leaderboard_public_only.sql` à appliquer à la main** dans l'éditeur SQL Supabase. Le correctif serveur est actif sans elle ; elle retire du classement les parties privées déjà enregistrées.
 
-- [ ] **0.3 — Durcir l'API et les dépendances** · S · `SEC-02` `SEC-04`
+- [x] **0.3 — Durcir l'API et les dépendances** · S · `SEC-02` `SEC-04` · 2026-09-24 · `36027e1`
   - Quoi : limitation de débit par IP (`express-rate-limit` ou un compteur en mémoire) sur `/api/guest/init` (5/heure), `/api/profile`, `/api/wallet/*` ; `app.set("trust proxy", 1)` derrière Caddy ; CORS restreint aux origines de `ALLOWED_ORIGINS` (par défaut même origine). Retirer le méta-paquet `colyseus` de `server/package.json` (le code n'utilise que `@colyseus/core` et `@colyseus/ws-transport`), puis `npm audit fix` sans changement majeur.
   - Fichiers : `server/src/index.ts`, `server/src/auth/routes.ts`, `server/package.json`, `package-lock.json`, `.env.example`.
   - Acceptation : 6 appels à `/api/guest/init` en une heure depuis la même IP → le 6ᵉ reçoit `429` ; `npm audit --omit=dev` n'affiche plus que ce qui dépend de la montée Colyseus 0.18 (T.6) ; le jeu démarre et les rooms se créent normalement.
+  - Réalisé : 120 requêtes/min par IP sur `/api`, et 20 par 15 min sur `/api/guest/init` au lieu de 5 par heure (une salle de classe partage souvent une même IP). `TRUST_PROXY` et `ALLOWED_ORIGINS` sont documentés dans `.env.example`. Vulnérabilités en production : 15 → 3 (1 haute : `nanoid` via `@colyseus/core`), toutes levées par T.6.
 
-- [ ] **0.4 — Lobby honnête** · S · `UX-01`
+- [x] **0.4 — Lobby honnête** · S · `UX-01` · 2026-09-24 · `b8af18c`
   - Quoi : supprimer toute valeur inventée. Ajouter `GET /api/stats` (joueurs connectés et rooms, via un compteur tenu par les rooms ou `matchMaker.query`). Mesurer le ping réel (aller-retour HTTP sur `/healthz` au lobby ; en jeu, le message `ping` déjà géré par le serveur). Injecter le hash de build au moment du build (`define` Vite). Remplacer région, saison, patch notes et classement factices par de vraies données ou les retirer. Réécrire le bandeau défilant avec les règles réelles (pas de fusion).
   - Fichiers : `client/index.html`, `client/src/ui/LoginScreen.ts`, `client/vite.config.ts`, `server/src/index.ts`.
   - Acceptation : aucun `Math.random()` ne produit une valeur affichée comme statistique ; avec le serveur arrêté, les champs affichent « — » et non des chiffres.
+  - Réalisé : ping du lobby mesuré avec la Resource Timing API (temps réseau seul). Aucun ping n'est affiché en jeu aujourd'hui : l'affichage est prévu en 3.4.
 
-- [ ] **0.5 — Un joueur déconnecté s'arrête** · S · `FEEL-06`
+- [x] **0.5 — Un joueur déconnecté s'arrête** · S · `FEEL-06` · 2026-09-24 · `0817312`
   - Quoi : à la déconnexion non volontaire, remettre `inputDx`, `inputDy`, `inputBoost` et `inputThrow` à zéro avant `allowReconnection`. Dans la boucle, si un humain n'a envoyé aucun input depuis 500 ms, ses inputs sont remis à zéro (`lastInputAt` enfin utilisé).
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, `server/src/systems/movement.ts`.
   - Acceptation : couper le réseau d'un client en mouvement → son personnage s'arrête en moins de 0,5 s côté serveur.
 
-- [ ] **0.6 — Plus de rechargement de page en pleine partie** · S · `CLI-02`
+- [x] **0.6 — Plus de rechargement de page en pleine partie** · S · `CLI-02` · 2026-09-24 · `c3122de`
   - Quoi : pendant un match, la baisse automatique de qualité se limite à ce qui se change à chaud (résolution, bloom via `PostFX.setEnabled`). Le changement de preset est mémorisé et appliqué au prochain retour au menu.
   - Fichiers : `client/src/main.ts`, `client/src/scene/PostFX.ts`.
   - Acceptation : FPS artificiellement bas en jeu → aucune déconnexion ; le preset inférieur est actif après le retour au menu.
 
-- [ ] **0.7 — Entrées hybrides (PC à écran tactile)** · S · `UX-04`
+- [x] **0.7 — Entrées hybrides (PC à écran tactile)** · S · `UX-04` · 2026-09-24 · `ee0e68a`
   - Quoi : le mode d'entrée suit le dernier périphérique utilisé (toucher → tactile ; clavier ou souris → desktop) au lieu d'être figé au démarrage. Les contrôles tactiles s'affichent ou se masquent dynamiquement.
   - Fichiers : `client/src/input/InputManager.ts`, `client/src/main.ts`, `client/src/ui/ChatPanel.ts`.
   - Acceptation : sur un PC à écran tactile, clavier et souris fonctionnent ; toucher l'écran bascule en mode tactile ; sur téléphone rien ne change.
 
-- [ ] **0.8 — Anti-triche d'input conforme à la doc** · S · `NET-03`
+- [x] **0.8 — Anti-triche d'input conforme à la doc** · S · `NET-03` · 2026-09-24 · `8996c41` `8bb0a4a`
   - Quoi : compter une violation par fenêtre d'une seconde dépassant `MAX_INPUT_RATE`, et déconnecter le client après `MAX_INPUT_VIOLATIONS` violations (code de fermeture dédié, message côté client). Mettre le README en accord avec les valeurs réelles.
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, `README.md`.
   - Acceptation : un client qui envoie 200 inputs/s est déconnecté en quelques secondes ; un client normal à 60 inputs/s ne l'est jamais.
 
-- [ ] **0.9 — Trancher le TTL des lames au sol** · S · `GAME-11`
+- [x] **0.9 — Trancher le TTL des lames au sol** · S · `GAME-11` · 2026-09-24 · `f596194`
   - Quoi : appliquer `GROUND_BLADE_TTL_MS` aux lames au sol (suppression serveur à échéance) et faire clignoter côté client les 3 dernières secondes (échéance connue via un champ synchronisé en secondes ou via le temps serveur de la tâche 1.1). Mettre les commentaires en cohérence.
   - Fichiers : `server/src/systems/orbitPositions.ts` (ou un petit système dédié), `server/src/state/Blade.ts`, `client/src/entities/BladeView.ts`, `shared/src/constants.ts`.
   - Acceptation : aucune lame au sol plus vieille que le TTL dans le bench ; le clignotement est visible avant disparition.
+  - Réalisé : TTL appliqué aux seuls drops (mort, caisse, lancer retombé). Les lames ambiantes n'expirent pas : `ambientCap` les plafonne déjà, et les renouveler ne produirait que du trafic réseau et des lames qui disparaissent sous le nez du joueur. Un booléen synchronisé `expiring` (levé une fois, 3 s avant l'échéance) suffit au clignotement, sans attendre le temps serveur de 1.1.
 
 ---
 
@@ -405,6 +412,7 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 
 - [ ] **T.8 — URL d'API configurable** · S · `OPS-03`
   - Quoi : variable `VITE_API_URL` (même origine par défaut) utilisée par tous les appels `fetch`, ou réécritures dans `vercel.json` ; garder un seul mode de déploiement documenté.
+  - Note (phase 0) : `resolveServerEndpoint` (`client/src/net/Connection.ts`) force le port 2567 dès que la page est servie depuis `localhost`, même quand le serveur écoute ailleurs ; seul `VITE_SERVER_URL` permet de s'en écarter. À traiter avec la même configuration.
 
 - [ ] **T.9 — Observabilité** · M · `OPS-04`
   - Quoi : `/api/stats` enrichi (joueurs en ligne, rooms, tick moyen et p99 par room), journaux structurés, alerte de disponibilité externe.
