@@ -91,6 +91,9 @@ class Game {
   private lowFpsAccum = 0;
   private highFpsAccum = 0;
   private lastDowngradeAt = 0;
+  // Baisse de preset décidée pendant une partie : appliquée (reload) au
+  // prochain retour au menu, jamais en plein match.
+  private pendingPresetReload = false;
   private input: InputManager;
   private hud: Hud;
   private login: LoginScreen;
@@ -660,6 +663,12 @@ class Game {
     // affiché qu'APRÈS, garantissant que tout clic suivant sur Enter
     // démarre sur une ardoise propre.
     await this.conn.leave();
+    if (this.pendingPresetReload) {
+      // Preset abaissé pendant la partie : on le construit maintenant que
+      // le joueur n'a plus rien en cours.
+      window.location.reload();
+      return;
+    }
     this.login.show();
     void this.sound.playLobbyMusic();
   }
@@ -826,8 +835,10 @@ class Game {
   //    minimum du preset).
   //  - Si fps > 58 ET resScale < 1.0 pendant 5 s, on remonte de 0.05.
   //  - Si fps < 35 pendant 4 s ET resScale est déjà au minimum ET
-  //    autoDowngrade est activé, on bascule au preset inférieur (recharge
-  //    le jeu pour réinitialiser proprement les materials/shaders).
+  //    autoDowngrade est activé, on bascule au preset inférieur. Hors
+  //    partie : reload immédiat (materials/shaders construits au boot).
+  //    En partie : post-FX coupés à chaud et reload différé au retour
+  //    menu — le reload immédiat éjectait le joueur de son match.
   //
   // Appelé une fois par fenêtre de mesure FPS (~0.5 s).
   private adaptiveQuality(_dt: number): void {
@@ -859,6 +870,7 @@ class Game {
         console.log(`[blade.io] dynRes: ${cur.toFixed(2)} → ${next.toFixed(2)} (fps=${fps.toFixed(0)})`);
       } else if (
         this.quality.autoDowngrade &&
+        !this.pendingPresetReload &&
         fps < 35 &&
         Date.now() - this.lastDowngradeAt > 30000
       ) {
@@ -868,9 +880,16 @@ class Game {
           console.log(`[blade.io] auto-downgrade preset: ${this.quality.preset} → ${lower} (fps=${fps.toFixed(0)})`);
           savePresetChoice(lower);
           this.lastDowngradeAt = Date.now();
-          // Reload : les matériaux/shaders sont construits au boot selon le
-          // preset, on ne peut pas les muter à chaud.
-          window.location.reload();
+          if (this.room) {
+            // En partie : le bloom et les passes plein écran sont le plus
+            // gros poste GPU et se coupent sans reconstruire la scène.
+            this.postFx.setEnabled(false);
+            this.pendingPresetReload = true;
+          } else {
+            // Hors partie : les matériaux/shaders sont construits au boot
+            // selon le preset, seul un reload les reconstruit.
+            window.location.reload();
+          }
         }
       }
     } else if (this.highFpsAccum >= 5.0 && cur < 1.0) {
@@ -888,10 +907,14 @@ class Game {
     const tick = () => {
       if (!this.running) return;
       const now = performance.now();
-      const dt = Math.min(0.1, (now - last) / 1000);
+      const frameSec = (now - last) / 1000;
+      const dt = Math.min(0.1, frameSec);
       last = now;
       this.elapsed += dt * 1000;
-      this.fpsAccum += dt;
+      // FPS mesuré sur le temps réel : avec le dt plafonné à 0,1 s, une
+      // machine à 2 FPS s'affichait à 10 FPS et l'adaptation de qualité
+      // réagissait avec plusieurs fois le retard voulu.
+      this.fpsAccum += frameSec;
       this.fpsFrames++;
       if (this.fpsAccum >= 0.5) {
         this.fps = this.fpsFrames / this.fpsAccum;
