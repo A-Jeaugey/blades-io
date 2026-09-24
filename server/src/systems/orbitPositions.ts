@@ -42,8 +42,8 @@ export function updateBladePositions(
   cache: OrbitPositionCache,
 ): void {
   // Pass 1 : nettoyer les lames orphelines (orbite dont l'owner a disparu
-  // ou est mort). Pas de TTL sur les lames au sol : elles restent jusqu'à
-  // ce qu'on les ramasse, sinon elles disparaîtraient devant le joueur.
+  // ou est mort). L'échéance des drops au sol est gérée à part, à la
+  // cadence du spawner (cf. expireGroundBlades).
   const toDelete: string[] = [];
   state.blades.forEach((b) => {
     if (b.ownerId) {

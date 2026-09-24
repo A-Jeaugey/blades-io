@@ -176,7 +176,9 @@ function landProjectile(b: Blade, now: number, cb: ThrowCallbacks): void {
   b.vx = 0;
   b.vy = 0;
   b.pickupLockUntil = now + THROW_LANDED_PICKUP_LOCK_MS;
+  // Une lame lancée qui retombe est un drop comme un autre : elle expire.
   b.expiresAt = now + GROUND_BLADE_TTL_MS;
+  b.expiring = false;
   b.hitIds.clear();
   // Petit FX au sol pour signaler où la lame est tombée — réutilise le
   // canal projectileImpact (kind=3) avec destroyed=false pour un thud

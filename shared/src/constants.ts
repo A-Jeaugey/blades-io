@@ -185,14 +185,19 @@ export const PICKUP_RADIUS = 2.8;
 export const PICKUP_MAGNET_RADIUS = 5.5;
 export const PICKUP_MAGNET_STRENGTH = 18; // u/s appliqués, atténués avec la distance
 export const GROUND_BLADE_FRICTION = 3.5;
-// Durée max avant qu'une lame au sol non ramassée ne s'évapore. Sans ça
-// les drops de morts/caisses s'accumulent sans fin et la map se bloque.
+// Durée de vie d'un DROP au sol (lames lâchées à la mort, sorties d'une
+// caisse, lancer retombé) avant qu'il ne s'évapore : le butin se ramasse
+// vite ou se perd, et les zones de combat ne restent pas jonchées de lames.
+// Les lames ambiantes n'expirent pas : le spawner les plafonne déjà
+// (ambientCap), les faire tourner ne créerait que du trafic réseau.
 export const GROUND_BLADE_TTL_MS = 15000; // 15 s
+// Les dernières ms de vie d'un drop, le client le fait clignoter.
+export const GROUND_BLADE_BLINK_MS = 3000;
 
 // --- Spawn ambiant ---
 // Densité modérée : assez pour pas mourir de faim, pas trop pour que la
-// map reste lisible. Le TTL court (15 s) garantit qu'une lame non-ramassée
-// disparaît vite.
+// map reste lisible. Les drops expirés (cf. GROUND_BLADE_TTL_MS) libèrent
+// de la place sous le plafond, que le spawner comble ici.
 export const AMBIENT_SPAWN_INTERVAL = 1.0;
 export const AMBIENT_MAX_BASE = 400;
 export const AMBIENT_PER_PLAYER = 18;

@@ -31,9 +31,12 @@ export class Blade extends Schema {
   @type("uint8") pierceLeft: number = 0;
   // Si drop d'un joueur mort, petit délai anti-pickup immédiat pour les autres
   pickupLockUntil: number = 0;
-  // Timestamp d'expiration pour les lames au sol (0 = illimité). Si > 0 et
-  // atteint, la lame est despawn pour libérer la map.
+  // Timestamp d'expiration (0 = illimité). Drops au sol : despawn à
+  // échéance (cf. expireGroundBlades). Projectiles : TTL de vol.
   expiresAt: number = 0;
+  // Drop dans ses GROUND_BLADE_BLINK_MS dernières ms : le client le fait
+  // clignoter. Synchronisé (un seul changement par lame).
+  @type("boolean") expiring: boolean = false;
   // Cibles déjà touchées par ce projectile (sessionIds joueurs / ids
   // crates / ids blades). Évite les doubles-impacts au tick suivant.
   hitIds: Set<string> = new Set<string>();

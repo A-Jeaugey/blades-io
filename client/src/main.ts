@@ -346,13 +346,13 @@ class Game {
       const now = performance.now();
       this.blades.upsert(
         key, b.rarity as BladeRarity, b.ownerId, b.ringIndex, b.slotIndex,
-        b.x, b.y, now, !!b.isProjectile, b.vx ?? 0, b.vy ?? 0,
+        b.x, b.y, now, !!b.isProjectile, b.vx ?? 0, b.vy ?? 0, !!b.expiring,
       );
       $(b).onChange(() => {
         const t = performance.now();
         this.blades.upsert(
           key, b.rarity as BladeRarity, b.ownerId, b.ringIndex, b.slotIndex,
-          b.x, b.y, t, !!b.isProjectile, b.vx ?? 0, b.vy ?? 0,
+          b.x, b.y, t, !!b.isProjectile, b.vx ?? 0, b.vy ?? 0, !!b.expiring,
         );
       });
     };

@@ -144,6 +144,8 @@ interface BladeEntry {
   isProjectile: boolean;
   vx: number;
   vy: number;
+  // Drop au sol dans ses dernières secondes : clignote avant de disparaître.
+  expiring: boolean;
 }
 
 const MAX_INSTANCES_PER_BUCKET = 800;
@@ -221,12 +223,13 @@ export class BladeRenderer {
     id: string, rarity: BladeRarity, ownerId: string,
     ringIndex: number, slotIndex: number, x: number, y: number, now: number,
     isProjectile: boolean = false, vx: number = 0, vy: number = 0,
+    expiring: boolean = false,
   ): void {
     let e = this.entries.get(id);
     if (!e) {
       e = { id, rarity, ownerId, ringIndex, slotIndex,
         prevX: x, prevY: y, prevTime: now, targetX: x, targetY: y, targetTime: now,
-        isProjectile, vx, vy };
+        isProjectile, vx, vy, expiring };
       this.entries.set(id, e);
       // Allocation au tier 0 par défaut. update() migrera au bon tier dès
       // la frame suivante en lisant owner.tier (la lame n'est pas rendue
@@ -242,6 +245,7 @@ export class BladeRenderer {
     e.ownerId = ownerId; e.ringIndex = ringIndex; e.slotIndex = slotIndex;
     e.isProjectile = isProjectile;
     e.vx = vx; e.vy = vy;
+    e.expiring = expiring;
     if (e.rarity !== rarity) {
       const ref = this.idToIndex.get(id);
       const tier = ref?.tier ?? 0;
@@ -425,7 +429,12 @@ export class BladeRenderer {
       // de progression). Tier 1 = 1.3×, Tier 2 = 1.7× — assez pour "lire" la
       // le tier-up sans cramer l'écran (bloom + multi-instances émissives ont
       // tendance à se sommer en blanc pur sur les hauts tiers).
-      const baseS = RARITY_SCALE[e.rarity];
+      // Drop sur le point d'expirer : clignotement à ~4 Hz (réduit, pas
+      // masqué, pour qu'on voie encore où il est).
+      const blink = !e.ownerId && !e.isProjectile && e.expiring && Math.floor(elapsedSec * 8) % 2 === 1
+        ? 0.3
+        : 1;
+      const baseS = RARITY_SCALE[e.rarity] * blink;
       let sx = baseS;
       let sy = baseS;
       let sz = baseS;

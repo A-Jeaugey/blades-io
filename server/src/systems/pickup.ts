@@ -39,6 +39,9 @@ export function attachBladeToPlayer(state: ArenaState, player: Player, blade: Bl
   blade.ownerId = player.id;
   blade.vx = 0;
   blade.vy = 0;
+  // En orbite, plus d'échéance de drop.
+  blade.expiresAt = 0;
+  blade.expiring = false;
   // Au pickup la lame regen ses HP : sinon une lame Common ramassée avec
   // 1 PV restera fragile à vie même sans avoir combattu.
   blade.hp = RARITY_HP[blade.rarity as BladeRarity];

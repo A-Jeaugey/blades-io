@@ -8,7 +8,7 @@ import {
   PRIVATE_ROOM_DENSITY_MULT,
   BladeRarity,
   DECOR_COLLIDERS,
-  GROUND_BLADE_TTL_MS,
+  GROUND_BLADE_BLINK_MS,
   MAP_RADIUS,
   RARITY_HP,
   RARITY_SPAWN_WEIGHTS,
@@ -78,12 +78,30 @@ function randomPositionAwayFromPlayers(state: ArenaState): { x: number; y: numbe
   return null;
 }
 
+// Drops au sol arrivés à échéance : supprimés ; ceux qui entrent dans leurs
+// dernières secondes passent en `expiring` pour clignoter côté client.
+// Appelé à la cadence du spawner (1 s) : la précision suffit et évite un
+// parcours de toutes les lames à chaque tick.
+export function expireGroundBlades(state: ArenaState, now: number): void {
+  const expired: string[] = [];
+  state.blades.forEach((b) => {
+    if (b.ownerId || b.isProjectile || b.expiresAt <= 0) return;
+    if (now >= b.expiresAt) expired.push(b.id);
+    else if (!b.expiring && now >= b.expiresAt - GROUND_BLADE_BLINK_MS) b.expiring = true;
+  });
+  for (const id of expired) state.blades.delete(id);
+}
+
 export class SpawnSystem {
   private timer = 0;
   update(dt: number, state: ArenaState, isPrivate: boolean): void {
     this.timer += dt;
     if (this.timer < AMBIENT_SPAWN_INTERVAL) return;
     this.timer = 0;
+
+    // Avant le comptage : les drops expirés libèrent de la place sous le
+    // plafond ambiant.
+    expireGroundBlades(state, Date.now());
 
     const cap = ambientCap(state.players.size, isPrivate);
     const current = countGroundBlades(state);
@@ -100,7 +118,8 @@ export class SpawnSystem {
       blade.x = pos.x;
       blade.y = pos.y;
       blade.ownerId = "";
-      blade.expiresAt = Date.now() + GROUND_BLADE_TTL_MS;
+      // Pas d'échéance : les lames ambiantes sont plafonnées par ambientCap.
+      blade.expiresAt = 0;
       state.blades.set(blade.id, blade);
     }
   }
