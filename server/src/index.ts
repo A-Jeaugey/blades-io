@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Server } from "@colyseus/core";
+import { Server, matchMaker } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import express from "express";
 import cors from "cors";
@@ -54,6 +54,22 @@ app.use("/api/guest/init", rateLimit({ windowMs: 15 * 60_000, max: 20 }));
 app.get("/api", (_req, res) => {
   res.json({ name: "blade.io server", status: "ok" });
 });
+
+// Statistiques réelles affichées par le lobby (remplacent les compteurs
+// aléatoires d'avant). `clients` = connexions WebSocket, donc joueurs
+// humains en partie : les bots ne sont pas des clients. Mis en cache 2 s,
+// le lobby interroge toutes les 10 s par onglet ouvert.
+let statsCache: { at: number; body: { inGame: number; rooms: number } } | null = null;
+app.get("/api/stats", async (_req, res) => {
+  const now = Date.now();
+  if (!statsCache || now - statsCache.at > 2000) {
+    const rooms = await matchMaker.query({ name: "arena" });
+    const inGame = rooms.reduce((sum, r) => sum + r.clients, 0);
+    statsCache = { at: now, body: { inGame, rooms: rooms.length } };
+  }
+  res.json(statsCache.body);
+});
+
 app.use("/api", buildAuthRouter());
 
 // Sert le client statique si dispo (déploiement all-in-one)

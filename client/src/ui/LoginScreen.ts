@@ -4,6 +4,9 @@ import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
 import { fetchGuestWallet } from "../auth/guestToken";
 
+// Identifiant de build (date + commit) injecté par Vite (cf. vite.config.ts).
+declare const __BUILD_ID__: string;
+
 export type LoginMode = "public" | "create" | "join";
 export interface LoginResult {
   name: string;
@@ -62,6 +65,7 @@ export class LoginScreen {
   private nameLabel: HTMLElement | null;
   private authPanel: AuthPanel | null = null;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
+  private statsInterval: ReturnType<typeof setInterval> | null = null;
   private mode: LoginMode = "public";
   private walletBadge: HTMLElement | null = null;
   private walletValue: HTMLElement | null = null;
@@ -188,6 +192,8 @@ export class LoginScreen {
     this.input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !this.renaming) submit(); });
     this.codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
 
+    const buildEl = document.getElementById("bio2-build");
+    if (buildEl) buildEl.textContent = __BUILD_ID__;
     this.startReadouts();
     if (this.taglineEl) runGlitchReveal(this.taglineEl, "SPIN TO SURVIVE");
     this.applyAuthState();
@@ -227,7 +233,10 @@ export class LoginScreen {
     if (!list) return;
     try {
       const r = await fetch("/api/leaderboard?limit=10");
-      if (!r.ok) return;
+      if (!r.ok) {
+        this.setTopOpsMessage(list, "leaderboard offline");
+        return;
+      }
       const j = await r.json();
       const entries: Array<{ user_id: string; username: string; score: number }> = j.entries ?? [];
       if (entries.length === 0) {
@@ -246,9 +255,16 @@ export class LoginScreen {
         })
         .join("");
     } catch (e) {
-      // Silencieux : laisse le placeholder.
       console.warn("[blade.io] top ops fetch failed", e);
+      this.setTopOpsMessage(list, "leaderboard offline");
     }
+  }
+
+  // Ligne unique du panneau classement (chargement, API indisponible).
+  // Remplace l'ancien classement fictif (Razor, Vyper…) qui restait affiché
+  // quand l'API ne répondait pas.
+  private setTopOpsMessage(list: HTMLOListElement, text: string): void {
+    list.innerHTML = `<li class="bio2-lb-row"><span class="bio2-lb-rank">--</span><span class="bio2-lb-name">${escapeHtml(text)}</span><span class="bio2-lb-score"></span></li>`;
   }
 
   // Verrouille / déverrouille le champ CALLSIGN selon l'état d'auth.
@@ -395,30 +411,82 @@ export class LoginScreen {
     setTimeout(() => this.codeCells.forEach((c) => c.classList.remove("bio2-err")), 500);
   }
 
-  // Lance l'horloge décorative qui drive le hex tick, le ping random et le
-  // count online. Cadence 800ms comme dans le design source.
+  // Compteur hexadécimal de l'en-tête de la console : pur habillage, il ne
+  // prétend mesurer quoi que ce soit (cadence 800ms du design source). Le
+  // ping et le nombre de joueurs, eux, sont mesurés (refreshLiveStats) ;
+  // avant, ils étaient tirés au hasard.
   private startReadouts(): void {
     let tick = 0;
-    let online = 1247;
     const refresh = () => {
       tick = (tick + 1) & 0xffff;
-      const latency = 28 + Math.round(Math.random() * 18);
-      online = Math.max(800, online + Math.round((Math.random() - 0.45) * 14));
       if (this.tickEl) this.tickEl.textContent = tick.toString(16).toUpperCase().padStart(4, "0");
-      if (this.pingEl) {
-        this.pingEl.textContent = `${latency}ms`;
-        this.pingEl.style.color = latency < 50 ? "var(--cyan)" : "var(--pink)";
-      }
-      if (this.onlineEl) this.onlineEl.textContent = online.toLocaleString();
     };
     refresh();
     this.tickInterval = setInterval(refresh, 800);
+    void this.refreshLiveStats();
+    this.statsInterval = setInterval(() => void this.refreshLiveStats(), 10_000);
+  }
+
+  // Ping = aller-retour HTTP vers /healthz (même serveur que le jeu en
+  // auto-hébergement) ; joueurs en partie = /api/stats. En cas d'échec on
+  // affiche « — » plutôt qu'un chiffre.
+  private async refreshLiveStats(): Promise<void> {
+    try {
+      const url = `/healthz?t=${Date.now()}`;
+      const t0 = performance.now();
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) throw new Error(`healthz ${r.status}`);
+      // L'entrée Resource Timing n'est publiée qu'une fois le corps reçu.
+      await r.text();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const rtt = Math.round(this.networkRtt(url) ?? performance.now() - t0);
+      if (this.pingEl) {
+        this.pingEl.textContent = `${rtt}ms`;
+        this.pingEl.style.color = rtt < 50 ? "var(--cyan)" : "var(--pink)";
+      }
+    } catch {
+      if (this.pingEl) {
+        this.pingEl.textContent = "—";
+        this.pingEl.style.color = "";
+      }
+    }
+    try {
+      const r = await fetch("/api/stats", { cache: "no-store" });
+      if (!r.ok) throw new Error(`stats ${r.status}`);
+      const j = await r.json();
+      const n = Number(j?.inGame);
+      if (this.onlineEl) this.onlineEl.textContent = Number.isFinite(n) ? n.toLocaleString() : "—";
+    } catch {
+      if (this.onlineEl) this.onlineEl.textContent = "—";
+    }
+  }
+
+  // Temps réseau d'une requête via la Resource Timing API (requestStart →
+  // responseStart), indépendant du thread principal : mesuré à la main,
+  // le rendu 3D qui tourne derrière le lobby gonflait le ping de plusieurs
+  // centaines de ms sur les machines lentes. On vide le buffer ensuite pour
+  // qu'il ne sature pas (une entrée toutes les 10 s).
+  private networkRtt(url: string): number | null {
+    const entries = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+    let rtt: number | null = null;
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (!e.name.endsWith(url)) continue;
+      if (e.requestStart > 0 && e.responseStart > e.requestStart) rtt = e.responseStart - e.requestStart;
+      break;
+    }
+    performance.clearResourceTimings();
+    return rtt;
   }
 
   private stopReadouts(): void {
     if (this.tickInterval !== null) {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
+    }
+    if (this.statsInterval !== null) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
     }
   }
 
