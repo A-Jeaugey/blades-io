@@ -192,7 +192,6 @@ function buildSanctuaireUniforms(detail: "rich" | "simple" | "flat"): Record<str
 export const SANCTUAIRE_THEME: Theme = {
   id: "sanctuaire",
   displayName: "Sanctuaire des Esprits",
-  price: 1500,
   tagline: "Mystic mauve, lanternes flottantes, brume féérique",
 
   palette: {

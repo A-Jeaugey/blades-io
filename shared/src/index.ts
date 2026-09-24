@@ -3,3 +3,4 @@ export * from "./types";
 export * from "./orbits";
 export * from "./tiers";
 export * from "./decor";
+export * from "./shop";

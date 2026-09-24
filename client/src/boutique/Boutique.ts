@@ -1,3 +1,4 @@
+import { shopPrice } from "@bladeio/shared";
 import { getActiveTheme, listThemes, setActiveTheme, Theme } from "../themes";
 import { wallet } from "../auth/wallet";
 import { grantOwnership, isOwned, listOwned, subscribeOwnership } from "./owned";
@@ -5,14 +6,12 @@ import { grantOwnership, isOwned, listOwned, subscribeOwnership } from "./owned"
 // ─────────────────────────────────────────────────────────────────────────────
 // Boutique — UI controller pour la modal d'achat de cosmétiques.
 //
-// V1 scope :
-// - Maps (= thèmes) : achat fonctionnel (localStorage), équipement = reload
+// - Maps (= thèmes) : achat via /api/wallet/purchase (le serveur débite le
+//   prix du catalogue partagé SHOP_ITEMS), équipement = reload
 // - Skins / Épées : placeholder "Bientôt" (système d'assets pas encore prêt)
 //
-// V2 plan : remplacer la persistence localStorage par /api/wallet/inventory
-// + endpoint /api/wallet/purchase qui décrémente le solde serveur. L'API
-// publique de ce module ne change pas, juste les implémentations sous le
-// capot.
+// Les prix affichés viennent du même catalogue que celui qui fait foi côté
+// serveur : pas de divergence possible entre le prix vu et le prix débité.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class Boutique {
@@ -145,7 +144,7 @@ export class Boutique {
     const owned = isOwned(theme.id);
     const equipped = activeId === theme.id;
     const pending = this.pendingPurchase.has(theme.id);
-    const price = theme.price ?? 0;
+    const price = shopPrice(theme.id);
 
     if (equipped) card.classList.add("equipped");
     if (owned && !equipped) card.classList.add("owned");
@@ -256,7 +255,7 @@ export class Boutique {
   }
 
   private async buy(theme: Theme): Promise<void> {
-    const price = theme.price ?? 0;
+    const price = shopPrice(theme.id);
     if (this.pendingPurchase.has(theme.id)) return;
     if (isOwned(theme.id)) return;
     const balance = wallet.get()?.balance ?? 0;
@@ -269,7 +268,7 @@ export class Boutique {
     // wallet et insère dans inventory dans la même transaction Postgres.
     // Le wallet local est mis à jour automatiquement via le setState
     // déclenché côté wallet.purchase().
-    const result = await wallet.purchase(theme.id, price);
+    const result = await wallet.purchase(theme.id);
 
     if (result.ok) {
       grantOwnership(theme.id);

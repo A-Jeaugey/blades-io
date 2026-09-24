@@ -82,7 +82,6 @@ const FRAG_FLAT_NEON = /* glsl */ `
 export const NEON_THEME: Theme = {
   id: "neon",
   displayName: "Néon Originel",
-  price: 0, // gratuit, donné à tous les joueurs au boot
   tagline: "Cyberpunk d'origine — gratuit",
 
   palette: {

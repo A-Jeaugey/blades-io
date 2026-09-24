@@ -192,12 +192,14 @@ C'est tout. Le sélecteur de Settings le détecte automatiquement (`listThemes()
    ```
 4. Dans `themes/glacial.ts`, mettre `music: { lobby: "lobby-glacial.mp3", battle: "battle-glacial.mp3" }`.
 
-### 5. (Plus tard) Boutique
+### 5. Prix en boutique
 
-Quand le système de boutique sera prêt (intégration au trophy wallet), il
-suffira d'ajouter au thème un `price: number` (ou similaire) et `THEMES`
-servira d'inventaire global. La boutique listera, vérifiera l'ownership
-serveur-side via la wallet, et conditionnera l'activation.
+Un thème est **gratuit par défaut** (possédé par tous). Pour le vendre,
+ajouter son entrée dans le catalogue `SHOP_ITEMS` de `shared/src/shop.ts`
+(`{ id, kind: "theme", price }`). Ce catalogue est la seule source de prix :
+le serveur y relit le prix au moment de l'achat (`/api/wallet/purchase` ne
+reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
+`price` dans l'objet `Theme` ni accepter un prix venant du client.
 
 ---
 

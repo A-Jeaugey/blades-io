@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { getShopItem } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import {
@@ -204,23 +205,22 @@ export function buildAuthRouter(): Router {
   });
 
   // --------------------------------------------------------------------- //
-  // POST /api/wallet/purchase  { item_id, price }
+  // POST /api/wallet/purchase  { item_id }
   // Achat atomique : vérifie le solde + débite + ajoute à l'inventaire,
   // tout dans la même transaction Postgres (cf. RPC purchase_item).
+  //
+  // Le prix vient du catalogue partagé (SHOP_ITEMS), jamais de la requête :
+  // un éventuel champ `price` envoyé par un ancien client est ignoré. Avant,
+  // le prix du body était débité tel quel → achat de n'importe quel item
+  // pour 0 trophée.
   //
   // Returns :
   //   200 { ok: true, new_balance }                              → succès
   //   400 { error: 'insufficient_funds', new_balance }           → solde insuffisant
   //   400 { error: 'already_owned', new_balance }                → idempotent (déjà dans inventaire)
-  //   400 { error: 'invalid_price' | 'invalid_item' | … }        → input refusé
+  //   400 { error: 'invalid_item' }                              → item inconnu du catalogue
   //   401 { error: 'unauthorized' }                              → non authed
   //   503 { error: 'auth_unavailable' }                          → Supabase off
-  //
-  // Note : le PRIX vient du client. Le serveur ne le vérifie PAS contre
-  // une table de prix officielle pour l'instant — un attaquant pourrait
-  // envoyer price=0 et acheter un thème gratuitement. Acceptable en V1
-  // (cosmétique non-gameplay), à durcir quand on aura une table items
-  // côté DB qui fait foi.
   // --------------------------------------------------------------------- //
   router.post("/wallet/purchase", async (req: Request, res: Response) => {
     if (!isSupabaseConfigured()) {
@@ -232,18 +232,14 @@ export function buildAuthRouter(): Router {
       res.status(401).json({ error: "unauthorized" });
       return;
     }
-    const body = (req.body ?? {}) as { item_id?: unknown; price?: unknown };
+    const body = (req.body ?? {}) as { item_id?: unknown };
     const itemId = typeof body.item_id === "string" ? body.item_id : "";
-    const price = typeof body.price === "number" ? body.price : NaN;
-    if (!itemId || itemId.length > 64) {
+    const item = getShopItem(itemId);
+    if (!item) {
       res.status(400).json({ error: "invalid_item" });
       return;
     }
-    if (!Number.isFinite(price) || price < 0 || price > 1_000_000) {
-      res.status(400).json({ error: "invalid_price" });
-      return;
-    }
-    const result = await purchaseItem(user.id, itemId, price);
+    const result = await purchaseItem(user.id, item.id, item.price);
     if (!result.ok) {
       res.status(400).json({
         error: result.error ?? "purchase_failed",

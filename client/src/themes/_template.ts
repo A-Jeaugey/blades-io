@@ -115,9 +115,9 @@ export const TEMPLATE_THEME: Theme = {
   // Nom affiché à l'utilisateur dans le dropdown Settings et la boutique.
   // Garde-le court (s'affiche dans une carte de boutique).
   displayName: "Thème vierge",
-  // Prix en trophées (0 = gratuit). Indicatif : 200 (entrée de gamme)
-  // → 350 (intermédiaire) → 500+ (premium / signature).
-  price: 0, // ← TODO : prix de ton thème
+  // Prix : pas ici. Un thème payant s'ajoute au catalogue SHOP_ITEMS de
+  // shared/src/shop.ts (seule source que le serveur accepte). Sans entrée
+  // dans ce catalogue, le thème est gratuit et possédé par tous.
   // Tagline courte (1 phrase max) affichée sous le nom dans la boutique.
   tagline: "Description courte de ton thème", // ← TODO
 

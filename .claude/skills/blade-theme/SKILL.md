@@ -103,6 +103,8 @@ export const THEMES: Record<string, Theme> = {
 
 Le dropdown de Settings le détecte automatiquement via `listThemes()`.
 
+**Prix** : un thème non listé dans le catalogue `SHOP_ITEMS` de `shared/src/shop.ts` est gratuit et possédé par tous. Pour un thème payant, y ajouter `"<id>": { id: "<id>", kind: "theme", price: <trophées> }` (grille actuelle : 1500 / 3500 / 6000). C'est la seule source de prix acceptée par le serveur.
+
 ### 9. Music — Suno v5.5 prompts
 
 Générer **2 prompts** : lobby (ambient/calm) + battle (intense/driving). Format établi du projet :

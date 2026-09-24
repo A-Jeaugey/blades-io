@@ -10,19 +10,20 @@
 // endpoint /api/wallet/inventory côté Supabase. Le localStorage deviendra
 // alors un cache lecture, plus la source de vérité.
 //
-// Les thèmes "système" gratuits (price = 0) sont auto-owned au boot, peu
-// importe ce qu'il y a en localStorage. Évite le cas de figure où un user
+// Les thèmes gratuits (absents du catalogue SHOP_ITEMS de shared/) sont
+// auto-owned au boot, peu importe ce qu'il y a en localStorage. Évite le cas de figure où un user
 // efface son storage et perd l'accès au thème par défaut.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { shopPrice } from "@bladeio/shared";
 import { THEMES } from "../themes";
 
 const STORAGE_KEY = "blade.owned";
 
 function autoOwned(): string[] {
-  // Tous les thèmes price <= 0 ou sans price (= legacy gratuit).
+  // Tous les thèmes absents du catalogue de la boutique (= gratuits).
   return Object.values(THEMES)
-    .filter((t) => (t.price ?? 0) <= 0)
+    .filter((t) => shopPrice(t.id) <= 0)
     .map((t) => t.id);
 }
 
