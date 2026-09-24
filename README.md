@@ -55,7 +55,7 @@ The server runs the entire simulation (positions, collisions, kills, drops, proj
 - **Owner-bucket broad phase** for blade-vs-blade — pairs of players are tested by center distance before touching individual blades
 - **InstancedMesh** rendering — one mesh per (rarity × tier), up to 800 instances each
 - **Quality presets** (auto/high/medium/low) — bloom, particles, decor density adapt for mobile
-- **Anti-cheat** — server validates `|dx|, |dy| ≤ 1`, caps inputs at 40/s, kicks after 3 violations
+- **Anti-cheat** — server clamps `|dx|, |dy| ≤ 1`, ignores inputs above 80/s and disconnects a client that stays above that cap for 3 consecutive seconds
 
 ### Audio
 

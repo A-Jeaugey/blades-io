@@ -20,6 +20,8 @@ import {
   INITIAL_BLADE_COUNT,
   MAP_RADIUS,
   MAX_INPUT_RATE,
+  MAX_INPUT_VIOLATIONS,
+  CLOSE_CODE_INPUT_FLOOD,
   MAX_PLAYERS_PER_ROOM,
   NAME_MAX_LENGTH,
   NAME_MIN_LENGTH,
@@ -121,6 +123,9 @@ export class ArenaRoom extends Room<ArenaState> {
   private roomCode = "";
   private isPrivate = false;
   private botsEnabled = true;
+  // Sessions expulsées pour flood d'inputs : onLeave les nettoie sans
+  // ouvrir la fenêtre de reconnexion (sinon le client reviendrait aussitôt).
+  private kickedSessions = new Set<string>();
 
   onCreate(options: { code?: string; bots?: boolean } = {}): void {
     this.roomCode = typeof options.code === "string" ? options.code.toUpperCase() : "";
@@ -256,6 +261,11 @@ export class ArenaRoom extends Room<ArenaState> {
   async onLeave(client: Client, consented: boolean): Promise<void> {
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
+    // Expulsé pour flood : ni reconnexion, ni match enregistré.
+    if (this.kickedSessions.delete(client.sessionId)) {
+      this.cleanupPlayer(client.sessionId);
+      return;
+    }
     // Leave volontaire : cleanup immédiat.
     if (consented) {
       // Si le joueur était encore en vie (quit via menu), on persiste son
@@ -330,7 +340,20 @@ export class ArenaRoom extends Room<ArenaState> {
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
     const now = Date.now();
-    if (now - p.inputWindowStart > 1000) { p.inputWindowStart = now; p.inputCount = 0; }
+    if (now - p.inputWindowStart > 1000) {
+      // Bilan de la fenêtre qui se termine : au-dessus du plafond = une
+      // violation, fenêtre propre = compteur remis à zéro. Seules des
+      // violations consécutives expulsent (cf. MAX_INPUT_VIOLATIONS).
+      p.violations = p.inputCount > MAX_INPUT_RATE ? p.violations + 1 : 0;
+      p.inputWindowStart = now;
+      p.inputCount = 0;
+      if (p.violations >= MAX_INPUT_VIOLATIONS) {
+        console.warn(`[blade.io] input flood: kicking ${client.sessionId} (${p.name})`);
+        this.kickedSessions.add(client.sessionId);
+        client.leave(CLOSE_CODE_INPUT_FLOOD);
+        return;
+      }
+    }
     p.inputCount++;
     if (p.inputCount > MAX_INPUT_RATE) return;
     const dx = Number.isFinite(msg.dx) ? msg.dx : 0;

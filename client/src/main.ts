@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   BladeRarity,
   CLIENT_INPUT_RATE,
+  CLOSE_CODE_INPUT_FLOOD,
   ClashEvent,
   MAP_RADIUS,
   MAX_BLADES_PER_PLAYER,
@@ -491,7 +492,9 @@ class Game {
       // mauvaise room et le bouton "Enter the grid" après "Back to menu"
       // ne spawn pas (sticky session zombie).
       if (this.room !== room) return;
-      if (code === 1000) { this.returnToMenu(); return; }
+      // 1000 = départ volontaire ; expulsion pour flood : pas de reconnexion
+      // (le serveur la refuserait de toute façon).
+      if (code === 1000 || code === CLOSE_CODE_INPUT_FLOOD) { this.returnToMenu(); return; }
       this.attemptReconnect(room);
     });
   }
