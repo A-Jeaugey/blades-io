@@ -9,15 +9,48 @@ import fs from "fs";
 import { ArenaRoom } from "./rooms/ArenaRoom";
 import { initSupabase } from "./auth/supabase";
 import { buildAuthRouter } from "./auth/routes";
+import { rateLimit } from "./http/rateLimit";
 
 initSupabase();
 
 const PORT = Number(process.env.PORT ?? 2567);
 
+// Nombre de reverse proxies de confiance devant le serveur (Caddy en
+// auto-hébergement, le load balancer de Render en cloud). Par défaut 1 :
+// req.ip vient alors de X-Forwarded-For, sinon tous les joueurs auraient
+// l'IP du proxy et partageraient le même compteur de rate limit. Mettre
+// TRUST_PROXY=false si le serveur est exposé directement (X-Forwarded-For
+// deviendrait falsifiable par le client).
+function parseTrustProxy(raw: string | undefined): boolean | number | string {
+  const v = (raw ?? "").trim();
+  if (v === "") return 1;
+  if (v === "false") return false;
+  if (v === "true") return true;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 ? n : v;
+}
+
 const app = express();
-app.use(cors());
+app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY));
+
+// CORS : le client est servi par ce même serveur, donc l'API est appelée en
+// same-origin et n'a besoin d'aucun en-tête CORS. Une origine externe (client
+// hébergé ailleurs) doit être listée dans ALLOWED_ORIGINS. Le matchmaking
+// Colyseus (/matchmake) est intercepté avant Express et gère ses propres
+// en-têtes : il n'est pas concerné.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter((o) => o.length > 0);
+if (allowedOrigins.length > 0) app.use(cors({ origin: allowedOrigins }));
+
 app.use(express.json({ limit: "32kb" }));
 app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+// Plafond général de l'API, puis plafond serré sur la création de wallet
+// invité : chaque appel insère une ligne en base. 20 / 15 min laisse passer
+// une salle de classe derrière une même IP, pas un script.
+app.use("/api", rateLimit({ windowMs: 60_000, max: 120 }));
+app.use("/api/guest/init", rateLimit({ windowMs: 15 * 60_000, max: 20 }));
 app.get("/api", (_req, res) => {
   res.json({ name: "blade.io server", status: "ok" });
 });
