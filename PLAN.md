@@ -395,9 +395,10 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 
 À mener en continu ; T.1, T.2 et T.7 dès les deux premières semaines, T.3 avant toute ouverture large.
 
-- [ ] **T.1 — Intégration continue** · S · `OPS-01`
+- [x] **T.1 — Intégration continue** · S · `OPS-01` · 2026-09-25 · `4bdcf25`
   - Quoi : workflow GitHub Actions sur chaque push et PR : `npm ci`, `build:shared`, typecheck client et serveur, build du client, tests (T.2), bench (2.8).
   - Acceptation : un push qui casse le typecheck est signalé en rouge.
+  - Réalisé : `.github/workflows/ci.yml`, Node 22 ; rejoue le build de `auto-deploy.sh` (shared, serveur, client). Premier run vert en 25 s. Erreur de type injectée dans le serveur, le client ou `shared` : l'étape sort en code 2. Tests (T.2) et bench (2.8) à brancher.
 
 - [ ] **T.2 — Tests des systèmes serveur** · M · `OPS-01`
   - Quoi : Vitest (ou `node:test`) sur les systèmes critiques : mouvement (collision décor, drain du boost), collisions (dégâts de clash, protection de spawn), lancers (portée, pierce, atterrissage), ramassage, score, orbites et tiers de `shared/`, bots (la fuite ne se bloque jamais).

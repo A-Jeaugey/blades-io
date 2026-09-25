@@ -9,9 +9,10 @@ export const WALL_KILL_THICKNESS = 2; // épaisseur de la zone fatale au bord
 // 60Hz tick : 16.7ms entre chaque update serveur, vs 50ms à 20Hz. Sur
 // changement de direction / arrêt-reprise / spam de sprint, l'input
 // se propage 3× plus vite à la simulation → plus de saccade perçue.
-// Coût serveur : ~3× la conso CPU vs 20Hz (toujours < 5% sur 1 core
-// moderne). Bandwidth : ~3× aussi (~120 KB/s par client en peak).
-// Acceptable sur serveur dédié, marginal sur cloud à 60 joueurs.
+// Coût mesuré (tools/bench-server.js, 60 bots, 2026-09) : tick moyen de
+// 8,5 à 10,6 ms selon les runs, soit plus de la moitié d'un cœur, et
+// ~95 Ko/s envoyés par client (patchs à 60 Hz eux aussi). La phase 2 du
+// plan vise < 4 ms.
 export const SERVER_TICKRATE = 60; // Hz
 export const SERVER_DT = 1 / SERVER_TICKRATE;
 export const CLIENT_INPUT_RATE = 60; // Hz (matche le tickrate)
@@ -49,10 +50,11 @@ export const BOOST_DRAIN_INTERVAL = 0.5; // une lame toutes les 0.5s de boost
 export const LOW_BLADE_WARNING = 3;
 
 // --- Orbites ---
-// Ring 0 = anneau 1 (rayon 1.8, cap 12 lames). Ring n cap = 12 + n*6.
-// Densité augmentée par rapport à l'ancien schéma (8 + n*4) pour que les
-// cercles accueillent plus de lames — un joueur fort possède un mur dense
-// de lames au lieu d'une ribambelle d'anneaux presque vides.
+// Ring 0 = anneau 1 (rayon 1.8, cap 16 lames). Ring n cap = 16 + n*8.
+// Densité augmentée par rapport aux anciens schémas (8 + n*4, puis
+// 12 + n*6) pour que les cercles accueillent plus de lames — un joueur
+// fort possède un mur dense de lames au lieu d'une ribambelle d'anneaux
+// presque vides.
 export const RING_BASE_RADIUS = 1.8;
 export const RING_RADIUS_STEP = 0.8;
 export const RING_BASE_CAP = 16;
@@ -68,11 +70,11 @@ export const RING_ROT_FALLOFF = 0.12; // -12% par anneau (réduit pour que
 // Plus un joueur possède de lames, plus ses orbites tournent vite.
 // Le multiplicateur est 1 + (bladeCount / BLADE_ROT_DIVISOR) * BLADE_ROT_MAX_BONUS,
 // plafonné à 1 + BLADE_ROT_MAX_BONUS. Avec les valeurs par défaut :
-//   3 lames  → ×1.03  (quasi nul)
-//  15 lames  → ×1.15
-//  30 lames  → ×1.30
-//  60 lames  → ×1.60
-// 100+ lames → ×2.00  (cap)
+//   3 lames  → ×1.045 (quasi nul)
+//  15 lames  → ×1.225
+//  30 lames  → ×1.45
+//  60 lames  → ×1.9
+// 100+ lames → ×2.5   (cap)
 export const BLADE_ROT_DIVISOR = 100;    // nombre de lames pour atteindre le cap
 export const BLADE_ROT_MAX_BONUS = 1.5;  // bonus max = ×2.5 au total
 
@@ -80,7 +82,9 @@ export const BLADE_ROT_MAX_BONUS = 1.5;  // bonus max = ×2.5 au total
 // Hitbox de base d'une lame Tier 1. Les lames de tier supérieur multiplient
 // cette valeur (cf. TIER_HITBOX_MULT). Hitbox volontairement décorrélée du
 // sprite visuel : 2-3x plus large que la lame qu'on voit, pour forcer les
-// contacts au tick 20 Hz et éliminer le "syndrome de la passoire".
+// contacts entre deux ticks et éliminer le "syndrome de la passoire".
+// (Calibré quand le tick était à 20 Hz ; conservé tel quel au passage à
+// 60 Hz pour ne pas changer le ressenti des clashes.)
 export const BLADE_HITBOX = 0.7;
 export const BLADE_COLLISION_COOLDOWN = 0.2; // s, par paire de lames
 
@@ -163,7 +167,7 @@ export const THROW_PIERCE: Record<number /* BladeRarity */, number> = {
   3: 3, // Legendary
 };
 // Hitbox d'un projectile (légèrement plus généreuse qu'une lame en orbite
-// pour que ça "accroche" même au tick 20 Hz).
+// pour que ça "accroche" même quand il parcourt ~0,6 u par tick).
 export const THROW_PROJECTILE_HITBOX = 0.85;
 
 // --- Spawn protection ---
@@ -415,7 +419,7 @@ export const MAX_PLAYERS_PER_ROOM = 60;
 
 // --- Scoring (leaderboard composite) ---
 export const SCORE_KILL = 15;
-export const SCORE_BLADE = 1;           // par lame actuelle (monte ET baisse)
+export const SCORE_BLADE = 1;           // par lame du record de la vie (maxBladeCount, ne baisse jamais)
 export const SCORE_SURVIVAL_PTS = 1;
 export const SCORE_SURVIVAL_INTERVAL = 10; // secondes
 export const SCORE_CRATE = 3;

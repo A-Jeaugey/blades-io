@@ -11,10 +11,12 @@ Guide pour Claude (et autres assistants IA) qui travaillent sur ce repo.
 ```
 shared/    Constantes et types — source de vérité gameplay (positions de
            collision, balance, enums…). Importé par client ET serveur.
-server/    Colyseus authoritative room. Tick 20 Hz, simulation complète.
-           Le serveur ne sait rien des couleurs/visuels — c'est cosmétique.
-client/    Vite + Three.js + Colyseus.js. Interpolation 150 ms + prédiction
-           locale + reconciliation pour le joueur courant.
+server/    Colyseus authoritative room. Tick et patchs à 60 Hz, simulation
+           complète. Le serveur ne sait rien des couleurs/visuels — c'est
+           cosmétique.
+client/    Vite + Three.js + Colyseus.js. Entités distantes rendues 80 ms
+           dans le passé (interpolation) + prédiction locale +
+           reconciliation pour le joueur courant.
 ```
 
 **Règles d'or** :
@@ -56,9 +58,12 @@ client/src/
 ### Quality presets — important
 
 `getPresetConfig()` détecte le GPU via `WEBGL_debug_renderer_info` et choisit
-parmi `ultra | low | medium | high`. Chaque module de rendu prend `q: QualityConfig`
+parmi `ultra | low | medium | high` (`ultra` est le mode le plus **léger**,
+« potato mode », pas le plus beau). Chaque module de rendu prend `q: QualityConfig`
 en constructeur et adapte son détail (segments, post-FX, instances). Un moniteur
-FPS adaptatif baisse `resScale` runtime puis downgrade le preset si nécessaire.
+FPS adaptatif baisse `resScale` runtime puis downgrade le preset si nécessaire
+(en pleine partie : post-FX coupés à chaud, preset appliqué au retour menu —
+jamais de rechargement pendant un match).
 
 **Conséquence** : tout nouveau code de rendu doit gérer **les 3 niveaux de
 détail** (`rich`, `simple`, `minimal`) ou au moins ne pas casser les low/ultra.
@@ -101,10 +106,14 @@ interface Theme {
 
 ### Thèmes existants
 
-| ID | Fichier | Statut |
-|---|---|---|
-| `neon` | `themes/neon.ts` | **Défaut**, gratuit. Cyberpunk d'origine. |
-| `sanctuaire` | `themes/sanctuaire.ts` | Cosmétique #1, mystic mauve/or. |
+| ID | Fichier | Decor | Statut |
+|---|---|---|---|
+| `neon` | `themes/neon.ts` | `cyber` | **Défaut**, gratuit. Cyberpunk d'origine. |
+| `sanctuaire` | `themes/sanctuaire.ts` | `spirit` | Boutique, 1500 trophées. Mystique mauve/or. |
+| `forge-vermeille` | `themes/forge-vermeille.ts` | `cyber` | Boutique, 3500 trophées. Forge volcanique, lave. |
+| `profondeurs-glacees` | `themes/profondeurs-glacees.ts` | `cyber` | Boutique, 6000 trophées. Cathédrale gelée, aurores. |
+
+Les prix vivent dans `shared/src/shop.ts` (voir « Prix en boutique » plus bas).
 
 ### Activation
 
@@ -229,11 +238,11 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 
 ## Gotchas connus
 
-- **Shared TS deprecation** : `npm run build:shared` plante sur les flags
-  `moduleResolution=node10` et `baseUrl` (warnings TypeScript 5.9+). C'est
-  un bug pre-existant — n'affecte pas le typecheck du client (`npx tsc -p
-  client/tsconfig.json --noEmit` passe propre). Pour le build complet :
-  `cd client && npx vite build`.
+- **Build et CI** : `npm run build` (shared, puis serveur, puis client)
+  passe avec la version de TypeScript verrouillée (5.9.3) ; l'ancien
+  plantage de `build:shared` ne se reproduit plus. La CI GitHub Actions
+  (`.github/workflows/ci.yml`) rejoue ce build complet à chaque push : elle
+  doit être verte avant de pousser sur `main`.
 - **`client/public/` est gitignoré**. Le dossier est régénéré au `predev`/
   `prebuild` par `sync-music`. N'y commitez rien à la main.
 - **Suppression de branches sur le remote local** (`http://127.0.0.1:.../`) :
@@ -242,7 +251,8 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   le faire depuis sa machine ou via GitHub web.
 - **Fichiers musicaux** : les `.mp3` source vivent dans `assets/music/` (pas
   dans `client/`). Le script `sync-music` les copie vers `client/public/`
-  avec les noms attendus par les thèmes (`lobby-<id>.mp3`, `battle-<id>.mp3`).
+  sous les noms repris dans `theme.music` (`lobby-<nom>.mp3`,
+  `battle-<nom>.mp3`, ex. `lobby-forge.mp3`).
 - **Camera offset trop bas tue la lisibilité .io**. Ne descendez pas en
   dessous de ~45° d'inclinaison (offset Y/Z > 0.85). Le top-down strict
   est laid mais à 30° on perd la perception des menaces.
@@ -255,5 +265,10 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   obligatoire pour ce projet).
 - Branches de feature `claude/<task-name>` créées par les sessions, à
   cleaner après merge (depuis la machine du dev, pas le sandbox).
-- Le déploiement (Render + Vercel) est déclenché automatiquement par tout
-  push sur `main` — vérifier le build local avant.
+- Le déploiement de production est auto-hébergé : `auto-deploy.sh`, lancé
+  toutes les 30 s par le timer de `systemd/`, redéploie `main` dès qu'il
+  bouge (`git reset --hard`, build complet, `pm2 restart`). Tout push sur
+  `main` redémarre donc le serveur et coupe les parties en cours (tâche T.3
+  du plan) : attendre que la CI soit verte sur la branche avant de fusionner.
+  Les fichiers Render/Vercel/Docker restent des alternatives documentées
+  dans le README, pas la cible actuelle.
