@@ -1,0 +1,43 @@
+# Intégration continue : rejoue le build de auto-deploy.sh (shared, serveur,
+# client) sur chaque push et chaque PR. Un commit qui ne compile pas est
+# signalé en rouge ici plutôt que de casser le déploiement de main.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Un nouveau push sur la même branche annule la vérification précédente.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Typecheck et build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installation
+        run: npm ci --no-audit --no-fund
+
+      - name: Build shared
+        run: npm run build:shared
+
+      # tsc complet : échoue sur la moindre erreur de type du serveur.
+      - name: Build serveur
+        run: npm run build --workspace=@bladeio/server
+
+      # tsc (typecheck du client et de shared/src) puis vite build.
+      - name: Build client
+        run: npm run build --workspace=@bladeio/client
