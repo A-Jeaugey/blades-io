@@ -265,3 +265,12 @@ test("mur : une lame désintégrée est signalée au-delà du bord de l'arène",
   for (const e of events) assert.ok(Math.hypot(e.x, e.y) > killRadius - 0.5, `rayon ${Math.hypot(e.x, e.y)}`);
   assert.equal(p.alive, true);
 });
+
+test("tick : l'état publie l'heure du serveur (référence des échéances côté client)", () => {
+  const r = new TestRoom(clock);
+  r.tick();
+  assert.equal(r.state.serverTime, clock.now);
+  const p = r.join("p1");
+  // Les échéances sont dans la même horloge que serverTime.
+  assert.ok(Math.abs(p.spawnedAt - r.state.serverTime) < 50);
+});

@@ -415,6 +415,7 @@ export class ArenaRoom extends Room<ArenaState> {
 
   private tick(dt: number): void {
     this.state.tick++;
+    this.state.serverTime = Date.now();
     if (this.botsEnabled) {
       this.maintainBots();
       this.bots.update(dt, this.state);

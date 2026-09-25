@@ -240,6 +240,8 @@ class Game {
         ids: () => [...this.orbitSegments.keys()],
         frames: () => ({ count: this.debugHitboxes?.frameCount ?? 0, lastTick: this.debugHitboxes?.lastFrameTick ?? -1, renderTick: this.renderTick }),
         reset: () => this.debugHitboxes?.resetStats(),
+        serverNow: () => this.serverNow(),
+        protectedShown: () => !!this.players.get(this.myId)?.isProtectedShown,
       };
     }
     this.settings = new SettingsPanel();
@@ -389,6 +391,7 @@ class Game {
       this.lastPatchTick = tick;
       this.serverClock.onTick(tick, performance.now());
     });
+    $(state).listen("serverTime", (t: number) => this.serverClock.onServerTime(t, performance.now()));
     if (this.debugHitboxes) {
       const debug = this.debugHitboxes;
       room.onMessage("debugOrbits", (frame: DebugOrbitFrame) => debug.push(frame));
@@ -730,6 +733,12 @@ class Game {
     return { x: owner.x + Math.cos(a) * r, y: owner.y + Math.sin(a) * r };
   }
 
+  // Heure du serveur estimée (Date.now() du serveur), pour comparer ses
+  // échéances. Avant la première synchro : horloge locale, faute de mieux.
+  private serverNow(): number {
+    return this.serverClock.isEpochReady ? this.serverClock.epochAt(performance.now()) : Date.now();
+  }
+
   // Joue `run` quand le tick de rendu atteint `tick` (tout de suite si
   // l'horloge n'est pas encore calée ou sans tick). fx : effet visuel ou
   // sonore, sauté s'il est en retard de plus de 0,5 s (onglet revenu de
@@ -815,7 +824,7 @@ class Game {
     this.dead = true;
     const me = this.room?.state?.players?.get(this.myId);
     if (!me) return;
-    const lifeMs = Date.now() - me.spawnedAt;
+    const lifeMs = this.serverNow() - me.spawnedAt;
     const rank = this.computeMyRank();
     this.sound.death();
     this.camera.shake.add(0.8);
@@ -1047,10 +1056,10 @@ class Game {
     // Effets actifs : on relit les *Until du joueur local et on met à jour
     // les badges HUD avec leur temps restant. Durée base conservée dans
     // effectDurations pour normaliser la barre.
-    const dnow = Date.now();
+    const dnow = this.serverNow();
     const updateFx = (label: string, color: number, until: number) => {
       if (until <= dnow) {
-        this.hud.updateEffect(label, label, "#" + color.toString(16).padStart(6, "0"), 0, 1);
+        this.hud.updateEffect(label, label, "#" + color.toString(16).padStart(6, "0"), 0, 1, dnow);
         this.effectDurations.delete(label);
       } else {
         let dur = this.effectDurations.get(label);
@@ -1064,6 +1073,7 @@ class Game {
           "#" + color.toString(16).padStart(6, "0"),
           until,
           dur,
+          dnow,
         );
       }
     };
@@ -1210,7 +1220,10 @@ class Game {
         : (this.room?.state?.tick ?? 0);
       this.flushTimeline();
       const localView = this.players.get(this.myId);
-      const nowMs = Date.now();
+      // Heure du serveur : présente pour le joueur local (prédit), au tick
+      // de rendu pour les autres (affichés 80 ms dans le passé).
+      const serverNowMs = this.serverNow();
+      const serverRenderMs = this.serverClock.isEpochReady ? this.serverClock.epochAt(now - RENDER_DELAY) : serverNowMs;
       for (const [id, v] of this.players) {
         if (id === this.myId) this.updateLocalPrediction(dt, v);
         else v.interpolate(now, RENDER_DELAY);
@@ -1218,7 +1231,7 @@ class Game {
         // spawnProtectionUntil est dans le futur. Lu directement du state
         // serveur ; la dérive d'horloge sur ~2.5s reste imperceptible.
         const ps = this.room?.state?.players?.get(id);
-        v.setProtected(!!ps && ps.spawnProtectionUntil > nowMs);
+        v.setProtected(!!ps && ps.spawnProtectionUntil > (id === this.myId ? serverNowMs : serverRenderMs));
         v.animate(dt);
         v.updateTrail(dt);
         // Hide remote players inside bushes. Le local player reste toujours

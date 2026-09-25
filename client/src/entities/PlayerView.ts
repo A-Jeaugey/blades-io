@@ -199,6 +199,10 @@ export class PlayerView {
     this.root.position.set(x, 0, y);
   }
 
+  get isProtectedShown(): boolean {
+    return this.protected_;
+  }
+
   setProtected(active: boolean): void {
     if (this.protected_ === active) return;
     this.protected_ = active;

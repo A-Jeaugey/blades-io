@@ -27,16 +27,17 @@ export class Hud {
   }
 
   // Met à jour un badge d'effet actif (SPEED, SPIN, MAGNET, SHIELD).
-  // untilMs = timestamp de fin ; si <= now, on retire le badge.
+  // untilMs = date de fin, nowMs = heure du serveur estimée (les deux dans
+  // l'horloge du serveur) ; si la fin est passée, on retire le badge.
   updateEffect(
     key: string,
     label: string,
     color: string,
     untilMs: number,
     durationMs: number,
+    nowMs: number,
   ): void {
-    const now = Date.now();
-    const remaining = untilMs - now;
+    const remaining = untilMs - nowMs;
     let node = this.effectNodes.get(key);
     if (remaining <= 0) {
       if (node) {

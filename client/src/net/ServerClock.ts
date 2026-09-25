@@ -1,6 +1,8 @@
 import { SERVER_DT } from "@bladeio/shared";
 
-// Estimation du tick serveur à partir de state.tick, reçu à chaque patch.
+// Estimation de l'horloge du serveur, à partir de state.tick (tick de
+// simulation) et de state.serverTime (Date.now() du serveur), reçus à
+// chaque patch.
 //
 // Le décalage (temps du tick − instant de réception) est lissé : la gigue
 // de réception ne doit pas faire trembler la rotation des orbites. Il inclut
@@ -10,6 +12,8 @@ import { SERVER_DT } from "@bladeio/shared";
 export class ServerClock {
   private offsetSec = 0;
   private ready = false;
+  private epochOffsetMs = 0;
+  private epochReady = false;
 
   // Au-delà de cet écart, on recale d'un coup plutôt que de lisser : onglet
   // resté en arrière-plan, reconnexion, pause réseau.
@@ -30,8 +34,33 @@ export class ServerClock {
     else this.offsetSec += err * ServerClock.SMOOTHING;
   }
 
+  // Date.now() du serveur à la réception. Même lissage que le tick : la
+  // latence moyenne est incluse (écart constant de quelques dizaines de ms
+  // au plus), sans commune mesure avec un navigateur décalé de minutes.
+  onServerTime(serverMs: number, clientMs: number): void {
+    const sample = serverMs - clientMs;
+    if (!this.epochReady) {
+      this.epochOffsetMs = sample;
+      this.epochReady = true;
+      return;
+    }
+    const err = sample - this.epochOffsetMs;
+    if (Math.abs(err) > ServerClock.RESYNC_SEC * 1000) this.epochOffsetMs = sample;
+    else this.epochOffsetMs += err * ServerClock.SMOOTHING;
+  }
+
   get isReady(): boolean {
     return this.ready;
+  }
+
+  get isEpochReady(): boolean {
+    return this.epochReady;
+  }
+
+  // Date.now() du serveur correspondant à un instant client
+  // (performance.now(), en ms).
+  epochAt(clientMs: number): number {
+    return clientMs + this.epochOffsetMs;
   }
 
   // Tick serveur (fractionnaire) correspondant à un instant client
@@ -43,5 +72,7 @@ export class ServerClock {
   reset(): void {
     this.ready = false;
     this.offsetSec = 0;
+    this.epochReady = false;
+    this.epochOffsetMs = 0;
   }
 }
