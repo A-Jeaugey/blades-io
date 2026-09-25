@@ -14,21 +14,22 @@ export const WALL_KILL_THICKNESS = 2; // épaisseur de la zone fatale au bord
 // envoyés par client (patchs à 60 Hz eux aussi).
 export const SERVER_TICKRATE = 60; // Hz
 export const SERVER_DT = 1 / SERVER_TICKRATE;
-export const CLIENT_INPUT_RATE = 60; // Hz (matche le tickrate)
 export const MAX_INPUT_RATE = 80; // rejets au-delà
+// File d'inputs par joueur (tâche 1.2) : chaque input reçu vaut un pas de
+// SERVER_DT, appliqué dans l'ordre. Le serveur accumule un crédit d'un pas
+// par SERVER_DT écoulé (pas de speed-hack en envoyant plus vite), jusqu'à
+// MAX_STEP_CREDIT pour rattraper un à-coup réseau (≈ 166 ms), et ne garde
+// pas plus de MAX_INPUT_QUEUE inputs en attente.
+export const MAX_STEP_CREDIT = 10;
+export const MAX_INPUT_QUEUE = 20;
 // Nombre de secondes CONSÉCUTIVES au-dessus de MAX_INPUT_RATE avant
 // déconnexion. Consécutives : une rafale isolée (paquets retenus pendant un
 // hoquet réseau puis livrés d'un coup) ne doit pas expulser un joueur
-// légitime, qui n'envoie que CLIENT_INPUT_RATE messages par seconde.
+// légitime, qui envoie un input par SERVER_DT (60 par seconde).
 export const MAX_INPUT_VIOLATIONS = 3;
 // Code de fermeture WebSocket envoyé au client expulsé pour flood d'inputs
 // (plage 4000-4999 réservée aux applications).
 export const CLOSE_CODE_INPUT_FLOOD = 4003;
-// Au-delà de ce délai sans message d'input, le serveur considère un joueur
-// humain immobile (inputs remis à zéro). Sans ça, une coupure réseau ou un
-// onglet mis en arrière-plan laissait le personnage avancer seul sur son
-// dernier input, jusqu'au mur ou dans un ennemi.
-export const INPUT_STALE_MS = 500;
 
 // --- Joueur ---
 export const PLAYER_SPEED = 11; // unités / seconde

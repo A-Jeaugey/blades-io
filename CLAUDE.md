@@ -77,6 +77,14 @@ client/src/
   l'atteint (`atTick()` dans `client/src/main.ts`). Tout nouvel évènement
   positionnel suit ce chemin, sinon il apparaît 80 ms avant l'image
   correspondante.
+- **Mouvement** : un input = un pas de `SERVER_DT`, appliqué dans l'ordre
+  par le serveur (file d'inputs, `lastSeq` acquitte le dernier appliqué).
+  Le pas est la fonction partagée `stepMovement` (`shared/src/movement.ts`)
+  et le client rejoue ses inputs non acquittés avec `InputPredictor`
+  (`shared/src/prediction.ts`). Toute règle de déplacement (vitesse,
+  boost, Speed, recul, hitlag, décor) se change dans `stepMovement`,
+  jamais d'un seul côté : sinon la prédiction se trompe à chaque pas.
+  Test de référence : `server/test/prediction.test.ts`.
 - **Mode debug** : `?debug=hitbox` dans l'URL dessine les hitbox serveur
   des lames proches et affiche l'écart client/serveur (orbites, étincelles).
 

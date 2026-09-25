@@ -1,15 +1,13 @@
 import {
-  INPUT_STALE_MS,
-  KNOCKBACK_DECAY,
-  PLAYER_BOOST_MULT,
+  BOOST_DRAIN_INTERVAL,
+  MAX_STEP_CREDIT,
   PLAYER_BODY_RADIUS,
   PLAYER_ORBIT_PUSH_MARGIN,
-  PLAYER_SPEED,
-  BOOST_DRAIN_INTERVAL,
-  POWERUP_SPEED_MULT,
   RING_BASE_CAP,
+  SERVER_DT,
+  MoveInput,
   outerOrbitRadius,
-  resolveDecorCollision,
+  stepMovement,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -94,88 +92,64 @@ export function updateMovement(
   const now = Date.now();
   state.players.forEach((p) => {
     if (!p.alive) return;
-
-    // Humain muet depuis INPUT_STALE_MS (réseau coupé, onglet en arrière-
-    // plan) : on l'immobilise. Les bots écrivent leurs inputs directement,
-    // sans passer par handleInput, donc sans lastInputAt.
-    if (!p.isBot && now - p.lastInputAt > INPUT_STALE_MS) {
-      p.inputDx = 0;
-      p.inputDy = 0;
-      p.inputBoost = false;
-    }
-
-    // Hitlag : on fige le mouvement (input ET knockback) ; les orbites
-    // tournent et le push-out entre joueurs continue de s'appliquer.
-    const inHitlag = p.hitlagUntil > now;
-    if (inHitlag) {
-      // Reset boost pour ne pas drainer pendant la pause.
-      p.boost = false;
-      p.boostAccum = 0;
-      // On NE move PAS le joueur. Push-out décor reste appliqué (il pourrait
-      // être coincé), mais sur sa position courante seulement.
-      const pushed = resolveDecorCollision(p.x, p.y, PLAYER_BODY_RADIUS);
-      p.x = pushed.x;
-      p.y = pushed.y;
+    // Bots : un pas par tick avec leur input courant.
+    if (p.isBot) {
+      applyStep(p, { dx: p.inputDx, dy: p.inputDy, boost: p.inputBoost }, now, dt, removePlayerBlades);
       return;
     }
-
-    // Knockback : amortissement exponentiel constant (e^(-dt/τ)), hors gel
-    // seulement : le recul reçu pendant le hitlag s'applique en entier à sa
-    // sortie. Avant, il décroissait sans déplacer le joueur et se perdait
-    // en partie (46 % pour un gel de 110 ms).
-    if (p.knockbackVx !== 0 || p.knockbackVy !== 0) {
-      const decay = Math.exp(-dt / KNOCKBACK_DECAY);
-      p.knockbackVx *= decay;
-      p.knockbackVy *= decay;
-      if (Math.hypot(p.knockbackVx, p.knockbackVy) < 0.05) {
-        p.knockbackVx = 0;
-        p.knockbackVy = 0;
-      }
+    // Humains : un pas de SERVER_DT par input reçu, dans l'ordre, comme le
+    // client qui les rejoue (tâche 1.2). Crédit d'un pas par SERVER_DT
+    // écoulé : un client qui envoie plus vite ne va pas plus vite, un
+    // à-coup réseau se rattrape au tick suivant. Sans input reçu (coupure,
+    // onglet en arrière-plan), pas de pas : le joueur s'arrête aussitôt,
+    // au lieu de glisser 500 ms sur son dernier input.
+    p.stepCredit = Math.min(MAX_STEP_CREDIT, p.stepCredit + dt / SERVER_DT);
+    while (p.stepCredit >= 1 && p.inputQueue.length > 0) {
+      const input = p.inputQueue.shift()!;
+      p.stepCredit -= 1;
+      p.inputDx = input.dx;
+      p.inputDy = input.dy;
+      p.inputBoost = input.boost;
+      applyStep(p, input, now, SERVER_DT, removePlayerBlades);
+      p.lastSeq = input.seq;
     }
-
-    let dx = p.inputDx;
-    let dy = p.inputDy;
-    const mag = Math.hypot(dx, dy);
-    if (mag > 1) {
-      dx /= mag;
-      dy /= mag;
-    }
-
-    const moving = mag > 0.05;
-    let speed = PLAYER_SPEED;
-    // Power-up SPEED : multiplicateur permanent tant que speedUntil > now.
-    if (p.speedUntil > now) speed *= POWERUP_SPEED_MULT;
-    p.boost = !!p.inputBoost && p.bladeCount > 0 && moving;
-    if (p.boost) {
-      speed *= PLAYER_BOOST_MULT;
-      p.boostAccum += dt;
-      while (p.boostAccum >= BOOST_DRAIN_INTERVAL && p.bladeCount > 0) {
-        p.boostAccum -= BOOST_DRAIN_INTERVAL;
-        removePlayerBlades(p, 1);
-      }
-    } else {
-      p.boostAccum = 0;
-    }
-
-    if (moving) {
-      p.dirX = dx;
-      p.dirY = dy;
-    }
-
-    // Velocity totale = input + knockback résiduel.
-    p.x += (dx * speed + p.knockbackVx) * dt;
-    p.y += (dy * speed + p.knockbackVy) * dt;
-
-    // Push-out décor.
-    const pushed = resolveDecorCollision(p.x, p.y, PLAYER_BODY_RADIUS);
-    p.x = pushed.x;
-    p.y = pushed.y;
-
-    // Pas de clamp aux bords : si le joueur dépasse la zone de mort, le
-    // wall damage system le tuera au tick (avec drop des lames). Le clamp
-    // précédent permettait de "wall-hug" sans pénalité.
   });
 
   // Push-out joueur-joueur (basé sur les orbites).
   pushOutPlayers(state);
+}
+
+// Un pas de mouvement (stepMovement, partagé avec la prédiction du client),
+// plus ce que seul le serveur gère : drain du boost, direction retenue pour
+// les lancers sans visée.
+function applyStep(
+  p: Player,
+  input: MoveInput,
+  now: number,
+  dt: number,
+  removePlayerBlades: (player: Player, count: number) => void,
+): void {
+  const r = stepMovement(p, input, {
+    speed: p.speedUntil > now,
+    // Hitlag : déplacement figé, recul conservé pour la sortie du gel.
+    frozen: p.hitlagUntil > now,
+    canBoost: p.bladeCount > 0,
+  }, dt);
+  p.boost = r.boosting;
+  if (r.boosting) {
+    p.boostAccum += dt;
+    while (p.boostAccum >= BOOST_DRAIN_INTERVAL && p.bladeCount > 0) {
+      p.boostAccum -= BOOST_DRAIN_INTERVAL;
+      removePlayerBlades(p, 1);
+    }
+  } else {
+    p.boostAccum = 0;
+  }
+  if (r.moving) {
+    p.dirX = r.dx;
+    p.dirY = r.dy;
+  }
+  // Pas de clamp aux bords : si le joueur dépasse la zone de mort, le
+  // wall damage system le tuera au tick (avec drop des lames). Le clamp
+  // précédent permettait de "wall-hug" sans pénalité.
 }

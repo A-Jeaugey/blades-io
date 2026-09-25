@@ -20,6 +20,7 @@ import {
   GROUND_BLADE_TTL_MS,
   INITIAL_BLADE_COUNT,
   MAP_RADIUS,
+  MAX_INPUT_QUEUE,
   MAX_INPUT_RATE,
   MAX_INPUT_VIOLATIONS,
   CLOSE_CODE_INPUT_FLOOD,
@@ -298,6 +299,7 @@ export class ArenaRoom extends Room<ArenaState> {
     p.inputThrow = false;
     p.aimX = 0;
     p.aimY = 0;
+    p.inputQueue.length = 0;
     try {
       await this.allowReconnection(client, 20);
     } catch {
@@ -376,8 +378,19 @@ export class ArenaRoom extends Room<ArenaState> {
     const dy = Number.isFinite(msg.dy) ? msg.dy : 0;
     const cdx = Math.max(-1, Math.min(1, dx));
     const cdy = Math.max(-1, Math.min(1, dy));
-    p.inputDx = cdx; p.inputDy = cdy;
-    p.inputBoost = !!msg.boost;
+    // Un input = un pas de mouvement, appliqué au tick dans l'ordre des seq
+    // (cf. updateMovement). Doublon ou input en retard : ignoré. Mort : pas
+    // de pas, mais acquitté, pour que le client n'ait rien à rejouer.
+    const seq = typeof msg.seq === "number" && Number.isFinite(msg.seq) ? msg.seq >>> 0 : p.lastQueuedSeq + 1;
+    if (seq > p.lastQueuedSeq) {
+      p.lastQueuedSeq = seq;
+      if (p.alive) {
+        p.inputQueue.push({ dx: cdx, dy: cdy, boost: !!msg.boost, seq });
+        if (p.inputQueue.length > MAX_INPUT_QUEUE) p.inputQueue.splice(0, p.inputQueue.length - MAX_INPUT_QUEUE);
+      } else {
+        p.lastSeq = seq;
+      }
+    }
     // Edge-trigger : on ne consomme le throw qu'au tick suivant. Si un client
     // envoie throw=true plusieurs fois rapidement, on coalesce (le cooldown
     // côté processThrows fait foi de toute façon).
@@ -398,8 +411,6 @@ export class ArenaRoom extends Room<ArenaState> {
         p.aimY = 0;
       }
     }
-    if (typeof msg.seq === "number" && msg.seq > p.lastSeq) p.lastSeq = msg.seq >>> 0;
-    p.lastInputAt = now;
   }
 
   private handleRespawn(client: Client, msg: RespawnMessage): void {
@@ -410,13 +421,18 @@ export class ArenaRoom extends Room<ArenaState> {
     p.x = spawn.x; p.y = spawn.y;
     p.inputDx = 0; p.inputDy = 0; p.inputBoost = false;
     p.inputThrow = false; p.aimX = 0; p.aimY = 0;
+    // Inputs envoyés pendant l'écran de mort : acquittés sans pas (cf.
+    // handleInput). Le recul de la vie précédente ne pousse pas le nouveau
+    // spawn.
+    p.inputQueue.length = 0; p.stepCredit = 0;
+    p.knockbackVx = 0; p.knockbackVy = 0;
     p.throwCooldownUntil = 0;
     p.alive = true; p.boost = false;
     p.bladeCount = 0; p.bladeIds = [];
     p.kills = 0; p.maxBladeCount = 0; p.score = 0;
     p.cratesDestroyed = 0; p.powerupsCollected = 0;
     p.spawnedAt = Date.now();
-    p.lastKiller = null; p.violations = 0; p.lastSeq = 0;
+    p.lastKiller = null; p.violations = 0;
     p.spinPhase = Math.random() * Math.PI * 2;
     p.spinScale = 0.75 + Math.random() * 0.5;
     p.tier = 0;

@@ -170,10 +170,9 @@ export class InputManager {
     return { ...move, throwPressed, aimX: aim?.x ?? 0, aimY: aim?.y ?? 0 };
   }
 
-  // Variante non-consommante : ne touche pas au flag throw. Utilisée pour
-  // la prédiction locale (pas fixe de 60 Hz, alors que sendInput suit
-  // CLIENT_INPUT_RATE). Sans ça, l'appui Espace est consommé par la
-  // prédiction et jamais transmis au serveur.
+  // Variante non-consommante : ne touche pas au flag throw. Pour lire
+  // l'input courant hors envoi (indicateur de visée) sans avaler un appui
+  // qui doit partir au serveur.
   peekDirBoost(): { dx: number; dy: number; boost: boolean } {
     if (this.isTypingInTextField()) {
       return { dx: 0, dy: 0, boost: false };

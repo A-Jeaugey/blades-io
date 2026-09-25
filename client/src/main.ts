@@ -1,15 +1,14 @@
 import * as THREE from "three";
 import {
   BladeRarity,
-  CLIENT_INPUT_RATE,
+  AckState,
+  InputPredictor,
   CLOSE_CODE_INPUT_FLOOD,
   ClashEvent,
   MAP_RADIUS,
   MAX_BLADES_PER_PLAYER,
   LOW_BLADE_WARNING,
-  PLAYER_BOOST_MULT,
-  PLAYER_BODY_RADIUS,
-  PLAYER_SPEED,
+  SERVER_DT,
   THROW_COOLDOWN_MS,
   TIER_UP_SHAKE,
   ChatEvent,
@@ -31,7 +30,6 @@ import {
   PowerUpPickupEvent,
   PowerUpType,
   isInBush,
-  resolveDecorCollision,
   tierClashShake,
 } from "@bladeio/shared";
 import { getStateCallbacks } from "colyseus.js";
@@ -176,7 +174,6 @@ class Game {
   private myName = "";
   private room: any = null;
   private running = true;
-  private lastInputSent = 0;
   private elapsed = 0;
   private fps = 60;
   private fpsAccum = 0;
@@ -185,20 +182,25 @@ class Game {
   private dead = false;
   private lastHudUpdate = 0;
   private quality: QualityConfig;
-  private predX = 0;
-  private predY = 0;
-  private predPrevX = 0;
-  private predPrevY = 0;
+  // Prédiction du joueur local avec rejeu des inputs non acquittés (tâche
+  // 1.2), même pas de mouvement que le serveur.
+  private predictor = new InputPredictor();
+  // Horloge d'inputs : temps réel accumulé depuis le dernier input envoyé
+  // (ms). Un input par SERVER_DT, comme le serveur applique un pas par input.
+  private inputAccumMs = 0;
+  // Patch reçu pour le joueur local : réconciliation à la frame suivante,
+  // une fois tout le patch appliqué (serverTime compris).
+  private needReconcile = false;
+  // Correction absorbée en douceur par le rendu (u), et corrections
+  // mesurées (mode debug).
   private errX = 0;
   private errY = 0;
-  private simAccum = 0;
-  private readonly SIM_DT = 1 / 60;
-  private readonly ERR_DECAY_TAU = 0.15;
-  private predInit = false;
+  private readonly ERR_DECAY_TAU = 0.1;
+  private corrections: number[] = [];
   private inputSeq = 0;
   private topPlayerId: string | null = null;
   // Edge-trigger throw : on stocke un appui détecté entre deux sendInput()
-  // (CLIENT_INPUT_RATE, pas forcément chaque frame). Sans ça, un appui dans
+  // (un par SERVER_DT, pas forcément chaque frame). Sans ça, un appui dans
   // la frame de gap entre deux sends se perd.
   private throwLatched = false;
   private aimIndicator = new AimIndicator();
@@ -291,6 +293,14 @@ class Game {
         flashing: () => this.blades.flashingCount(performance.now()),
         // Cadrage (tâche 1.7) : distance caméra courante.
         cameraDistance: () => this.camera.viewDistance,
+        // Prédiction (tâche 1.2) : corrections de la position prédite à
+        // chaque état reçu (u), inputs en attente d'acquittement.
+        prediction: () => {
+          const c = this.corrections;
+          const mean = c.length ? c.reduce((a, b) => a + b, 0) / c.length : 0;
+          return { mean, max: c.length ? Math.max(...c) : 0, count: c.length, pending: this.predictor.pendingCount };
+        },
+        resetPredictionStats: () => { this.corrections.length = 0; },
         groundAt: (x: number, y: number) => this.camera.groundAt(x, y),
       };
     }
@@ -474,10 +484,8 @@ class Game {
       this.sceneStack.scene.add(view.trail);
       this.players.set(key, view);
       if (isLocal) {
-        this.predX = p.x; this.predY = p.y;
-        this.predPrevX = p.x; this.predPrevY = p.y;
-        this.errX = 0; this.errY = 0;
-        this.simAccum = 0; this.predInit = true;
+        this.resetPrediction();
+        this.needReconcile = true;
       }
       this.recordOrbitSegment(key, p);
       this.renderAlive.set(key, !!p.alive);
@@ -493,7 +501,7 @@ class Game {
           if (isLocal && alive) this.renderAlive.set(key, true);
           else this.atTick(this.lastPatchTick, () => this.renderAlive.set(key, alive), false);
         }
-        if (isLocal) this.reconcileLocal(p);
+        if (isLocal) this.needReconcile = true;
       });
     };
     $(state).players.onAdd(onPlayerAdd, true);
@@ -749,7 +757,7 @@ class Game {
     this.blades.clear();
     this.crates.clear();
     this.powerups.clear();
-    this.predInit = false;
+    this.resetPrediction();
     try {
       const next = await this.conn.reconnect(token);
       // Re-vérifie après l'await : pendant la reconnexion l'utilisateur a
@@ -968,7 +976,7 @@ class Game {
   private respawn(): void {
     this.death.hide();
     this.dead = false;
-    this.predInit = false;
+    this.resetPrediction();
     this.room?.send("respawn", { name: this.myName });
   }
 
@@ -992,7 +1000,7 @@ class Game {
     }
     this.room = null;
     this.myId = "";
-    this.predInit = false;
+    this.resetPrediction();
     for (const v of this.players.values()) { v.dispose(); v.trail.parent?.remove(v.trail); }
     this.players.clear();
     // clear() au lieu de recréer : voir attemptReconnect pour le pourquoi
@@ -1037,74 +1045,65 @@ class Game {
       if (me?.alive && this.throwReady(me, now)) this.predictedThrowReadyAt = now + THROW_COOLDOWN_MS;
     }
     this.room.send("input", payload);
+    // Un pas de prédiction par input envoyé (le serveur en appliquera un).
+    this.predictor.push(this.inputSeq, { dx, dy, boost });
     this.sound.setBoost(!!boost && (dx !== 0 || dy !== 0));
   }
 
-  private simulateStep(
-    x: number, y: number, dx: number, dy: number, boost: boolean, dt: number, bladeCount: number,
-  ): { x: number; y: number } {
-    let ndx = dx; let ndy = dy;
-    const mag = Math.hypot(ndx, ndy);
-    if (mag > 1) { ndx /= mag; ndy /= mag; }
-    const moving = mag > 0.05;
-    let speed = PLAYER_SPEED;
-    if (boost && bladeCount > 0 && moving) speed *= PLAYER_BOOST_MULT;
-    if (moving) { x += ndx * speed * dt; y += ndy * speed * dt; }
-    const pushed = resolveDecorCollision(x, y, PLAYER_BODY_RADIUS);
-    x = pushed.x; y = pushed.y;
-    const r = Math.hypot(x, y);
-    const maxR = MAP_RADIUS - WALL_KILL_THICKNESS;
-    if (r > maxR) { x = (x / r) * maxR; y = (y / r) * maxR; }
-    return { x, y };
+  private resetPrediction(): void {
+    this.predictor.reset();
+    this.errX = 0;
+    this.errY = 0;
+    this.needReconcile = false;
   }
 
+  // Rendu du joueur local : interpolation entre les deux dernières
+  // positions prédites (l'horloge d'inputs avance par pas fixes), plus la
+  // correction en cours d'absorption.
   private updateLocalPrediction(dt: number, view: PlayerView): void {
-    if (!this.room || !this.predInit) { view.setLocalRender(view.targetX, view.targetY); return; }
-    const me = this.room.state?.players?.get(this.myId);
-    if (!me || !me.alive) { view.setLocalRender(view.targetX, view.targetY); return; }
-    this.simAccum = Math.min(this.simAccum + dt, 0.2);
-    while (this.simAccum >= this.SIM_DT) {
-      this.simAccum -= this.SIM_DT;
-      this.predPrevX = this.predX; this.predPrevY = this.predY;
-      const { dx, dy, boost } = this.input.peekDirBoost();
-      const next = this.simulateStep(this.predX, this.predY, dx, dy, boost, this.SIM_DT, me.bladeCount);
-      this.predX = next.x; this.predY = next.y;
-    }
-    const alpha = Math.max(0, Math.min(1, this.simAccum / this.SIM_DT));
-    const rx = this.predPrevX + (this.predX - this.predPrevX) * alpha;
-    const ry = this.predPrevY + (this.predY - this.predPrevY) * alpha;
+    if (!this.predictor.ready) { view.setLocalRender(view.targetX, view.targetY); return; }
+    const alpha = Math.max(0, Math.min(1, this.inputAccumMs / (SERVER_DT * 1000)));
+    const b = this.predictor.body;
+    const rx = this.predictor.prevX + (b.x - this.predictor.prevX) * alpha;
+    const ry = this.predictor.prevY + (b.y - this.predictor.prevY) * alpha;
     const decay = Math.exp(-dt / this.ERR_DECAY_TAU);
     this.errX *= decay; this.errY *= decay;
     if (Math.abs(this.errX) < 0.001) this.errX = 0;
     if (Math.abs(this.errY) < 0.001) this.errY = 0;
-    view.setLocalRender(rx - this.errX, ry - this.errY);
+    view.setLocalRender(rx + this.errX, ry + this.errY);
   }
 
-  private reconcileLocal(me: any): void {
-    if (!this.predInit || !me.alive) {
-      this.predX = me.x; this.predY = me.y;
-      this.predPrevX = me.x; this.predPrevY = me.y;
-      this.errX = 0; this.errY = 0;
-      this.simAccum = 0; this.predInit = true;
-      return;
-    }
-    const dxErr = this.predX - me.x;
-    const dyErr = this.predY - me.y;
-    const d2 = dxErr * dxErr + dyErr * dyErr;
-    if (d2 > 15 * 15) {
-      this.predX = me.x; this.predY = me.y;
-      this.predPrevX = me.x; this.predPrevY = me.y;
-      this.errX = 0; this.errY = 0; this.simAccum = 0;
-      return;
-    }
-    this.errX -= dxErr; this.errY -= dyErr;
-    this.predX = me.x; this.predY = me.y;
-    this.predPrevX = me.x; this.predPrevY = me.y;
-    const maxErr = 5;
-    const em2 = this.errX * this.errX + this.errY * this.errY;
-    if (em2 > maxErr * maxErr) {
-      const s = maxErr / Math.sqrt(em2);
-      this.errX *= s; this.errY *= s;
+  // Position acquittée par le serveur : l'InputPredictor rejoue les inputs
+  // qu'il n'a pas encore appliqués. La correction (nulle sans évènement
+  // serveur imprévu : recul d'un clash, poussée d'un joueur) est absorbée
+  // par le rendu au lieu de faire sauter le personnage.
+  private reconcileLocal(): void {
+    const state = this.room?.state;
+    const me = state?.players?.get(this.myId);
+    if (!me) return;
+    if (!me.alive || this.dead) { this.resetPrediction(); return; }
+    const ack: AckState = {
+      seq: me.lastSeq,
+      x: me.x,
+      y: me.y,
+      knockbackVx: me.knockbackVx ?? 0,
+      knockbackVy: me.knockbackVy ?? 0,
+      serverTime: state.serverTime,
+      speedUntil: me.speedUntil,
+      hitlagUntil: me.hitlagUntil,
+      bladeCount: me.bladeCount,
+    };
+    const wasReady = this.predictor.ready;
+    const c = this.predictor.reconcile(ack);
+    if (!wasReady) return;
+    const d = Math.hypot(c.dx, c.dy);
+    // Téléportation (respawn, reconnexion) : pas de lissage.
+    if (d > 15) { this.errX = 0; this.errY = 0; return; }
+    this.errX -= c.dx;
+    this.errY -= c.dy;
+    if (this.debugHitboxes) {
+      this.corrections.push(d);
+      if (this.corrections.length > 3000) this.corrections.shift();
     }
   }
 
@@ -1367,9 +1366,22 @@ class Game {
         this.hud.setFps(this.fps);
         this.adaptiveQuality(dt);
       }
-      if (this.room && now - this.lastInputSent > 1000 / CLIENT_INPUT_RATE) {
-        this.lastInputSent = now;
-        this.sendInput();
+      // Horloge d'inputs fixe : un input par SERVER_DT de temps réel, quel
+      // que soit le framerate (le serveur applique un pas par input). Au plus
+      // 5 par frame ; au-delà (onglet en arrière-plan), le retard est
+      // abandonné plutôt que rattrapé d'un bloc.
+      if (this.room) {
+        const stepMs = SERVER_DT * 1000;
+        this.inputAccumMs += frameSec * 1000;
+        for (let i = 0; i < 5 && this.inputAccumMs >= stepMs; i++) {
+          this.inputAccumMs -= stepMs;
+          this.sendInput();
+        }
+        if (this.inputAccumMs >= stepMs) this.inputAccumMs = 0;
+      }
+      if (this.needReconcile) {
+        this.needReconcile = false;
+        this.reconcileLocal();
       }
       // Tick de rendu de la frame, puis ce qui l'attendait sur la ligne de
       // temps, avant de placer joueurs et lames.

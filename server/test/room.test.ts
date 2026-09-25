@@ -16,7 +16,7 @@ import * as matches from "../src/auth/matches";
 import * as wallet from "../src/auth/wallet";
 import { Blade } from "../src/state/Blade";
 import { Player } from "../src/state/Player";
-import { FakeClock, giveBlade, groundBlades, ownedBlades, seedRandom } from "./helpers";
+import { DT, FakeClock, giveBlade, groundBlades, ownedBlades, seedRandom } from "./helpers";
 import { TestRoom } from "./testRoom";
 
 let clock: FakeClock;
@@ -107,18 +107,33 @@ test("drops : clignotent puis disparaissent, les lames ambiantes restent", () =>
   for (const id of ambient) assert.equal(r.state.blades.has(id), true);
 });
 
-test("input : valeurs bornées, non finies ignorées", () => {
+test("input : valeurs bornées, non finies ignorées, mises en file dans l'ordre", () => {
   const r = new TestRoom(clock);
   const p = r.join("p1");
   r.room.handleInput(fakeClient("p1"), { dx: 5, dy: Number.NEGATIVE_INFINITY, boost: 1, throw: true, seq: 7 });
-  assert.equal(p.inputDx, 1);
-  assert.equal(p.inputDy, 0);
-  assert.equal(p.inputBoost, true);
+  assert.deepEqual(p.inputQueue[0], { dx: 1, dy: 0, boost: true, seq: 7 });
   assert.equal(p.inputThrow, true);
-  assert.equal(p.lastSeq, 7);
+  // Sans seq : le suivant. Doublon ou input en retard : ignoré.
   r.room.handleInput(fakeClient("p1"), { dx: Number.NaN, dy: -0.5 });
-  assert.equal(p.inputDx, 0);
-  assert.equal(p.inputDy, -0.5);
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 1, seq: 8 });
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 1, seq: 3 });
+  assert.deepEqual(p.inputQueue.map((i: { seq: number }) => i.seq), [7, 8]);
+  assert.deepEqual(p.inputQueue[1], { dx: 0, dy: -0.5, boost: false, seq: 8 });
+  // Acquitté une fois appliqué.
+  r.tick();
+  assert.equal(p.lastSeq, 7);
+  assert.equal(p.inputDx, 1);
+  r.tick();
+  assert.equal(p.lastSeq, 8);
+});
+
+test("input : mort, les inputs sont acquittés sans être mis en file", () => {
+  const r = new TestRoom(clock);
+  const p = r.join("p1");
+  r.room.killPlayer(p, null, "wall");
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0, seq: 40 });
+  assert.equal(p.inputQueue.length, 0);
+  assert.equal(p.lastSeq, 40);
 });
 
 test("input : visée normalisée, lue seulement avec le lancer", () => {
@@ -166,13 +181,15 @@ test("lancer visé bout à bout : on lance derrière soi en fuyant", () => {
   assert.ok(blade.vx < 0 && blade.x < p.x);
 });
 
-test("input : un joueur muet depuis 500 ms s'arrête", () => {
+test("input : un joueur muet s'arrête dès qu'il n'envoie plus rien", () => {
+  // Un input vaut un pas : un client déconnecté ou un onglet en arrière-plan
+  // ne glisse plus sur son dernier input (500 ms avant la tâche 1.2).
   const r = new TestRoom(clock);
   const p = r.join("p1");
   p.x = 0; p.y = -20;
   r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0 });
   r.tick(120);
-  assert.ok(Math.abs(p.x - PLAYER_SPEED * 0.5) < 0.2, `x = ${p.x}`);
+  assert.ok(Math.abs(p.x - PLAYER_SPEED * DT) < 1e-9, `x = ${p.x}`);
 });
 
 test("anti-flood : 200 inputs/s expulsent en 3 s, 60/s jamais", () => {

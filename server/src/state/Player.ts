@@ -17,9 +17,13 @@ export class Player extends Schema {
   @type("uint16") maxBladeCount: number = 0;
   @type("uint16") cratesDestroyed: number = 0;
   @type("uint16") powerupsCollected: number = 0;
-  // Dernière séquence d'input appliquée par le serveur — permet au client
-  // de faire de l'input replay propre (reconciliation prédiction).
+  // Dernier input appliqué par le serveur : le client rejoue ceux d'après
+  // (prédiction, tâche 1.2).
   @type("uint32") lastSeq: number = 0;
+  // Recul résiduel (u/s), amorti à chaque pas (cf. stepMovement).
+  // Synchronisé : le client le rejoue avec ses inputs non acquittés.
+  @type("float32") knockbackVx: number = 0;
+  @type("float32") knockbackVy: number = 0;
   // Phase + scale de rotation propres à chaque joueur. Sans ça, deux joueurs
   // avec le même nombre de lames sur le même anneau ont leurs blades en
   // phase pour toujours → les orbites se croisent mais les lames ne se
@@ -70,9 +74,16 @@ export class Player extends Schema {
   // joueurs authentifiés. À la mort, on credit guest_wallets au lieu de
   // matches.
   guestId: string | null = null;
+  // Input courant : celui des bots, ou le dernier appliqué pour un humain.
   inputDx: number = 0;
   inputDy: number = 0;
   inputBoost: boolean = false;
+  // Inputs reçus, pas encore appliqués (un pas chacun, dans l'ordre).
+  inputQueue: Array<{ dx: number; dy: number; boost: boolean; seq: number }> = [];
+  // Dernier seq mis en file (les doublons et les inputs en retard sont
+  // ignorés) et crédit de pas (cf. MAX_STEP_CREDIT).
+  lastQueuedSeq: number = 0;
+  stepCredit: number = 0;
   // Edge-trigger consommé chaque tick par processThrows. Le client envoie
   // true ponctuellement à chaque appui, le serveur le remet à false après
   // traitement (ou après le tick si cooldown actif).
@@ -85,7 +96,6 @@ export class Player extends Schema {
   // consommée par processThrows.
   aimX: number = 0;
   aimY: number = 0;
-  lastInputAt: number = 0;
   inputCount: number = 0;
   inputWindowStart: number = 0;
   violations: number = 0;
@@ -93,10 +103,6 @@ export class Player extends Schema {
   lastKiller: string | null = null;
   // Liste ordonnée des IDs de lames possédées (ordre = ordre de récupération)
   bladeIds: string[] = [];
-  // Velocity de knockback résiduelle (u/s). Décroît exponentiellement chaque
-  // tick (cf. KNOCKBACK_DECAY) et s'ajoute à la vitesse de mouvement.
-  knockbackVx: number = 0;
-  knockbackVy: number = 0;
   // Buffer circulaire des lames perdues en clash (rareté + ts ms). Sert au
   // drop de mort : on restitue les lames cassées dans les N dernières
   // secondes (RECENT_LOSS_DROP_RATIO, 100 % aujourd'hui) pour que le

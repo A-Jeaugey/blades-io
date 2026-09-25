@@ -51,7 +51,7 @@ server/   Authoritative Colyseus room (60 Hz tick and patches, 60 player cap)
 client/   Vite + Three.js + Colyseus.js
 ```
 
-The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends only `dx, dy, boost, throw` (plus the aim direction of a throw) and renders remote entities 80 ms in the past (interpolation between snapshots) plus client-side prediction + reconciliation for the local player. Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
+The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends one input every 1/60 s (`dx, dy, boost, throw`, plus the aim direction of a throw); the server applies each input as one movement step, in order, and acknowledges the last one applied. The local player is predicted with input replay: on each server state, the client re-applies its unacknowledged inputs with the same step function as the server (`shared/src/movement.ts`), so it reacts instantly at any latency and is only corrected by what it cannot foresee (a clash knockback, a push from another player). Remote entities are rendered 80 ms in the past (interpolation between snapshots). Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
 
 ### Performance highlights
 

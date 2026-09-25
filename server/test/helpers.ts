@@ -70,7 +70,6 @@ export function addPlayer(state: ArenaState, opts: PlayerOptions = {}): Player {
   p.alive = true;
   p.isBot = opts.isBot ?? false;
   p.spawnedAt = Date.now();
-  p.lastInputAt = Date.now();
   state.players.set(p.id, p);
   const rarities = opts.rarities ?? new Array<BladeRarity>(opts.blades ?? 0).fill(opts.rarity ?? BladeRarity.Common);
   for (const r of rarities) giveBlade(state, p, r);
