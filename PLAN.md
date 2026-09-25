@@ -45,7 +45,7 @@ Il découle de l'audit du 2026-09-24 : [`docs/AUDIT-2026-09.md`](docs/AUDIT-2026
 |---|---|---|---|
 | **0. Urgences** | Plus de faille économique, plus de donnée factice, plus de run perdue bêtement | Tous les constats P0 de l'audit fermés, sauf `FEEL-01` (tâche 1.1) | ~4 jours |
 | **1. Combat fiable** | Ce qu'on voit = ce qui se passe ; réponse immédiate aux inputs ; visée libre | Duel 3 contre 3 où chaque clash visible est réel | ~2,5 semaines |
-| **2. Performance et réseau** | Tenir 60 joueurs confortablement, diviser la bande passante | Bench 60 joueurs : tick moyen < 4 ms, < 45 Ko/s par client | ~2 semaines (+ 2.5 optionnelle) |
+| **2. Performance et réseau** | Tenir 60 joueurs confortablement ; la bande passante est secondaire depuis D6 | Bench 60 joueurs : tick moyen < 4 ms (atteint) | ~2 semaines (+ 2.5 optionnelle) |
 | **3. Première expérience et UX** | Un nouveau joueur comprend, survit et progresse | Temps médian avant la première mort > 45 s en session scriptée | ~2 semaines |
 | **4. Profondeur et équilibrage** | Progression qui ne plafonne pas, contre-mesures au snowball, carte vivante | Paliers jusqu'à 200+ lames, télémétrie en place | ~3-4 semaines |
 | **5. Méta, rétention, social** | Des raisons de revenir chaque jour | Profil, XP, défis, classements temporaires en ligne | ~3 semaines |
@@ -66,8 +66,8 @@ Ces choix bloquent ou orientent certaines tâches. Une recommandation est propos
 | D3 | Monétisation en argent réel ? | Pas avant d'avoir une base de joueurs et la phase 5 ; monnaie de jeu uniquement d'ici là. | 6.5 |
 | D4 | Couleurs de rareté universelles ou propres à chaque thème ? | Universelles (famille de teinte fixe par rareté) ; les thèmes n'ajustent que saturation et luminosité dans une plage contrôlée. | 6.3 |
 | D5 | Manches chronométrées en public ou seulement en privé ? | D'abord en privé et dans une file publique séparée, puis décision selon la télémétrie. | 7.1 |
-| D6 | Hébergement ? | VPS avec bande passante garantie (région UE) avant toute ouverture large ; la connexion domestique ne tient pas une room pleine (~45 Mbit/s sortants). | T.3, T.9 |
-| D7 | Taille maximale d'une room publique ? | 40 joueurs tant que la phase 2 n'est pas terminée, puis 60. | 2.x, 4.5 |
+| D6 | Hébergement ? | **Tranchée le 2026-09-25** : seedbox à 40 Gbit/s. La bande passante du serveur n'est plus une contrainte et le CPU a de la marge (tick à 2 ms) ; le ressenti de jeu passe avant les économies d'octets. | T.3, T.9, 2.3, 2.4 |
+| D7 | Taille maximale d'une room publique ? | **Tranchée le 2026-09-25** : 60 joueurs (tick moyen de 2,0 ms à 60 bots après 2.1 et 2.2, bande passante non limitante d'après D6). | 2.x, 4.5 |
 | D8 | Bots : noms humoristiques actuels ou noms crédibles ? Signaler les bots ? | Garder l'humour et afficher un petit indicateur « bot » dans le classement, par transparence. | 4.6 |
 | D9 | L'ancienne décision « taille de map inchangée » tient-elle ? | La revoir : arène dont le rayon suit la population (tâche 4.5), la forme reste un cercle. | 4.5 |
 
@@ -83,11 +83,11 @@ Semaines indicatives pour un rythme de développement régulier. Les phases 1 et
 | 2 | T.2 (tests des systèmes serveur) · 2.1 · 2.2 · 3.3 · nametags par défaut (partie de 3.4) |
 | 3-4 | 1.1 · 1.8 · 1.3 + 1.4 · 1.5 · 1.6 · 1.7 · puis 1.2 |
 | 5 | 3.1 · 3.2 · 3.4 · 3.5 |
-| 6 | 2.3 · 2.4 · T.3 (déploiement gracieux) · 3.6 |
+| 6 | 2.4 (pour les bushes et l'anti-triche) · T.3 (déploiement gracieux) · 3.6 |
 | 7-8 | 4.1 · 4.2 · 4.3 · 4.8 · 4.6 · 2.6 |
 | 9-11 | Phase 5 · 3.7 · 3.8 · 3.9 |
 | 12-14 | Phase 6 |
-| 15+ | Phase 7 · 4.4 · 4.5 · 4.7 · 4.9 · 2.5 · T.6 |
+| 15+ | Phase 7 · 4.4 · 4.5 · 4.7 · 4.9 · 2.3 · 2.5 · T.6 |
 
 ---
 
@@ -211,12 +211,14 @@ Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Réf�
   - Acceptation : bench 60 bots : tick moyen < 4 ms, p99 < 8 ms ; tests T.2 verts.
   - Réalisé : fiches par joueur et par lame dans `resolveCollisions`, cooldowns de clash tenus par la room, tableaux et rayons précalculés dans `pushOutPlayers`, plus d'écrasement du score au ramassage (deux tests de non-régression). Tick moyen 3,9 → 2,0 ms, p99 6,3 → 4,2 ms ; comparaison différentielle : 20 688 évènements identiques. Non retenus, mesures à l'appui : l'index partagé entre systèmes (il deviendrait périmé au premier kill du tick) et le comptage par anneau sur le joueur (absent du profil). Reste du profil à 60 bots : IA des bots 27 %, positions des lames 17 %.
 
-- [ ] **2.3 — Fréquence de patch et compacité** · M · `NET-01` · Après 1.1 (idéalement après 1.2)
+- [ ] **2.3 — Fréquence de patch et compacité** · M · `NET-01` · Après 1.1 (idéalement après 1.2) · Priorité basse (D6)
+  - Note (D6) : le serveur a 40 Gbit/s, la bande passante sortante n'est plus un problème. Reste un intérêt pour les joueurs sur forfait mobile (~94 Ko/s, soit ~340 Mo par heure de jeu) ; ne pas dégrader le ressenti pour gagner des octets.
   - Quoi : patch à 30 Hz (le tick reste à 60 Hz), interpolation client adaptée ; positions quantifiées (entiers 16 bits au centième, la carte tient dans ±327) ; échéances en temps relatif 32 bits au lieu de `float64` ; retrait des champs synchronisés inutiles.
   - Fichiers : `server/src/state/*.ts`, `server/src/rooms/ArenaRoom.ts`, `client/src/main.ts`, `client/src/entities/*.ts`.
   - Acceptation : bench 60 bots < 45 Ko/s par client ; pas de dégradation visible du mouvement des joueurs distants.
 
 - [ ] **2.4 — Filtrage par zone d'intérêt et bushes côté serveur** · L · `NET-01` `SEC-03` `GAME-09`
+  - Note (D6) : l'intérêt principal devient l'équité (un client modifié voit les joueurs cachés dans les bushes, les bots aussi), plus la bande passante.
   - Quoi : utiliser `StateView` (Colyseus 0.16) pour n'envoyer à chaque client que les entités proches (rayon à calibrer, ~70 u) plus lui-même. Un joueur caché dans un bush est retiré de la vue des autres sauf à très courte distance. Minimap et classement passent par un résumé basse fréquence (2 Hz) qui exclut les joueurs cachés. Les bots respectent les bushes (pas de ciblage d'un joueur caché hors courte portée).
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, `server/src/state/*.ts`, `server/src/systems/bots.ts`, `client/src/main.ts`, `client/src/ui/Minimap.ts`, `client/src/ui/Leaderboard.ts`.
   - Acceptation : un client modifié ne reçoit pas la position d'un joueur caché ; bench 60 bots < 30 Ko/s par client ; minimap et classement fonctionnent.
@@ -442,7 +444,7 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 |---|---|---|---|---|
 | Tick serveur moyen, 60 joueurs | 10,6 ms | 2,0 ms | < 4 ms | `tools/bench-server.js 60 120` |
 | Tick serveur p99, 60 joueurs | 17,5 ms | 4,2 ms | < 8 ms | idem |
-| Données reçues par client, 60 joueurs | 93 Ko/s | 94 Ko/s | < 45 Ko/s (2.3), < 30 Ko/s (2.4) | idem |
+| Données reçues par client, 60 joueurs | 93 Ko/s | 94 Ko/s | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem |
 | Écart angulaire rendu / serveur des lames | arbitraire | arbitraire | < 0,1 rad | mode debug de 1.1 |
 | Temps médian avant la première mort (session scriptée) | ~10 s | non remesuré | > 45 s | banc de sessions de 3.2 |
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | inconnu | < 15 % | télémétrie 4.8 |

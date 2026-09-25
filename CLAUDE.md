@@ -223,6 +223,11 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 - **Shaders** : commentez les passes (qu'est-ce qui anime, qu'est-ce qui dérive).
   Précisez `precision highp/mediump/lowp` selon le niveau de qualité visé.
 - **Performance** :
+  - Le serveur de production est une seedbox à 40 Gbit/s (décision D6 du
+    plan) : ni la bande passante ni le CPU ne sont des contraintes (tick à
+    ~2 ms pour 60 joueurs). Ne pas sacrifier le ressenti (fréquence de
+    patch, précision des positions) pour économiser des octets. Le client,
+    lui, doit rester sobre : mobiles et petites machines.
   - Pré-allouez `Vector3`/`Quaternion`/`Euler`/`Matrix4` hors des boucles
     de mise à jour (pattern `tmpPos`, `tmpQuat`, etc. omniprésent).
   - Préférez `InstancedMesh` à des `Mesh` multiples. Désactivez `frustumCulled`
