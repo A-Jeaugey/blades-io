@@ -1,0 +1,11 @@
+{
+  // Compile les sources ET les tests vers dist-test/ avec le même tsc que la
+  // prod : les décorateurs @colyseus/schema se comportent exactement comme
+  // dans le build déployé. dist-test/ n'est jamais livré.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist-test"
+  },
+  "include": ["src/**/*", "test/**/*"]
+}

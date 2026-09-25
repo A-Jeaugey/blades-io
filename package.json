@@ -13,6 +13,7 @@
     "dev:client": "npm run dev --workspace=client",
     "dev": "npm run build:shared && concurrently -k -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
     "build": "npm run build:shared && npm run build --workspace=server && npm run build --workspace=client",
+    "test": "npm run build:shared && npm run test --workspace=@bladeio/server",
     "start": "node server/dist/index.js"
   },
   "devDependencies": {

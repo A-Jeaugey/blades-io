@@ -241,8 +241,15 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 - **Build et CI** : `npm run build` (shared, puis serveur, puis client)
   passe avec la version de TypeScript verrouillée (5.9.3) ; l'ancien
   plantage de `build:shared` ne se reproduit plus. La CI GitHub Actions
-  (`.github/workflows/ci.yml`) rejoue ce build complet à chaque push : elle
-  doit être verte avant de pousser sur `main`.
+  (`.github/workflows/ci.yml`) rejoue ce build complet puis `npm test` à
+  chaque push : elle doit être verte avant de pousser sur `main`.
+- **Tests serveur** : `npm test` (`server/test/*.test.ts`, `node:test`
+  compilé par `tsc` vers `server/dist-test/`, gitignoré). Les systèmes
+  lisent `Date.now()` et `Math.random()` : utiliser `FakeClock` et
+  `seedRandom` de `server/test/helpers.ts`, et `TestRoom` pour une room
+  complète hors réseau. Toute modification d'un système serveur passe par
+  ces tests ; un changement de comportement voulu met le test à jour dans
+  le même commit.
 - **`client/public/` est gitignoré**. Le dossier est régénéré au `predev`/
   `prebuild` par `sync-music`. N'y commitez rien à la main.
 - **Suppression de branches sur le remote local** (`http://127.0.0.1:.../`) :

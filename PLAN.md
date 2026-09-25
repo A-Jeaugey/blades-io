@@ -398,7 +398,7 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 - [x] **T.1 — Intégration continue** · S · `OPS-01` · 2026-09-25 · `4bdcf25`
   - Quoi : workflow GitHub Actions sur chaque push et PR : `npm ci`, `build:shared`, typecheck client et serveur, build du client, tests (T.2), bench (2.8).
   - Acceptation : un push qui casse le typecheck est signalé en rouge.
-  - Réalisé : `.github/workflows/ci.yml`, Node 22 ; rejoue le build de `auto-deploy.sh` (shared, serveur, client). Premier run vert en 25 s. Erreur de type injectée dans le serveur, le client ou `shared` : l'étape sort en code 2. Tests (T.2) et bench (2.8) à brancher.
+  - Réalisé : `.github/workflows/ci.yml`, Node 22 ; rejoue le build de `auto-deploy.sh` (shared, serveur, client). Premier run vert en 25 s. Erreur de type injectée dans le serveur, le client ou `shared` : l'étape sort en code 2. Tests branchés avec T.2 ; bench (2.8) à brancher.
 
 - [ ] **T.2 — Tests des systèmes serveur** · M · `OPS-01`
   - Quoi : Vitest (ou `node:test`) sur les systèmes critiques : mouvement (collision décor, drain du boost), collisions (dégâts de clash, protection de spawn), lancers (portée, pierce, atterrissage), ramassage, score, orbites et tiers de `shared/`, bots (la fuite ne se bloque jamais).
@@ -418,8 +418,9 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 - [ ] **T.6 — Montée de version Colyseus 0.18** · M · `SEC-04` · Après T.2
   - Quoi : migrer `@colyseus/core`, `ws-transport`, `schema` et `colyseus.js` ; corrige la vulnérabilité `nanoid` ; revalider `tools/bench-server.js` (il utilise des internes de la 0.16).
 
-- [ ] **T.7 — Documentation à jour** · S · `OPS-02`
+- [x] **T.7 — Documentation à jour** · S · `OPS-02` · 2026-09-25 · `f2ff1cb`
   - Quoi : aligner `README.md` et `CLAUDE.md` sur la réalité (tick et patch 60 Hz, délai de rendu 80 ms, drop de 70 %, formule de score, cible de déploiement réelle, outil de bench, audit, ce plan) ; corriger les commentaires obsolètes de `shared/src/constants.ts`.
+  - Réalisé : README, CLAUDE.md et commentaires de `constants.ts` alignés (60 Hz, 80 ms, drop de 70 % + pertes récentes, formule de score, déploiement auto-hébergé, quatre thèmes, CI). Commentaires obsolètes repérés hors de `constants.ts` (`Player.ts` : `score`, « ~50 % » des pertes récentes) : à corriger avec 2.2, qui touche ces champs.
 
 - [ ] **T.8 — URL d'API configurable** · S · `OPS-03`
   - Quoi : variable `VITE_API_URL` (même origine par défaut) utilisée par tous les appels `fetch`, ou réécritures dans `vercel.json` ; garder un seul mode de déploiement documenté.

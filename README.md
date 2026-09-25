@@ -91,10 +91,11 @@ Open several tabs to test multiplayer.
 npm run build:shared       # rebuild shared types only
 npm run build              # full prod build (shared + server + client)
 npm start                  # run the prod server (serves the built client)
+npm test                   # server system tests (node:test, simulated clock)
 node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated seconds
 ```
 
-Every push and pull request runs the same build in GitHub Actions (`.github/workflows/ci.yml`): shared, server (full `tsc`) and client (`tsc` + `vite build`).
+Every push and pull request runs the same build in GitHub Actions (`.github/workflows/ci.yml`): shared, server (full `tsc`) and client (`tsc` + `vite build`), then the server tests.
 
 ---
 

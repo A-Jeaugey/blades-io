@@ -1,6 +1,7 @@
 # Intégration continue : rejoue le build de auto-deploy.sh (shared, serveur,
-# client) sur chaque push et chaque PR. Un commit qui ne compile pas est
-# signalé en rouge ici plutôt que de casser le déploiement de main.
+# client) puis les tests serveur sur chaque push et chaque PR. Un commit qui
+# ne compile pas ou casse un système est signalé en rouge ici plutôt que de
+# casser le déploiement de main.
 name: CI
 
 on:
@@ -41,3 +42,7 @@ jobs:
       # tsc (typecheck du client et de shared/src) puis vite build.
       - name: Build client
         run: npm run build --workspace=@bladeio/client
+
+      # Tests des systèmes serveur (node:test, horloge simulée).
+      - name: Tests serveur
+        run: npm run test --workspace=@bladeio/server
