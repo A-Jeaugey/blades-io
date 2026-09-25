@@ -13,6 +13,7 @@ Il découle de l'audit du 2026-09-24 : [`docs/AUDIT-2026-09.md`](docs/AUDIT-2026
 - [ ] **Appliquer la migration `supabase/migrations/0004_leaderboard_public_only.sql`** dans l'éditeur SQL Supabase (tâche 0.2). Sans elle, le serveur ne crédite déjà plus rien en room privée, mais les parties privées enregistrées avant restent au classement.
 - [ ] **Vérifier que le proxy de production transmet l'IP du joueur** avant de déployer la phase 0 (tâche 0.3). Le serveur en ligne répond `server: nginx`, alors que le repo contient un `Caddyfile` : le proxy doit envoyer `X-Forwarded-For` (sous nginx : `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`). Sinon, tous les joueurs partagent un seul compteur de limitation de débit : le lobby affiche « — » et les nouveaux invités n'ont plus de wallet dès qu'il y a du monde. Si nginx et Caddy sont chaînés, régler `TRUST_PROXY` (et `trusted_proxies` côté Caddy) pour que le serveur voie l'IP du joueur.
 - [ ] **Fusionner `claude/great-shannon-itw2b2` dans `main`** une fois les deux points ci-dessus faits. La fusion déclenche le déploiement.
+- [ ] **Playtest de la phase 1** (non bloquant, impossible sans jouer vraiment) : distinguer à l'oreille les six sons de combat (1.5) ; poids des impacts et recul en combat prolongé (1.6) ; taille des personnages en portrait sur un vrai téléphone, réglable par `CAMERA_MIN_VIEW_WIDTH` (1.7) ; sensation de la prédiction avec un vrai ping (1.2).
 
 ---
 
@@ -450,15 +451,15 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 
 | Indicateur | Audit (2026-09) | Actuel (2026-09-25) | Cible | Mesuré par |
 |---|---|---|---|---|
-| Tick serveur moyen, 60 joueurs | 10,6 ms | 2,0 ms | < 4 ms | `tools/bench-server.js 60 120` |
-| Tick serveur p99, 60 joueurs | 17,5 ms | 4,2 ms | < 8 ms | idem |
+| Tick serveur moyen, 60 joueurs | 10,6 ms | 1,6 ms | < 4 ms | `tools/bench-server.js 60 120` |
+| Tick serveur p99, 60 joueurs | 17,5 ms | 4,0 ms | < 8 ms | idem |
 | Données reçues par client, 60 joueurs | 93 Ko/s | 94 Ko/s | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem |
 | Écart angulaire rendu / serveur des lames | arbitraire | ≤ 1e-7 rad | < 0,1 rad | mode debug de 1.1 |
 | Temps médian avant la première mort (session scriptée) | ~10 s | non remesuré | > 45 s | banc de sessions de 3.2 |
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | inconnu | < 15 % | télémétrie 4.8 |
 | JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 89 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 102 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
