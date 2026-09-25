@@ -199,10 +199,11 @@ Objectif : ce qu'on voit est ce qui se passe, et le personnage répond immédiat
 
 Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Référence de départ (bench 60 bots) : tick moyen 10,6 ms, p99 17,5 ms, 93 Ko/s par client.
 
-- [ ] **2.1 — Optimiser l'aimantation des lames au sol** · S · `NET-02`
+- [x] **2.1 — Optimiser l'aimantation des lames au sol** · S · `NET-02` · 2026-09-25 · `154f0f5`
   - Quoi : construire une fois par tick un tableau simple des joueurs vivants (position, rayon d'aimant au carré) ; sortir `Date.now()` et les constantes des boucles ; indexer les joueurs dans une grille spatiale et ne tester, pour chaque lame au sol, que les cellules voisines ; ne plus lire les champs du schema dans la boucle interne.
   - Fichiers : `server/src/systems/orbitPositions.ts`.
   - Acceptation : comportement identique (tests T.2) ; bench 60 bots : tick moyen réduit d'au moins 40 %.
+  - Réalisé : fiches joueurs construites une fois par tick (y compris pour les lames en orbite), grille d'aimantation 3×3, constantes copiées au chargement. Tick moyen 9,74 → 3,91 ms (-60 %), p99 16,9 → 6,3 ms. Écart maximal de 1,7e-13 avec l'ancienne fonction sur des états aléatoires.
 
 - [ ] **2.2 — Réduire les parcours de l'état** · M · `NET-02` `NET-04`
   - Quoi : index par tick (joueurs vivants, lames par propriétaire, lames au sol) partagé par les systèmes ; comptage par anneau tenu sur le joueur (champ non synchronisé) pour `attachBladeToPlayer` et `recompactOwnerRing` ; rayon de bouclier précalculé une fois par joueur et grille spatiale dans `pushOutPlayers` ; `lastHitAt` rattaché à l'instance de room ; suppression de l'écrasement de `score` dans `attachBladeToPlayer`.
@@ -400,9 +401,10 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
   - Acceptation : un push qui casse le typecheck est signalé en rouge.
   - Réalisé : `.github/workflows/ci.yml`, Node 22 ; rejoue le build de `auto-deploy.sh` (shared, serveur, client). Premier run vert en 25 s. Erreur de type injectée dans le serveur, le client ou `shared` : l'étape sort en code 2. Tests branchés avec T.2 ; bench (2.8) à brancher.
 
-- [ ] **T.2 — Tests des systèmes serveur** · M · `OPS-01`
+- [x] **T.2 — Tests des systèmes serveur** · M · `OPS-01` · 2026-09-25 · `f536fa3`
   - Quoi : Vitest (ou `node:test`) sur les systèmes critiques : mouvement (collision décor, drain du boost), collisions (dégâts de clash, protection de spawn), lancers (portée, pierce, atterrissage), ramassage, score, orbites et tiers de `shared/`, bots (la fuite ne se bloque jamais).
   - Acceptation : les systèmes touchés par les phases 1 et 2 sont couverts avant leur refactor.
+  - Réalisé : 72 tests `node:test` compilés par le `tsc` du projet (aucune dépendance ajoutée), horloge simulée et `Math.random` à graine, room complète hors réseau (`TestRoom`). `npm test`, lancé par la CI. Sept régressions injectées à la main sont toutes détectées.
 
 - [ ] **T.3 — Déploiement sans couper les parties** · M · `OPS-01` · Décision D6
   - Quoi : gestion de `SIGTERM` : annonce aux clients (« redémarrage dans 60 s »), plus de nouvelles rooms, puis `gracefullyShutdown()` ; build dans un répertoire séparé puis bascule atomique, redémarrage seulement si tout le build a réussi ; déploiement déclenché manuellement ou à heure creuse plutôt qu'à chaque push ; vérification de santé et retour arrière.
