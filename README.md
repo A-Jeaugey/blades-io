@@ -24,7 +24,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Power-ups** | Speed, Spin, Magnet, Shield, +Blades — duration scales with rarity |
 | **Loot crates** | Shoot or orbit them to crack them open and dump weighted-rare loot |
 | **Glitch bushes** | Step in to vanish from other players' screens and minimaps |
-| **Border** | Touching the kill zone is instant death — no clamp |
+| **Border** | Touching the kill zone is instant death — no clamp. Your outer blades are shredded first. The last 25 u are announced by a red vignette, an alarm and the arena edge on the minimap |
 | **Score** | kills × 15 + peak blade count of the life + 1 per 10 s alive + crates × 3 + power-ups × 2. In public rooms, it is credited as trophées at the end of each life (death or leaving) |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
 

@@ -14,6 +14,10 @@
     <div id="app">
       <canvas id="game"></canvas>
 
+      <!-- Vignette d'alerte à l'approche de la bordure (cf. ui/BorderWarning.ts).
+           Avant le HUD dans le DOM : elle passe dessous. -->
+      <div id="border-warning" aria-hidden="true"></div>
+
       <!-- Conteneur des nametags 2D positionnés en screen-space (cf.
            NametagOverlay.ts). Caché tant que le toggle Settings est off. -->
       <div id="nametag-layer" class="nametag-layer hidden" aria-hidden="true"></div>

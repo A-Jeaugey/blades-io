@@ -1,4 +1,10 @@
-import { MAP_RADIUS } from "@bladeio/shared";
+import { MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
+import { getActiveTheme } from "../themes";
+import { BORDER_DANGER_COLOR } from "../themes/Theme";
+
+function rgba(color: number, alpha: number): string {
+  return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
+}
 
 export interface MinimapPlayer {
   id: string;
@@ -17,11 +23,15 @@ export class Minimap {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private size: number;
+  private arenaEdge: string;
+  private outsideFill: string;
 
   constructor() {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
     this.size = this.canvas.width;
+    this.arenaEdge = rgba(getActiveTheme().palette.boundary, 0.9);
+    this.outsideFill = rgba(BORDER_DANGER_COLOR, 0.28);
   }
 
   draw(me: MinimapPlayer, others: MinimapPlayer[], legendaries: MinimapBlade[]): void {
@@ -38,6 +48,28 @@ export class Minimap {
     ctx.stroke();
 
     const scale = (S / 2 - 6) / MAP_RADIUS;
+    // Bord de l'arène et zone mortelle au-delà. La minimap est centrée sur
+    // le joueur : le cercle se rapproche du centre quand on approche du
+    // bord, qui tuait jusqu'ici sans jamais apparaître sur la carte.
+    const ax = S / 2 - me.x * scale;
+    const ay = S / 2 - me.y * scale;
+    const ar = (MAP_RADIUS - WALL_KILL_THICKNESS) * scale;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.rect(0, 0, S, S);
+    ctx.moveTo(ax + ar, ay);
+    ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+    ctx.fillStyle = this.outsideFill;
+    ctx.fill("evenodd");
+    ctx.beginPath();
+    ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+    ctx.strokeStyle = this.arenaEdge;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
     // Autres joueurs
     ctx.fillStyle = "#00e5ff";
     for (const p of others) {

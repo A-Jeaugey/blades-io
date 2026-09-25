@@ -14,6 +14,7 @@ import {
   ChatEvent,
   TierUpEvent,
   WALL_KILL_THICKNESS,
+  outerOrbitRadius,
   BladeDestroyedEvent,
   BladeThrownEvent,
   CrateDestroyedEvent,
@@ -47,6 +48,7 @@ import { LoginScreen, LoginResult } from "./ui/LoginScreen";
 import { DeathScreen } from "./ui/DeathScreen";
 import { Leaderboard } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
+import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NametagOverlay } from "./scene/NametagOverlay";
@@ -65,6 +67,9 @@ import { wallet } from "./auth/wallet";
 // le buffer. Avant : 150ms, sentait le lag à chaque direction change
 // (le perso continue d'avancer "dans le passé" 150ms après l'input).
 const RENDER_DELAY = 80;
+// Au-delà de ce rayon, une lame détruite l'a été par le mur (orbite qui
+// dépasse la zone mortelle, projectile qui l'atteint).
+const WALL_ZAP_RADIUS = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;
 
 class Game {
   private canvas: HTMLCanvasElement;
@@ -72,7 +77,7 @@ class Game {
   private postFx: PostFX;
   private camera: CameraRig;
   private ground: { mesh: THREE.Mesh; update: (t: number) => void };
-  private wall: THREE.Object3D;
+  private wall: { object: THREE.Object3D; update: (t: number) => void };
   private decor: { group: THREE.Object3D; update: (t: number) => void };
   private players = new Map<string, PlayerView>();
   private blades!: BladeRenderer;
@@ -101,6 +106,10 @@ class Game {
   private death: DeathScreen;
   private leaderboard: Leaderboard;
   private minimap: Minimap;
+  private borderWarning: BorderWarning;
+  private nextBorderBeepAt = 0;
+  private tmpNdcA = new THREE.Vector3();
+  private tmpNdcB = new THREE.Vector3();
   private settings: SettingsPanel;
   private chat!: ChatPanel;
   private nametags = new NametagOverlay();
@@ -160,7 +169,7 @@ class Game {
     this.ground = createGround(this.quality);
     this.sceneStack.scene.add(this.ground.mesh);
     this.wall = createBoundaryWall(this.quality);
-    this.sceneStack.scene.add(this.wall);
+    this.sceneStack.scene.add(this.wall.object);
     this.decor = createDecor(this.quality);
     this.sceneStack.scene.add(this.decor.group);
     this.sceneStack.scene.add(this.blades.root);
@@ -171,6 +180,7 @@ class Game {
     this.hud = new Hud();
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
+    this.borderWarning = new BorderWarning();
     this.settings = new SettingsPanel();
     this.chat = new ChatPanel();
     this.chat.setSendCallback((text) => {
@@ -374,6 +384,16 @@ class Game {
     });
 
     room.onMessage("bladeDestroyed", (msg: BladeDestroyedEvent) => {
+      // Lame désintégrée par le mur : position au-delà du bord de l'arène
+      // (orbite ou projectile entré dans la zone mortelle). Effet dédié,
+      // pour qu'on comprenne d'où vient la perte.
+      if (Math.hypot(msg.x, msg.y) >= WALL_ZAP_RADIUS) {
+        this.particles.spawnSparks(msg.x, 1.4, msg.y, this.theme.palette.boundary, 30, 9);
+        this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 10, 4);
+        if (msg.ownerId === this.myId) this.camera.shake.add(0.3);
+        this.sound.wallZap(msg.ownerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y));
+        return;
+      }
       this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
       if (msg.ownerId === this.myId) this.camera.shake.add(0.18);
       this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
@@ -645,6 +665,7 @@ class Game {
 
   private async returnToMenu(): Promise<void> {
     this.death.hide();
+    this.borderWarning.hide();
     this.hud.hide();
     this.hud.setRoomCode("");
     this.hud.clearEffects();
@@ -766,6 +787,46 @@ class Game {
     if (em2 > maxErr * maxErr) {
       const s = maxErr / Math.sqrt(em2);
       this.errX *= s; this.errY *= s;
+    }
+  }
+
+  // Alerte d'approche de la bordure : vignette et bip, selon l'écart entre
+  // l'orbite extérieure (les lames meurent avant le corps) et la zone
+  // mortelle. Position rendue du joueur local : celle qu'il voit à l'écran.
+  private updateBorderWarning(localView: PlayerView | undefined, dt: number): void {
+    const t = this.elapsed * 0.001;
+    const me = this.room?.state?.players?.get(this.myId);
+    if (!localView || !me || !me.alive) {
+      this.borderWarning.update(0, 0, 0, t, dt);
+      return;
+    }
+    const x = localView.renderX;
+    const y = localView.renderY;
+    const r = Math.hypot(x, y);
+    const gap = MAP_RADIUS - WALL_KILL_THICKNESS - r - outerOrbitRadius(me.bladeCount);
+    const intensity = Math.max(0, Math.min(1, 1 - gap / BORDER_WARNING_DISTANCE));
+    let dirX = 0;
+    let dirY = 0;
+    if (intensity > 0 && r > 1e-3) {
+      // Direction écran du mur : projection du joueur et d'un point situé
+      // 10 u plus loin vers l'extérieur (indépendant de l'angle caméra).
+      const cam = this.sceneStack.camera;
+      this.tmpNdcA.set(x, 0, y).project(cam);
+      this.tmpNdcB.set(x + (x / r) * 10, 0, y + (y / r) * 10).project(cam);
+      const sx = (this.tmpNdcB.x - this.tmpNdcA.x) * window.innerWidth;
+      const sy = -(this.tmpNdcB.y - this.tmpNdcA.y) * window.innerHeight;
+      const len = Math.hypot(sx, sy);
+      if (len > 1e-6) {
+        dirX = sx / len;
+        dirY = sy / len;
+      }
+    }
+    this.borderWarning.update(intensity, dirX, dirY, t, dt);
+    const now = performance.now();
+    if (intensity > 0 && now >= this.nextBorderBeepAt) {
+      this.sound.borderWarning(intensity);
+      // Un bip toutes les 0,9 s au seuil, toutes les 0,25 s au contact.
+      this.nextBorderBeepAt = now + 900 - 650 * intensity;
     }
   }
 
@@ -970,6 +1031,8 @@ class Game {
       if (localView) this.camera.setTarget(localView.renderX, localView.renderY);
       this.camera.update(dt);
       this.ground.update(this.elapsed * 0.001);
+      this.wall.update(this.elapsed * 0.001);
+      this.updateBorderWarning(localView, dt);
       this.decor.update(this.elapsed * 0.001);
       // Wisps ambient : centrés sur le joueur local pour qu'on en voie
       // toujours autour de soi. Au lobby (pas de localView) on les laisse

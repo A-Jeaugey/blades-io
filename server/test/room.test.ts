@@ -5,8 +5,10 @@ import {
   BladeRarity,
   CLOSE_CODE_INPUT_FLOOD,
   GROUND_BLADE_TTL_MS,
+  MAP_RADIUS,
   PLAYER_SPEED,
   SPAWN_PROTECTION_MS,
+  WALL_KILL_THICKNESS,
 } from "@bladeio/shared";
 import * as matches from "../src/auth/matches";
 import * as wallet from "../src/auth/wallet";
@@ -247,4 +249,19 @@ test("tick : tier recalculé d'après le nombre de lames, avec un évènement ti
   r.tick();
   assert.equal(p.tier, 1);
   assert.deepEqual(r.eventsOf("tierUp").map((e) => [e.playerId, e.tier]), [[p.id, 1]]);
+});
+
+test("mur : une lame désintégrée est signalée au-delà du bord de l'arène", () => {
+  // Le client reconnaît une lame détruite par le mur à sa position
+  // (WALL_ZAP_RADIUS dans client/src/main.ts) : ce test fige ce contrat.
+  const r = new TestRoom(clock);
+  const p = armed(r, "p1", 3);
+  const killRadius = MAP_RADIUS - WALL_KILL_THICKNESS;
+  p.x = killRadius - 1; // corps dans l'arène, orbite (1,8 u) qui déborde
+  p.y = 0;
+  r.tick(30);
+  const events = r.eventsOf("bladeDestroyed");
+  assert.equal(events.length, 3);
+  for (const e of events) assert.ok(Math.hypot(e.x, e.y) > killRadius - 0.5, `rayon ${Math.hypot(e.x, e.y)}`);
+  assert.equal(p.alive, true);
 });

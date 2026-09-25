@@ -47,6 +47,16 @@ canvas#game {
   display: none !important;
 }
 
+/* Vignette d'approche de la zone mortelle. Opacité et dégradé pilotés en
+   JS (ui/BorderWarning.ts) ; sans z-index, elle se place au-dessus du
+   canvas et sous le HUD, dans l'ordre du DOM. */
+#border-warning {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
 #hud {
   position: fixed;
   inset: 0;

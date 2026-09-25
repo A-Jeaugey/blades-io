@@ -27,6 +27,7 @@ export class SoundManager {
   private killSynth!: Tone.MembraneSynth;
   private deathSynth!: Tone.NoiseSynth;
   private lowSynth!: Tone.Synth;
+  private alarmSynth!: Tone.Synth;
   private boostNoise!: Tone.Noise;
   private boostFilter!: Tone.Filter;
   private boostEnv!: Tone.AmplitudeEnvelope;
@@ -85,6 +86,14 @@ export class SoundManager {
       envelope: { attack: 0.01, decay: 0.15, sustain: 0, release: 0.1 },
     }).connect(reverb);
     this.lowSynth.volume.value = -16;
+
+    // Alarme de bordure : timbre sec (sans réverbération) pour qu'on ne la
+    // confonde pas avec les sons de combat.
+    this.alarmSynth = new Tone.Synth({
+      oscillator: { type: "sawtooth" },
+      envelope: { attack: 0.005, decay: 0.09, sustain: 0, release: 0.05 },
+    }).connect(this.sfxGain);
+    this.alarmSynth.volume.value = -20;
 
     this.boostNoise = new Tone.Noise("pink");
     this.boostFilter = new Tone.Filter(900, "lowpass");
@@ -243,6 +252,30 @@ export class SoundManager {
   lowBlades(): void {
     if (!this.started) return;
     this.lowSynth.triggerAttackRelease("E4", 0.08, this.nextTime(this.lowSynth));
+  }
+
+  // Bip d'approche de la bordure (deux tons). Plus aigu et plus fort au
+  // contact ; la cadence est gérée par l'appelant.
+  borderWarning(intensity: number): void {
+    if (!this.started) return;
+    const gain = 0.45 + 0.55 * intensity;
+    const hi = intensity > 0.6 ? "B5" : "G5";
+    const lo = intensity > 0.6 ? "F5" : "D5";
+    const t0 = this.nextTime(this.alarmSynth);
+    this.alarmSynth.triggerAttackRelease(hi, 0.06, t0, gain);
+    // Second ton programmé 80 ms plus tard : on avance aussi la dernière
+    // date connue de la voix, sinon un son suivant pourrait être programmé
+    // avant lui (Tone.js exige des départs croissants par voix).
+    const t1 = t0 + 0.08;
+    this.lastTriggerTime.set(this.alarmSynth, t1);
+    this.alarmSynth.triggerAttackRelease(lo, 0.06, t1, gain);
+  }
+
+  // Lame désintégrée par le mur : grésillement bref et aigu.
+  wallZap(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.alarmSynth.triggerAttackRelease("E6", 0.04, this.nextTime(this.alarmSynth), 0.6 * gain);
+    this.hitSynth.triggerAttackRelease(620, 0.05, this.nextTime(this.hitSynth), gain);
   }
 
   setBoost(on: boolean): void {
