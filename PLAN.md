@@ -205,10 +205,11 @@ Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Réf�
   - Acceptation : comportement identique (tests T.2) ; bench 60 bots : tick moyen réduit d'au moins 40 %.
   - Réalisé : fiches joueurs construites une fois par tick (y compris pour les lames en orbite), grille d'aimantation 3×3, constantes copiées au chargement. Tick moyen 9,74 → 3,91 ms (-60 %), p99 16,9 → 6,3 ms. Écart maximal de 1,7e-13 avec l'ancienne fonction sur des états aléatoires.
 
-- [ ] **2.2 — Réduire les parcours de l'état** · M · `NET-02` `NET-04`
+- [x] **2.2 — Réduire les parcours de l'état** · M · `NET-02` `NET-04` · 2026-09-25 · `b41b69b`
   - Quoi : index par tick (joueurs vivants, lames par propriétaire, lames au sol) partagé par les systèmes ; comptage par anneau tenu sur le joueur (champ non synchronisé) pour `attachBladeToPlayer` et `recompactOwnerRing` ; rayon de bouclier précalculé une fois par joueur et grille spatiale dans `pushOutPlayers` ; `lastHitAt` rattaché à l'instance de room ; suppression de l'écrasement de `score` dans `attachBladeToPlayer`.
   - Fichiers : `server/src/systems/*.ts`, `server/src/rooms/ArenaRoom.ts`.
   - Acceptation : bench 60 bots : tick moyen < 4 ms, p99 < 8 ms ; tests T.2 verts.
+  - Réalisé : fiches par joueur et par lame dans `resolveCollisions`, cooldowns de clash tenus par la room, tableaux et rayons précalculés dans `pushOutPlayers`, plus d'écrasement du score au ramassage (deux tests de non-régression). Tick moyen 3,9 → 2,0 ms, p99 6,3 → 4,2 ms ; comparaison différentielle : 20 688 évènements identiques. Non retenus, mesures à l'appui : l'index partagé entre systèmes (il deviendrait périmé au premier kill du tick) et le comptage par anneau sur le joueur (absent du profil). Reste du profil à 60 bots : IA des bots 27 %, positions des lames 17 %.
 
 - [ ] **2.3 — Fréquence de patch et compacité** · M · `NET-01` · Après 1.1 (idéalement après 1.2)
   - Quoi : patch à 30 Hz (le tick reste à 60 Hz), interpolation client adaptée ; positions quantifiées (entiers 16 bits au centième, la carte tient dans ±327) ; échéances en temps relatif 32 bits au lieu de `float64` ; retrait des champs synchronisés inutiles.
@@ -435,17 +436,17 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 
 ## Indicateurs de réussite
 
-| Indicateur | Audit (2026-09) | Cible | Mesuré par |
-|---|---|---|---|
-| Tick serveur moyen, 60 joueurs | 10,6 ms | < 4 ms | `tools/bench-server.js 60 120` |
-| Tick serveur p99, 60 joueurs | 17,5 ms | < 8 ms | idem |
-| Données reçues par client, 60 joueurs | 93 Ko/s | < 45 Ko/s (2.3), < 30 Ko/s (2.4) | idem |
-| Écart angulaire rendu / serveur des lames | arbitraire | < 0,1 rad | mode debug de 1.1 |
-| Temps médian avant la première mort (session scriptée) | ~10 s | > 45 s | banc de sessions de 3.2 |
-| Premières vies de moins de 20 s (joueurs réels) | inconnu | < 15 % | télémétrie 4.8 |
-| JavaScript initial | 1,24 Mo | < 600 Ko | build Vite |
-| Vulnérabilités npm en production | 15 (1 haute) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | systèmes critiques couverts | CI |
+| Indicateur | Audit (2026-09) | Actuel (2026-09-25) | Cible | Mesuré par |
+|---|---|---|---|---|
+| Tick serveur moyen, 60 joueurs | 10,6 ms | 2,0 ms | < 4 ms | `tools/bench-server.js 60 120` |
+| Tick serveur p99, 60 joueurs | 17,5 ms | 4,2 ms | < 8 ms | idem |
+| Données reçues par client, 60 joueurs | 93 Ko/s | 94 Ko/s | < 45 Ko/s (2.3), < 30 Ko/s (2.4) | idem |
+| Écart angulaire rendu / serveur des lames | arbitraire | arbitraire | < 0,1 rad | mode debug de 1.1 |
+| Temps médian avant la première mort (session scriptée) | ~10 s | non remesuré | > 45 s | banc de sessions de 3.2 |
+| Premières vies de moins de 20 s (joueurs réels) | inconnu | inconnu | < 15 % | télémétrie 4.8 |
+| JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
+| Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
+| Tests automatisés | 0 | 74 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
