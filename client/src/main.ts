@@ -57,6 +57,7 @@ import { DeathScreen } from "./ui/DeathScreen";
 import { Leaderboard } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
+import { CombatFeedback } from "./ui/CombatFeedback";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NametagOverlay } from "./scene/NametagOverlay";
@@ -201,6 +202,9 @@ class Game {
   // la frame de gap entre deux sends se perd.
   private throwLatched = false;
   private aimIndicator = new AimIndicator();
+  private combatFeedback = new CombatFeedback();
+  // Dernière secousse de clash du joueur local (performance.now()).
+  private lastClashShakeAt = 0;
   // Dernière direction montrée par l'indicateur : gardée pendant son fondu
   // de sortie.
   private aimDirX = 0;
@@ -269,6 +273,7 @@ class Game {
         },
         screenOf: (x: number, y: number) => this.camera.screenOf(x, y),
         state: () => this.room?.state,
+        myId: () => this.myId,
         myProjectiles: () => {
           const out: Array<{ id: string; vx: number; vy: number }> = [];
           this.room?.state?.blades?.forEach((b: any, id: string) => {
@@ -280,6 +285,10 @@ class Game {
           visible: this.aimIndicator.object.visible,
           rotationY: this.aimIndicator.object.rotation.y,
         }),
+        // Retours de combat (tâche 1.5) : sons (pour les espionner), lames
+        // en flash.
+        sound: this.sound,
+        flashing: () => this.blades.flashingCount(performance.now()),
       };
     }
     this.settings = new SettingsPanel();
@@ -435,6 +444,7 @@ class Game {
     this.predictedThrowReadyAt = 0;
     this.orbitSegments.clear();
     this.timeline.length = 0;
+    this.combatFeedback.clear();
     this.pendingBlades.clear();
     this.renderAlive.clear();
     $(state).listen("tick", (tick: number) => {
@@ -548,8 +558,23 @@ class Game {
         return;
       }
       this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
-      if (msg.ownerId === this.myId) this.camera.shake.add(0.18);
-      this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
+      if (msg.ownerId === this.myId) {
+        this.camera.shake.add(0.18);
+        this.sound.bladeLost();
+        // Repère au bord de l'écran, du côté de l'attaquant (lame adverse ou
+        // lanceur du projectile) ; à défaut, du point de rupture. Le point de
+        // rupture seul trompe quand les orbites se chevauchent : il peut être
+        // à 90° de l'adversaire.
+        const me = this.players.get(this.myId);
+        if (me) {
+          const by = msg.byId ? this.players.get(msg.byId) : undefined;
+          const from = this.camera.screenOf(me.renderX, me.renderY);
+          const at = by ? this.camera.screenOf(by.renderX, by.renderY) : this.camera.screenOf(msg.x, msg.y);
+          this.combatFeedback.bladeLost(Math.atan2(at.y - from.y, at.x - from.x), performance.now());
+        }
+      } else {
+        this.sound.bladeBreak(msg.rarity, this.audibleGain(msg.x, msg.y));
+      }
     }));
     room.onMessage("pickup", (msg: PickupEvent) => {
       if (msg.playerId === this.myId) {
@@ -558,14 +583,16 @@ class Game {
         if (view) this.particles.spawnSparks(view.renderX, 1.2, view.renderY, this.theme.palette.rarityColor[msg.rarity], 6, 2);
       }
     });
-    room.onMessage("crateHit", (msg: CrateHitEvent) => {
+    // Caisses : sur la ligne de temps du rendu, comme les autres coups (la
+    // lame qui frappe est dessinée 80 ms dans le passé).
+    room.onMessage("crateHit", (msg: CrateHitEvent) => this.atTick(msg.tick, () => {
       this.crates.hit(msg.crateId, msg.hp);
       this.particles.spawnSparks(msg.x, 1.0, msg.y, this.theme.palette.fx.crateHitSpark, 8, 4);
-    });
-    room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => {
+    }));
+    room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => this.atTick(msg.tick, () => {
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, this.theme.palette.fx.crateDestroyExplosion, 28);
-      this.sound.kill(this.audibleGain(msg.x, msg.y));
-    });
+      this.sound.crateBreak(this.audibleGain(msg.x, msg.y));
+    }));
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
       // Effet visuel coloré selon le type + son de pickup satisfaisant.
       const color = this.theme.palette.powerUpColor[msg.type as PowerUpType] ?? this.theme.palette.fx.powerUpFallback;
@@ -584,7 +611,11 @@ class Game {
     room.onMessage("playerKilled", (msg: PlayerKilledEvent) => this.atTick(msg.tick, () => {
       const victim = this.players.get(msg.victimId);
       if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
-      if (msg.killerId === this.myId) { this.camera.shake.add(0.5); this.sound.kill(); }
+      if (msg.killerId === this.myId) {
+        this.camera.shake.add(0.5);
+        this.sound.killConfirm();
+        if (victim) this.combatFeedback.killPop(victim.renderX, victim.renderY, performance.now());
+      }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
     }, false));
     room.onMessage("clash", (msg: ClashEvent) => {
@@ -598,14 +629,26 @@ class Game {
         const count = 6 + msg.tier * 6;
         const speed = 4 + msg.tier * 2.5;
         this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
+        // Flash blanc des deux lames au contact (une lame brisée disparaît
+        // dans la foulée, son retrait arrive après ce message).
+        const flashAt = performance.now();
+        this.blades.flash(msg.aId, flashAt);
+        this.blades.flash(msg.bId, flashAt);
         const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
           : msg.tier === 1 ? BladeRarity.Rare
           : BladeRarity.Epic;
         // Screen shake : intensité tier-aware, mais SEULEMENT si le joueur
         // local est l'un des deux protagonistes (sinon l'écran tremble pour
-        // chaque clash sur la map = nausée garantie).
-        if (msg.aId === this.myId || msg.bId === this.myId) {
-          this.camera.shake.add(tierClashShake(msg.tier));
+        // chaque clash sur la map = nausée garantie). Au plus une secousse
+        // toutes les 200 ms, plafonnée : en combat, plusieurs clashs par
+        // seconde la saturaient. (Jusqu'à la tâche 1.5, ce test comparait
+        // des ids de lame à l'id du joueur et ne passait jamais.)
+        if (msg.aOwnerId === this.myId || msg.bOwnerId === this.myId) {
+          const t = performance.now();
+          if (t - this.lastClashShakeAt >= 200) {
+            this.lastClashShakeAt = t;
+            this.camera.shake.addCapped(tierClashShake(msg.tier), 0.5);
+          }
           this.sound.hit(r);
         } else {
           // Clash distant : son atténué selon distance, et petit shake si
@@ -934,6 +977,7 @@ class Game {
     this.hud.clearEffects();
     this.chat.hide();
     this.nametags.clear();
+    this.combatFeedback.clear();
     this.effectDurations.clear();
     this.settings.setInGame(false);
     // Détache d'abord les listeners (élimine les callbacks fantômes), puis
@@ -1388,6 +1432,7 @@ class Game {
       this.wall.update(this.elapsed * 0.001);
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
+      this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
       this.decor.update(this.elapsed * 0.001);
       // Wisps ambient : centrés sur le joueur local pour qu'on en voie
       // toujours autour de soi. Au lobby (pas de localView) on les laisse

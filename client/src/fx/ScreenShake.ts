@@ -5,6 +5,13 @@ export class ScreenShake {
     this.trauma = Math.min(1, this.trauma + amount);
   }
 
+  // Ajout plafonné : des secousses en rafale (clashs) ne montent pas
+  // au-delà de cap, sans rabaisser une secousse plus forte déjà en cours.
+  addCapped(amount: number, cap: number): void {
+    if (this.trauma >= cap) return;
+    this.trauma = Math.min(cap, this.trauma + amount);
+  }
+
   update(dt: number): { x: number; y: number } {
     if (this.trauma <= 0) return { x: 0, y: 0 };
     const shake = this.trauma * this.trauma;

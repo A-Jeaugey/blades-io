@@ -20,6 +20,8 @@ import { OrbitPositionCache } from "./orbitPositions";
 export interface ClashInfo {
   a: Blade;
   b: Blade;
+  aOwner: Player;
+  bOwner: Player;
   ax: number;
   ay: number;
   bx: number;
@@ -30,7 +32,8 @@ export interface ClashInfo {
 }
 
 export interface CollisionCallbacks {
-  onBladeDestroyed: (blade: Blade) => void;
+  // by : joueur dont la lame a brisé celle-ci.
+  onBladeDestroyed: (blade: Blade, by: Player | null) => void;
   onPlayerKilled: (victim: Player, killer: Player | null) => void;
   onCrateHit: (crate: Crate, attacker: Player | null) => void;
   onCrateDestroyed: (crate: Crate, attacker: Player | null) => void;
@@ -321,12 +324,12 @@ function narrowPhaseClash(
       let killCount = 0;
       if (bDead) {
         destroyed.add(eb.id);
-        cb.onBladeDestroyed(b);
+        cb.onBladeDestroyed(b, ownerA);
         killCount++;
       }
       if (aDead) {
         destroyed.add(ea.id);
-        cb.onBladeDestroyed(a);
+        cb.onBladeDestroyed(a, ownerB);
         killCount++;
       }
 
@@ -362,6 +365,7 @@ function narrowPhaseClash(
       // d'impact (visuellement plus juste qu'au centre d'un des deux).
       cb.onClash({
         a, b,
+        aOwner: ownerA, bOwner: ownerB,
         ax: ea.x, ay: ea.y,
         bx: eb.x, by: eb.y,
         tier: clashTier,

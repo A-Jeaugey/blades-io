@@ -296,6 +296,30 @@ test("tick : tier recalculé d'après le nombre de lames, avec un évènement ti
   assert.deepEqual(r.eventsOf("tierUp").map((e) => [e.playerId, e.tier]), [[p.id, 1]]);
 });
 
+test("clash : l'évènement désigne les lames et leurs propriétaires", () => {
+  // Le client s'en sert pour faire flasher les deux lames et reconnaître un
+  // clash du joueur local (aId/bId sont des ids de lame).
+  const r = new TestRoom(clock);
+  const p1 = armed(r, "p1", 3);
+  const p2 = armed(r, "p2", 3);
+  p1.x = 0; p1.y = -20;
+  p2.x = 3.4; p2.y = -20;
+  for (let i = 0; i < 120 && r.eventsOf("clash").length === 0; i++) r.tick();
+  const [ev] = r.eventsOf("clash");
+  assert.ok(ev, "aucun clash");
+  const owners = new Map([...ownedBlades(r.state, p1), ...ownedBlades(r.state, p2)].map((b) => [b.id, b.ownerId]));
+  // Une lame détruite dans le clash n'est plus dans l'état : on vérifie
+  // celles qui restent, et que les deux joueurs sont bien désignés.
+  for (const [blade, owner] of [[ev.aId, ev.aOwnerId], [ev.bId, ev.bOwnerId]]) {
+    if (owners.has(blade)) assert.equal(owners.get(blade), owner);
+  }
+  assert.deepEqual(new Set([ev.aOwnerId, ev.bOwnerId]), new Set([p1.id, p2.id]));
+  // Lame brisée dans ce clash : l'évènement désigne l'autre joueur.
+  for (const d of r.eventsOf("bladeDestroyed")) {
+    assert.equal(d.byId, d.ownerId === p1.id ? p2.id : p1.id);
+  }
+});
+
 test("mur : une lame désintégrée est signalée au-delà du bord de l'arène", () => {
   // Le client reconnaît une lame détruite par le mur à sa position
   // (WALL_ZAP_RADIUS dans client/src/main.ts) : ce test fige ce contrat.
@@ -308,6 +332,8 @@ test("mur : une lame désintégrée est signalée au-delà du bord de l'arène",
   const events = r.eventsOf("bladeDestroyed");
   assert.equal(events.length, 3);
   for (const e of events) assert.ok(Math.hypot(e.x, e.y) > killRadius - 0.5, `rayon ${Math.hypot(e.x, e.y)}`);
+  // Personne n'a brisé ces lames.
+  for (const e of events) assert.equal(e.byId, undefined);
   assert.equal(p.alive, true);
 });
 

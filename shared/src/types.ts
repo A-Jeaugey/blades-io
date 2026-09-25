@@ -39,6 +39,10 @@ export interface BladeDestroyedEvent extends TickStamped {
   y: number;
   rarity: BladeRarity;
   ownerId?: string;
+  // Joueur dont la lame ou le projectile l'a brisée : le client montre de
+  // quel côté vient l'attaque. Absent pour le mur et la fin de vie d'un
+  // projectile.
+  byId?: string;
 }
 
 export interface PlayerKilledEvent extends TickStamped {
@@ -78,8 +82,12 @@ export interface PowerUpPickupEvent extends TickStamped {
 // (avec ou sans destruction). Contient les deux ids et un tier "effectif"
 // (= max des deux tiers) qui pilote l'intensité du screen shake côté client.
 export interface ClashEvent extends TickStamped {
+  // Lames qui se sont touchées (ids de lame, pas de joueur).
   aId: string;
   bId: string;
+  // Leurs propriétaires : savoir si le joueur local est dans le clash.
+  aOwnerId: string;
+  bOwnerId: string;
   x: number;        // point d'impact (milieu)
   y: number;
   tier: number;     // 0..2, max des deux protagonistes

@@ -38,6 +38,8 @@ interface Recorder extends ThrowCallbacks {
   impacts: ProjectileImpactEvent[];
   kills: Array<{ victim: Player; killer: Player | null }>;
   destroyed: Blade[];
+  // Lame détruite → joueur qui l'a brisée.
+  breakers: Map<string, string | null>;
   crateHits: Crate[];
 }
 
@@ -47,13 +49,14 @@ function recorder(): Recorder {
     impacts: [],
     kills: [],
     destroyed: [],
+    breakers: new Map(),
     crateHits: [],
     onBladeThrown: (ev) => { r.thrown.push(ev); },
     onProjectileImpact: (ev) => { r.impacts.push(ev); },
     onPlayerKilled: (victim, killer) => { r.kills.push({ victim, killer }); victim.alive = false; },
     onCrateHit: (c) => { r.crateHits.push(c); },
     onCrateDestroyed: () => {},
-    onBladeDestroyed: (b) => { r.destroyed.push(b); state.blades.delete(b.id); },
+    onBladeDestroyed: (b, by) => { r.destroyed.push(b); r.breakers.set(b.id, by?.id ?? null); state.blades.delete(b.id); },
   };
   return r;
 }
@@ -254,6 +257,21 @@ test("les lames en orbite protègent le corps", () => {
   assert.equal(b.alive, true);
   assert.equal(shield.hp, 2 - 1);
   assert.equal(r.impacts[0].kind, 0);
+});
+
+test("une lame en orbite brisée par un projectile désigne le lanceur", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  const b = addPlayer(state, { x: 10, y: 0, blades: 1 });
+  const shield = ownedBlades(state, b)[0];
+  const cache = new OrbitPositionCache();
+  cache.set(shield.id, 8.2, 0);
+  const proj = projectile({ x: 8.9, y: 0, rarity: BladeRarity.Epic, pierce: 1, by: a });
+  const r = recorder();
+  resolveProjectileCollisions(state, r, cache);
+  // La lame Common casse (dégâts Epic) ; le projectile consommé n'a pas
+  // d'auteur à désigner.
+  assert.equal(r.breakers.get(shield.id), a.id);
+  assert.equal(r.breakers.get(proj.id), null);
 });
 
 test("un projectile Legendary traverse une caisse", () => {

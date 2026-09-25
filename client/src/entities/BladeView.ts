@@ -143,6 +143,8 @@ interface BladeEntry {
   vy: number;
   // Drop au sol dans ses dernières secondes : clignote avant de disparaître.
   expiring: boolean;
+  // Fin du flash blanc d'un clash (performance.now(), ms).
+  flashUntil: number;
 }
 
 const MAX_INSTANCES_PER_BUCKET = 800;
@@ -161,12 +163,34 @@ const TIER_COLOR_MULT: readonly number[] = [1.0, 0.92, 0.85];
 // teintes claires (Common, Legendary or) écrasent les violets profonds.
 const bucketKey = (rarity: BladeRarity, tier: number): number => rarity * TIER_BUCKETS + tier;
 
+// Flash blanc d'une lame qui vient de clasher : plein sur les 40 premières
+// millisecondes, puis fondu.
+const FLASH_MS = 80;
+
+// Flash par instance : attribut aFlash (0..1) qui tire la couleur finale
+// vers le blanc. Mélangé en toute fin de shader, après brouillard et
+// émissif : blanc franc quelle que soit la rareté (multiplier la couleur
+// d'instance ne blanchit pas une teinte saturée).
+function addInstanceFlash(material: THREE.Material): void {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float aFlash;\nvarying float vFlash;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFlash = aFlash;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vFlash;")
+      .replace("#include <dithering_fragment>", "#include <dithering_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), vFlash);");
+  };
+}
+
 export class BladeRenderer {
   // 4 raretés × 3 tiers = 12 InstancedMesh, indexés à plat par bucketKey().
   // Chaque bucket a son propre matériau avec emissiveIntensity tier-aware,
   // ce qui permet de baisser le glow uniquement aux tiers où la sommation
   // washoutait l'écran.
   private meshes: THREE.InstancedMesh[] = new Array(4 * TIER_BUCKETS);
+  // Flash par instance, un attribut par bucket (d'où une géométrie par
+  // bucket : l'attribut vit sur la géométrie).
+  private flashes: THREE.InstancedBufferAttribute[] = new Array(4 * TIER_BUCKETS);
   private counts: number[] = new Array(4 * TIER_BUCKETS).fill(0);
   private idToIndex = new Map<string, { rarity: BladeRarity; tier: number; index: number }>();
   private entries = new Map<string, BladeEntry>();
@@ -206,11 +230,17 @@ export class BladeRenderer {
               shininess: theme.blades.shininess,
               specular: theme.blades.specularColor,
             });
-        const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES_PER_BUCKET);
+        addInstanceFlash(mat);
+        const bucketGeo = geo.clone();
+        const flash = new THREE.InstancedBufferAttribute(new Float32Array(MAX_INSTANCES_PER_BUCKET), 1);
+        flash.setUsage(THREE.DynamicDrawUsage);
+        bucketGeo.setAttribute("aFlash", flash);
+        const mesh = new THREE.InstancedMesh(bucketGeo, mat, MAX_INSTANCES_PER_BUCKET);
         mesh.count = 0;
         mesh.frustumCulled = false;
         mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         this.meshes[bucketKey(r, t)] = mesh;
+        this.flashes[bucketKey(r, t)] = flash;
         this.root.add(mesh);
       }
     }
@@ -226,7 +256,7 @@ export class BladeRenderer {
     if (!e) {
       e = { id, rarity, ownerId, ringIndex, slotIndex,
         prevX: x, prevY: y, prevTime: now, targetX: x, targetY: y, targetTime: now,
-        isProjectile, vx, vy, expiring };
+        isProjectile, vx, vy, expiring, flashUntil: 0 };
       this.entries.set(id, e);
       // Allocation au tier 0 par défaut. update() migrera au bon tier dès
       // la frame suivante en lisant owner.tier (la lame n'est pas rendue
@@ -345,12 +375,26 @@ export class BladeRenderer {
     return !!this.entries.get(id)?.ownerId;
   }
 
+  // Flash blanc d'une lame impliquée dans un clash (now : performance.now()).
+  flash(id: string, now: number): void {
+    const e = this.entries.get(id);
+    if (e) e.flashUntil = now + FLASH_MS;
+  }
+
+  // Lames en cours de flash (mode debug).
+  flashingCount(now: number): number {
+    let n = 0;
+    for (const e of this.entries.values()) if (e.flashUntil > now) n++;
+    return n;
+  }
+
   update(
     now: number, renderDelay: number, elapsedSec: number,
     players: PlayerPositionProvider,
   ): void {
     const renderTime = now - renderDelay;
     const dirtyBuckets = new Set<number>();
+    const dirtyFlashes = new Set<number>();
 
     // Pass 1 (rapide) : détection des changements de tier. On collecte les
     // ids à migrer puis on applique en dehors du forEach pour ne pas muter
@@ -450,11 +494,24 @@ export class BladeRenderer {
       this.tmpScale.set(sx, sy, sz);
       this.tmpMat.compose(this.tmpPos, this.tmpQuat, this.tmpScale);
       mesh.setMatrixAt(ref.index, this.tmpMat);
-      dirtyBuckets.add(bucketKey(ref.rarity, ref.tier));
+      const key = bucketKey(ref.rarity, ref.tier);
+      dirtyBuckets.add(key);
+      // Réécrit à chaque frame : un index d'instance change de lame quand
+      // une autre est retirée du bucket.
+      const k = (e.flashUntil - now) / FLASH_MS;
+      const flash = k > 0 ? Math.min(1, k * 2) : 0;
+      const flashArr = this.flashes[key].array as Float32Array;
+      if (flashArr[ref.index] !== flash) {
+        flashArr[ref.index] = flash;
+        dirtyFlashes.add(key);
+      }
     });
 
     dirtyBuckets.forEach((key) => {
       this.meshes[key].instanceMatrix.needsUpdate = true;
+    });
+    dirtyFlashes.forEach((key) => {
+      this.flashes[key].needsUpdate = true;
     });
   }
 }

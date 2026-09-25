@@ -42,7 +42,8 @@ client/src/
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
 │   └── palette.ts       Façade rétrocompat sur le thème actif
 ├── entities/
-│   ├── BladeView.ts     InstancedMesh×12 (4 raretés × 3 tiers)
+│   ├── BladeView.ts     InstancedMesh×12 (4 raretés × 3 tiers), flash
+│   │                    blanc par instance (attribut aFlash)
 │   ├── PlayerView.ts    Capsule corps + tête + ring + halo + trail
 │   ├── CrateView.ts     Boîte émissive + edges
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
@@ -52,7 +53,8 @@ client/src/
 │   └── ScreenShake.ts
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks
-├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings
+├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
+│                        CombatFeedback (repères de perte, « +1 »)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
 

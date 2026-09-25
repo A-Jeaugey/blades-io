@@ -28,6 +28,14 @@ export class SoundManager {
   private deathSynth!: Tone.NoiseSynth;
   private lowSynth!: Tone.Synth;
   private alarmSynth!: Tone.Synth;
+  // Sons de combat distincts (tâche 1.5) : on doit reconnaître à l'oreille
+  // un clash (tintement), une lame brisée (éclat), la perte d'une de ses
+  // lames (deux tons descendants), une élimination (carillon montant), une
+  // caisse brisée (craquement) et sa propre mort.
+  private shatterSynth!: Tone.NoiseSynth;
+  private lossSynth!: Tone.Synth;
+  private chimeSynth!: Tone.FMSynth;
+  private crateSynth!: Tone.NoiseSynth;
   private boostNoise!: Tone.Noise;
   private boostFilter!: Tone.Filter;
   private boostEnv!: Tone.AmplitudeEnvelope;
@@ -94,6 +102,40 @@ export class SoundManager {
       envelope: { attack: 0.005, decay: 0.09, sustain: 0, release: 0.05 },
     }).connect(this.sfxGain);
     this.alarmSynth.volume.value = -20;
+
+    // Éclat : bruit blanc bref, filtré dans les aigus.
+    const shatterFilter = new Tone.Filter(3200, "highpass").connect(reverb);
+    this.shatterSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.11, sustain: 0, release: 0.05 },
+    }).connect(shatterFilter);
+    this.shatterSynth.volume.value = -13;
+
+    // Perte d'une lame du joueur local : dent de scie étouffée, deux tons
+    // descendants (négatif, sans ressembler à l'alerte « peu de lames »).
+    const lossFilter = new Tone.Filter(1500, "lowpass").connect(reverb);
+    this.lossSynth = new Tone.Synth({
+      oscillator: { type: "sawtooth" },
+      envelope: { attack: 0.004, decay: 0.1, sustain: 0, release: 0.06 },
+    }).connect(lossFilter);
+    this.lossSynth.volume.value = -15;
+
+    // Élimination confirmée : cloche FM, arpège montant.
+    this.chimeSynth = new Tone.FMSynth({
+      harmonicity: 3,
+      modulationIndex: 8,
+      envelope: { attack: 0.002, decay: 0.28, sustain: 0, release: 0.25 },
+      modulationEnvelope: { attack: 0.002, decay: 0.2, sustain: 0, release: 0.2 },
+    }).connect(reverb);
+    this.chimeSynth.volume.value = -12;
+
+    // Caisse brisée : craquement grave (bruit rose en bande étroite).
+    const crateFilter = new Tone.Filter({ frequency: 520, type: "bandpass", Q: 1.4 }).connect(reverb);
+    this.crateSynth = new Tone.NoiseSynth({
+      noise: { type: "pink" },
+      envelope: { attack: 0.002, decay: 0.22, sustain: 0, release: 0.1 },
+    }).connect(crateFilter);
+    this.crateSynth.volume.value = -4;
 
     this.boostNoise = new Tone.Noise("pink");
     this.boostFilter = new Tone.Filter(900, "lowpass");
@@ -238,9 +280,45 @@ export class SoundManager {
     this.hitSynth.triggerAttackRelease([180, 220, 280, 360][Math.min(3, rarity)], 0.05, this.nextTime(this.hitSynth), gain);
   }
 
-  kill(gain = 1): void {
+  // Lame d'un autre joueur brisée : éclat aigu, craquement métallique.
+  bladeBreak(rarity: BladeRarity, gain = 1): void {
     if (!this.started || gain <= 0) return;
-    this.killSynth.triggerAttackRelease("C2", 0.25, this.nextTime(this.killSynth), gain);
+    this.shatterSynth.triggerAttackRelease(0.1, this.nextTime(this.shatterSynth), gain);
+    this.hitSynth.triggerAttackRelease([900, 1040, 1200, 1400][Math.min(3, rarity)], 0.04, this.nextTime(this.hitSynth), 0.7 * gain);
+  }
+
+  // Une lame du joueur local est brisée : deux tons descendants et un
+  // éclat étouffé.
+  bladeLost(): void {
+    if (!this.started) return;
+    const t0 = this.nextTime(this.lossSynth);
+    this.lossSynth.triggerAttackRelease("D5", 0.05, t0);
+    // Second ton programmé plus tard : on avance la dernière date connue de
+    // la voix (départs strictement croissants exigés par Tone.js).
+    const t1 = t0 + 0.06;
+    this.lastTriggerTime.set(this.lossSynth, t1);
+    this.lossSynth.triggerAttackRelease("A4", 0.07, t1);
+    this.shatterSynth.triggerAttackRelease(0.06, this.nextTime(this.shatterSynth), 0.5);
+  }
+
+  // Élimination par le joueur local : carillon montant sur un coup sourd.
+  killConfirm(): void {
+    if (!this.started) return;
+    this.killSynth.triggerAttackRelease("C2", 0.25, this.nextTime(this.killSynth));
+    let t = this.nextTime(this.chimeSynth);
+    for (const note of ["E5", "B5", "E6"]) {
+      this.chimeSynth.triggerAttackRelease(note, 0.12, t);
+      this.lastTriggerTime.set(this.chimeSynth, t);
+      t += 0.065;
+    }
+  }
+
+  // Caisse brisée : craquement et coup sourd plus aigu que celui d'une
+  // élimination.
+  crateBreak(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.crateSynth.triggerAttackRelease(0.2, this.nextTime(this.crateSynth), gain);
+    this.killSynth.triggerAttackRelease("G2", 0.12, this.nextTime(this.killSynth), 0.6 * gain);
   }
 
   death(): void {

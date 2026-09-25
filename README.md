@@ -61,7 +61,7 @@ The server runs the entire simulation (positions, collisions, kills, drops, proj
 
 ### Audio
 
-Sound effects are 100 % procedural — Tone.js synths for hits, pickups, deaths, throws, the boost noise. The only audio files are the music tracks: one lobby and one battle track per theme, stored in `assets/music/` and copied into `client/public/` at build time (`sync-music` script).
+Sound effects are 100 % procedural — Tone.js synths for pickups, throws, the boost noise, and one distinct sound per combat event: a metallic tink for a clash, a bright shatter when an enemy blade breaks, two falling tones when you lose one of yours, a rising chime for an elimination, a crunch for a crate, a heavy hit for your death. Clashing blades flash white, a red arc at the screen edge points at whoever is breaking your blades, and a "+1" pops where you eliminate someone. The only audio files are the music tracks: one lobby and one battle track per theme, stored in `assets/music/` and copied into `client/public/` at build time (`sync-music` script).
 
 ---
 
@@ -286,7 +286,7 @@ client/src/
   entities/            # PlayerView, BladeView, CrateView, PowerUpView, AimIndicator
   fx/                  # particles, screen shake
   input/               # keyboard, mouse (projected on the ground), touch joystick + throw button with drag aim
-  ui/                  # HUD, login, death, leaderboard, minimap, settings, chat
+  ui/                  # HUD, login, death, leaderboard, minimap, settings, chat, combat feedback
   themes/              # cosmetic themes (palette, ground shader, decor, music)
   boutique/            # theme shop
   audio/SoundManager   # Tone.js procedural SFX + music player

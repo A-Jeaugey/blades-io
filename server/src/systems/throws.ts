@@ -30,7 +30,9 @@ export interface ThrowCallbacks {
   onPlayerKilled: (victim: Player, killer: Player | null) => void;
   onCrateHit: (crate: Crate, attacker: Player | null) => void;
   onCrateDestroyed: (crate: Crate, attacker: Player | null) => void;
-  onBladeDestroyed: (blade: Blade) => void;
+  // by : lanceur du projectile qui a brisé la lame, null pour la fin de vie
+  // d'un projectile.
+  onBladeDestroyed: (blade: Blade, by: Player | null) => void;
 }
 
 // Sélectionne la lame "extérieure" du joueur à transformer en projectile.
@@ -158,7 +160,7 @@ export function updateProjectiles(dt: number, state: ArenaState, cb: ThrowCallba
       kind: 3, // wall / TTL
       destroyed: true,
     });
-    cb.onBladeDestroyed(b);
+    cb.onBladeDestroyed(b, null);
   }
   for (const b of toLand) {
     landProjectile(b, now, cb);
@@ -305,7 +307,7 @@ export function resolveProjectileCollisions(
           kind: 0, // orbit blade
           destroyed: consumed,
         });
-        if (orbBlade.hp <= 0) cb.onBladeDestroyed(orbBlade);
+        if (orbBlade.hp <= 0) cb.onBladeDestroyed(orbBlade, state.players.get(proj.thrownBy) ?? null);
         return;
       }
 
@@ -332,7 +334,7 @@ export function resolveProjectileCollisions(
   // Cleanup : projectiles avec pierceLeft <= 0 → suppression.
   for (const proj of projectiles) {
     if (proj.pierceLeft <= 0 && state.blades.has(proj.id)) {
-      cb.onBladeDestroyed(proj);
+      cb.onBladeDestroyed(proj, null);
     }
   }
 }

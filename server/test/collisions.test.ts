@@ -24,6 +24,8 @@ afterEach(() => clock.restore());
 
 interface Recorder extends CollisionCallbacks {
   destroyed: Blade[];
+  // Lame détruite → joueur qui l'a brisée.
+  breakers: Map<string, string | null>;
   kills: Array<{ victim: Player; killer: Player | null }>;
   clashes: ClashInfo[];
   crateHits: Crate[];
@@ -35,11 +37,12 @@ interface Recorder extends CollisionCallbacks {
 function recorder(): Recorder {
   const r: Recorder = {
     destroyed: [],
+    breakers: new Map(),
     kills: [],
     clashes: [],
     crateHits: [],
     cratesDestroyed: [],
-    onBladeDestroyed: (b) => { r.destroyed.push(b); state.blades.delete(b.id); },
+    onBladeDestroyed: (b, by) => { r.destroyed.push(b); r.breakers.set(b.id, by?.id ?? null); state.blades.delete(b.id); },
     onPlayerKilled: (victim, killer) => { r.kills.push({ victim, killer }); victim.alive = false; },
     onCrateHit: (c) => { r.crateHits.push(c); },
     onCrateDestroyed: (c) => { r.cratesDestroyed.push(c); },
@@ -61,7 +64,7 @@ function duel(rarityA: BladeRarity, rarityB: BladeRarity) {
 }
 
 test("clash : chaque lame encaisse les dégâts de la rareté adverse", () => {
-  const { bladeA, bladeB } = duel(BladeRarity.Legendary, BladeRarity.Common);
+  const { a, b, bladeA, bladeB } = duel(BladeRarity.Legendary, BladeRarity.Common);
   const r = recorder();
   resolveCollisions(state, cache, r, cooldowns);
   assert.equal(bladeA.hp, 8 - 1);
@@ -69,14 +72,23 @@ test("clash : chaque lame encaisse les dégâts de la rareté adverse", () => {
   assert.equal(r.clashes.length, 1);
   assert.equal(r.clashes[0].destroyed, 1);
   assert.equal(r.kills.length, 0);
+  // Chaque lame est accompagnée de son propriétaire.
+  const owners = new Map<string, string>([
+    [r.clashes[0].a.id, r.clashes[0].aOwner.id],
+    [r.clashes[0].b.id, r.clashes[0].bOwner.id],
+  ]);
+  assert.deepEqual(owners, new Map([[bladeA.id, a.id], [bladeB.id, b.id]]));
+  // La lame brisée désigne le joueur dont la lame l'a cassée.
+  assert.equal(r.breakers.get(bladeB.id), a.id);
 });
 
 test("clash entre deux Epic : les deux lames cassent", () => {
-  const { bladeA, bladeB } = duel(BladeRarity.Epic, BladeRarity.Epic);
+  const { a, b, bladeA, bladeB } = duel(BladeRarity.Epic, BladeRarity.Epic);
   const r = recorder();
   resolveCollisions(state, cache, r, cooldowns);
   assert.deepEqual(new Set(r.destroyed.map((b) => b.id)), new Set([bladeA.id, bladeB.id]));
   assert.equal(r.clashes[0].destroyed, 2);
+  assert.deepEqual(r.breakers, new Map([[bladeA.id, b.id], [bladeB.id, a.id]]));
 });
 
 test("le power-up Shield divise les dégâts reçus par deux, 1 minimum", () => {

@@ -5,6 +5,7 @@ import {
   BOT_MIN_PLAYERS,
   BOT_NAMES,
   BOT_THINK_INTERVAL,
+  BladeDestroyedEvent,
   ClashEvent,
   DEATH_DROP_MAX_DIST,
   DEATH_DROP_MIN_DIST,
@@ -480,7 +481,7 @@ export class ArenaRoom extends Room<ArenaState> {
       this.emit("pickup", { playerId: player.id, rarity: blade.rarity });
     });
     resolveCollisions(this.state, this.orbitCache, {
-      onBladeDestroyed: (blade) => this.handleBladeDestroyed(blade),
+      onBladeDestroyed: (blade, by) => this.handleBladeDestroyed(blade, by),
       onPlayerKilled: (victim, killer) => this.killPlayer(victim, killer, "blades"),
       onCrateHit: (crate, attacker) => this.handleCrateHit(crate, attacker),
       onCrateDestroyed: (crate, attacker) => this.handleCrateDestroyed(crate, attacker),
@@ -488,6 +489,8 @@ export class ArenaRoom extends Room<ArenaState> {
         const ev: ClashEvent = {
           aId: info.a.id,
           bId: info.b.id,
+          aOwnerId: info.aOwner.id,
+          bOwnerId: info.bOwner.id,
           x: (info.ax + info.bx) * 0.5,
           y: (info.ay + info.by) * 0.5,
           tier: info.tier,
@@ -568,7 +571,7 @@ export class ArenaRoom extends Room<ArenaState> {
         this.handleCrateHit(crate, attacker),
       onCrateDestroyed: (crate: Crate, attacker: Player | null) =>
         this.handleCrateDestroyed(crate, attacker),
-      onBladeDestroyed: (blade: Blade) => this.handleBladeDestroyed(blade),
+      onBladeDestroyed: (blade: Blade, by: Player | null) => this.handleBladeDestroyed(blade, by),
     };
   }
 
@@ -609,13 +612,15 @@ export class ArenaRoom extends Room<ArenaState> {
     }
   }
 
-  private handleBladeDestroyed(blade: Blade): void {
+  private handleBladeDestroyed(blade: Blade, by: Player | null = null): void {
     const cached = this.orbitCache.get(blade.id);
     const x = cached ? cached.x : blade.x;
     const y = cached ? cached.y : blade.y;
-    this.emit("bladeDestroyed", {
+    const ev: BladeDestroyedEvent = {
       bladeId: blade.id, x, y, rarity: blade.rarity, ownerId: blade.ownerId,
-    });
+    };
+    if (by) ev.byId = by.id;
+    this.emit("bladeDestroyed", ev);
     const ownerId = blade.ownerId;
     const ring = blade.ringIndex;
     if (ownerId) {

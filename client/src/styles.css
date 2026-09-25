@@ -57,6 +57,41 @@ canvas#game {
   opacity: 0;
 }
 
+/* Retours de combat (cf. ui/CombatFeedback.ts). Positionnés par transform
+   depuis le coin haut-gauche. */
+#combat-feedback {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+/* Arc rouge au bord de l'écran, convexe vers l'extérieur : côté d'où vient
+   la perte d'une lame. */
+.hit-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 170px;
+  height: 46px;
+  border-radius: 50%;
+  border-top: 6px solid rgba(var(--danger-rgb), .95);
+  filter: drop-shadow(0 -4px 8px rgba(var(--danger-rgb), .7));
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.kill-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--cyan);
+  text-shadow: 0 0 14px rgba(var(--accent-cool-rgb), .85), 0 2px 0 rgba(0, 0, 0, .55);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
 /* Mode debug hitbox (?debug=hitbox) : mesure affichée en bas à gauche. */
 .debug-hitbox-label {
   position: fixed;
