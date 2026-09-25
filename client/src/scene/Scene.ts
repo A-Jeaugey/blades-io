@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { CAMERA_DISTANCE, CAMERA_FOV_DEG, CAMERA_PITCH_DEG } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 
@@ -11,6 +12,9 @@ export class SceneStack {
   // × resScale.
   private resScale: number;
   private basePixelRatio: number;
+  // Brouillard pour la distance de caméra de base (CAMERA_DISTANCE).
+  private fogNear: number;
+  private fogFar: number;
 
   constructor(canvas: HTMLCanvasElement, q: QualityConfig) {
     this.basePixelRatio = q.pixelRatio;
@@ -40,19 +44,20 @@ export class SceneStack {
     this.renderer.setClearColor(new THREE.Color(theme.palette.clearColor), 1);
 
     this.scene = new THREE.Scene();
-    const fogNear = 60 * q.fogDensity;
-    const fogFar = 200 * q.fogDensity;
-    this.scene.fog = new THREE.Fog(new THREE.Color(theme.palette.fogColor), fogNear, fogFar);
+    this.fogNear = 60 * q.fogDensity;
+    this.fogFar = 200 * q.fogDensity;
+    this.scene.fog = new THREE.Fog(new THREE.Color(theme.palette.fogColor), this.fogNear, this.fogFar);
 
+    // Cadrage partagé (shared/), le même pour tous les thèmes ; la
+    // CameraRig le pilote ensuite.
     this.camera = new THREE.PerspectiveCamera(
-      55,
+      CAMERA_FOV_DEG,
       window.innerWidth / window.innerHeight,
       0.5,
-      Math.max(220, fogFar + 40),
+      Math.max(220, this.fogFar + 40),
     );
-    // Position initiale = offset du thème (la CameraRig prendra le relais
-    // dès qu'elle aura une cible joueur).
-    this.camera.position.set(theme.cameraOffset.x, theme.cameraOffset.y, theme.cameraOffset.z);
+    const pitch = (CAMERA_PITCH_DEG * Math.PI) / 180;
+    this.camera.position.set(0, Math.sin(pitch) * CAMERA_DISTANCE, Math.cos(pitch) * CAMERA_DISTANCE);
     this.camera.lookAt(0, 0, 0);
 
     const ambient = new THREE.AmbientLight(theme.lighting.ambient.color, theme.lighting.ambient.intensity);
@@ -67,6 +72,22 @@ export class SceneStack {
     }
 
     window.addEventListener("resize", () => this.onResize());
+  }
+
+  // La caméra recule (orbite, écran étroit) : brouillard et plan lointain
+  // se décalent d'autant, pour garder le même profil autour du joueur.
+  // Sans ça, en portrait (caméra à ~80 u), le joueur lui-même serait dans
+  // le brouillard.
+  setViewDistance(distance: number): void {
+    const shift = distance - CAMERA_DISTANCE;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.near = this.fogNear + shift;
+    fog.far = this.fogFar + shift;
+    const far = Math.max(220, fog.far + 40);
+    if (Math.abs(this.camera.far - far) > 1) {
+      this.camera.far = far;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   private applyPixelRatio(): void {

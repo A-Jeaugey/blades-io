@@ -34,7 +34,8 @@ client/src/
 │                        des messages serveur, gestion FX bursts
 ├── scene/
 │   ├── Scene.ts         WebGLRenderer + camera + lumières + fog (depuis thème)
-│   ├── Camera.ts        CameraRig — offset défini par le thème
+│   ├── Camera.ts        CameraRig — cadrage partagé (CAMERA_* dans shared/),
+│   │                    recul selon l'orbite et le format d'écran
 │   ├── Ground.ts        Sol shader (rich/simple/flat) — sources GLSL du thème
 │   ├── Decor.ts         Pilier central + obélisques + bushes + cubes/lanternes
 │   │                    DISPATCH cyber/spirit selon theme.decor.kind
@@ -104,6 +105,8 @@ Tout ce qui change quand on passe d'une ambiance à une autre.
 - Positions des obstacles (`DECOR_COLLIDERS`, `BUSHES`, `FLOATING_CUBES` dans `shared/`)
 - Mécaniques (vitesse, hitboxes, dégâts, tier thresholds…)
 - Layout de la map en général
+- Cadrage de la caméra (`CAMERA_*` dans `shared/src/constants.ts`) : il
+  décide de ce qu'on voit, donc de l'information disponible
 
 C'est **garanti par construction** : un joueur qui paye pour le thème "Forge
 Vermeille" ne voit pas une map différente d'un joueur en thème de base. Pas de
@@ -124,7 +127,6 @@ interface Theme {
   music: ThemeMusic;           // chemins lobby/battle .mp3
   ground: ThemeGround;         // 3 fragment shader sources + buildExtraUniforms()
   ui: ThemeUiPalette;          // CSS variables (--cyan, --pink, etc.)
-  cameraOffset: { x; y; z };   // angle/distance de la caméra
 }
 ```
 
@@ -289,9 +291,11 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   dans `client/`). Le script `sync-music` les copie vers `client/public/`
   sous les noms repris dans `theme.music` (`lobby-<nom>.mp3`,
   `battle-<nom>.mp3`, ex. `lobby-forge.mp3`).
-- **Camera offset trop bas tue la lisibilité .io**. Ne descendez pas en
-  dessous de ~45° d'inclinaison (offset Y/Z > 0.85). Le top-down strict
-  est laid mais à 30° on perd la perception des menaces.
+- **Cadrage** : `CAMERA_PITCH_DEG` sous ~45° tue la lisibilité .io (à 30°
+  on perd la perception des menaces ; le top-down strict est laid). La
+  distance suit l'orbite et le format d'écran (`CameraRig`) ; tout ce qui
+  dépend de la distance à la caméra (brouillard, plan lointain) doit la
+  suivre aussi (`SceneStack.setViewDistance`).
 
 ---
 

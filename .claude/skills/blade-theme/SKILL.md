@@ -72,13 +72,13 @@ col += vec3(dither);
 
 Uniforms theme-spécifiques : déclarés dans le shader + fournis par `buildExtraUniforms(detail)`. `uTime` (rich seulement) et `uRadius` sont gérés par `Ground.ts`.
 
-### 5. Lighting + blade material + camera
+### 5. Lighting + blade material
 
 - **Ambient color** : LA teinte qui colore tous les matériaux PBR — choisir la couleur d'ambiance qui doit baigner la scène
 - **Key/Rim** : light principale + contre-jour, couleurs qui découpent les silhouettes
 - **Blade shininess** : 80 (acier net) → 30 (éthéré). Forge polie ≈ 70, glace ≈ 60, fungal ≈ 30
 - **Blade specular** : teinte du highlight (cohérente avec ambient/key)
-- **Camera offset** : Y entre 19-22, Z entre 16-17. Plus Y/Z grand = plus top-down = plus lisible mais moins immersif. Sweet spot 48-54° (≈ atan(Y/Z)).
+- **Pas de caméra** : le cadrage n'est plus un réglage de thème. Il décide de ce qu'on voit, donc c'est une constante de gameplay (`CAMERA_*` dans `shared/src/constants.ts`), la même pour tous les thèmes (pas d'avantage acheté).
 
 ### 6. Ambient FX
 

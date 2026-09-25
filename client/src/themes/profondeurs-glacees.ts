@@ -343,8 +343,4 @@ export const PROFONDEURS_GLACEES_THEME: Theme = {
     accentCoolRgb: "102, 196, 255",
     accentWarmRgb: "255, 212, 154",
   },
-
-  // Caméra : équivalente à Forge pour la lisibilité. Le mood "silencieux
-  // dangereux" demande d'avoir une bonne vue panoramique sur la map.
-  cameraOffset: { x: 0, y: 20, z: 16 },
 };

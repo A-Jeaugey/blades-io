@@ -299,8 +299,4 @@ export const FORGE_VERMEILLE_THEME: Theme = {
     accentCoolRgb: "255, 138, 62",               // ember pour les box-shadow / glow
     accentWarmRgb: "255, 186, 74",               // gold pour les hover / accents
   },
-
-  // Caméra légèrement plus plongée que sanctuaire : la forge est un thème
-  // de combat intense, on privilégie la lisibilité tactique.
-  cameraOffset: { x: 0, y: 21, z: 16 },
 };

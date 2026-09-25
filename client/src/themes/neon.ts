@@ -167,6 +167,4 @@ export const NEON_THEME: Theme = {
     accentCoolRgb: "0, 229, 255",
     accentWarmRgb: "255, 46, 168",
   },
-
-  cameraOffset: { x: 0, y: 22, z: 16 },
 };

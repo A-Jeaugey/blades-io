@@ -291,13 +291,6 @@ export const TEMPLATE_THEME: Theme = {
     accentWarmRgb: "0, 255, 255",                // = accentWarm
   },
 
-  // ─── Position de la caméra ───
-  // Point de vue ABSOLU par rapport au joueur (offset). Y = hauteur, Z = recul.
-  // L'angle d'inclinaison = atan(Y/Z) depuis l'horizontale. Recommandations :
-  //   - Top-down strict (Y >> Z) : laid mais ultra-lisible
-  //   - 45° (Y ≈ Z)              : isométrique, beau mais occlusion problématique en .io
-  //   - 50-55° (Y > Z légèrement) : sweet spot pour la plupart des thèmes
-  //
-  // Néon = (0, 22, 16) ≈ 54°. Sanctuaire = (0, 19, 17) ≈ 48°.
-  cameraOffset: { x: 0, y: 22, z: 16 }, // ← TODO : ajuste selon le mood (plus penché = plus immersif, plus plat = plus lisible)
+  // Pas de caméra ici : le cadrage est une constante de gameplay partagée
+  // (CAMERA_* dans shared/src/constants.ts), la même pour tous les thèmes.
 };

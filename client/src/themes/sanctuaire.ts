@@ -289,6 +289,4 @@ export const SANCTUAIRE_THEME: Theme = {
     accentCoolRgb: "216, 164, 232",
     accentWarmRgb: "244, 212, 113",
   },
-
-  cameraOffset: { x: 0, y: 19, z: 17 },
 };

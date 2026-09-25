@@ -228,7 +228,7 @@ class Game {
     console.log(`[blade.io] quality preset: ${this.quality.preset}`);
     this.sceneStack = new SceneStack(this.canvas, this.quality);
     this.postFx = new PostFX(this.sceneStack.renderer, this.sceneStack.scene, this.sceneStack.camera, this.quality);
-    this.camera = new CameraRig(this.sceneStack.camera);
+    this.camera = new CameraRig(this.sceneStack.camera, (d) => this.sceneStack.setViewDistance(d));
     this.blades = new BladeRenderer(this.quality.simpleMaterials);
     this.crates = new CrateRenderer(this.quality);
     this.powerups = new PowerUpRenderer(this.quality);
@@ -289,6 +289,9 @@ class Game {
         // en flash.
         sound: this.sound,
         flashing: () => this.blades.flashingCount(performance.now()),
+        // Cadrage (tâche 1.7) : distance caméra courante.
+        cameraDistance: () => this.camera.viewDistance,
+        groundAt: (x: number, y: number) => this.camera.groundAt(x, y),
       };
     }
     this.settings = new SettingsPanel();
@@ -1427,6 +1430,9 @@ class Game {
       this.emitProjectileTrails(dt);
       this.particles.update(dt);
       if (localView) this.camera.setTarget(localView.renderX, localView.renderY);
+      // Recul selon l'orbite du joueur local (vivant et en partie).
+      const meCam = this.room?.state?.players?.get(this.myId);
+      this.camera.setOrbitRadius(meCam?.alive && !this.dead ? outerOrbitRadius(meCam.bladeCount) : 0);
       this.camera.update(dt);
       this.ground.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);

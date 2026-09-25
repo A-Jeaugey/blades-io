@@ -143,6 +143,30 @@ export const CLASH_SHAKE_INTENSITY: readonly number[] = [0.18, 0.32, 0.55];
 // Intensité de shake quand le joueur local change de tier.
 export const TIER_UP_SHAKE: readonly number[] = [0.0, 0.35, 0.55];
 
+// --- Caméra (cadrage) ---
+// Constante de gameplay, pas de thème : ce qu'on voit (menaces, lames au
+// sol) doit être le même pour tous (tâche 1.7). Avant, chaque thème fixait
+// son décalage de caméra et la largeur visible variait de 47 à 50 u selon
+// le thème acheté ; en portrait mobile, on n'en voyait qu'un quart.
+// Champ vertical et inclinaison au-dessus de l'horizontale (degrés). Sous
+// ~45°, on perd la perception des menaces ; le top-down strict est laid.
+export const CAMERA_FOV_DEG = 55;
+export const CAMERA_PITCH_DEG = 54;
+// Distance au point visé (u) avec une petite orbite : sur un écran 16:9,
+// environ 50 u de sol visibles en largeur au niveau du joueur.
+export const CAMERA_DISTANCE = 27;
+// Largeur de sol visible minimale au niveau du joueur (u) : sur un écran
+// étroit (portrait mobile), la caméra recule jusqu'à la montrer. 41 u, soit
+// 82 % d'un écran 16:9 (l'objectif est 80 %, avec une marge : la largeur
+// se mesure au niveau du joueur, un peu sous le point visé). Contrepartie :
+// en portrait, on voit plus loin devant soi que sur un écran large.
+export const CAMERA_MIN_VIEW_WIDTH = 41;
+// Recul avec l'orbite extérieure : +6 % de distance par unité de rayon
+// au-delà du premier anneau (1,8 u), plafonné à +40 % (vers 9 u de rayon).
+export const CAMERA_ZOOM_ORBIT_BASE = 1.8;
+export const CAMERA_ZOOM_PER_UNIT = 0.06;
+export const CAMERA_ZOOM_MAX = 1.4;
+
 // --- Throw (lancer de lame) ---
 // Cooldown entre deux lancers (ms). Volontairement court (0.5 s) : il faut
 // que ça reste un outil de combat actif, pas un sort à long cooldown.

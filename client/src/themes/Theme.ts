@@ -164,9 +164,8 @@ export interface Theme {
   music: ThemeMusic;
   ground: ThemeGround;
   ui: ThemeUiPalette;
-  // Position offset de la caméra (vector3 components). Permet à chaque
-  // thème d'ajuster l'inclinaison/distance.
-  cameraOffset: { x: number; y: number; z: number };
+  // Pas de cadrage de caméra : il change ce qu'on voit, donc c'est une
+  // constante de gameplay (CAMERA_* dans shared/), la même pour tous.
 }
 
 // Calcule la compensation de luminance par rareté à partir d'un mapping de
