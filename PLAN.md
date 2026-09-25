@@ -6,6 +6,16 @@ Il découle de l'audit du 2026-09-24 : [`docs/AUDIT-2026-09.md`](docs/AUDIT-2026
 
 ---
 
+## Actions manuelles en attente
+
+Étapes impossibles depuis une session de code (accès Supabase, serveur de production, fusion dans `main`). Le owner les coche ; chaque session les rappelle en fin de tâche tant qu'il en reste.
+
+- [ ] **Appliquer la migration `supabase/migrations/0004_leaderboard_public_only.sql`** dans l'éditeur SQL Supabase (tâche 0.2). Sans elle, le serveur ne crédite déjà plus rien en room privée, mais les parties privées enregistrées avant restent au classement.
+- [ ] **Vérifier que le proxy de production transmet l'IP du joueur** avant de déployer la phase 0 (tâche 0.3). Le serveur en ligne répond `server: nginx`, alors que le repo contient un `Caddyfile` : le proxy doit envoyer `X-Forwarded-For` (sous nginx : `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`). Sinon, tous les joueurs partagent un seul compteur de limitation de débit : le lobby affiche « — » et les nouveaux invités n'ont plus de wallet dès qu'il y a du monde. Si nginx et Caddy sont chaînés, régler `TRUST_PROXY` (et `trusted_proxies` côté Caddy) pour que le serveur voie l'IP du joueur.
+- [ ] **Fusionner `claude/great-shannon-itw2b2` dans `main`** une fois les deux points ci-dessus faits. La fusion déclenche le déploiement.
+
+---
+
 ## Comment utiliser ce plan
 
 1. Prendre la **première tâche non cochée** dans l'ordre recommandé (section « Calendrier »), sauf décision contraire. Dans chaque phase, les tâches sont listées dans leur ordre d'exécution ; les numéros sont des identifiants stables, d'où un ordre parfois non séquentiel (1.8 juste après 1.1, par exemple).
