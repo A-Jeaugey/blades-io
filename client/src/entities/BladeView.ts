@@ -7,6 +7,7 @@ import {
   tierVisualScale,
 } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
+import { FLASH_COLOR } from "../themes/Theme";
 
 // Géométrie d'épée : lame longue et fine en bipyramide losange (pointe
 // en +x, section losange au milieu pour un reflet en arête), garde
@@ -166,6 +167,8 @@ const bucketKey = (rarity: BladeRarity, tier: number): number => rarity * TIER_B
 // Flash blanc d'une lame qui vient de clasher : plein sur les 40 premières
 // millisecondes, puis fondu.
 const FLASH_MS = 80;
+// Lames brisées en plein flash, gardées en blanc à leur dernière pose.
+const MAX_GHOSTS = 64;
 
 // Flash par instance : attribut aFlash (0..1) qui tire la couleur finale
 // vers le blanc. Mélangé en toute fin de shader, après brouillard et
@@ -191,6 +194,12 @@ export class BladeRenderer {
   // Flash par instance, un attribut par bucket (d'où une géométrie par
   // bucket : l'attribut vit sur la géométrie).
   private flashes: THREE.InstancedBufferAttribute[] = new Array(4 * TIER_BUCKETS);
+  // Une lame brisée dans un clash disparaît au tick du clash, donc avant la
+  // fin de son flash : entre deux raretés égales (PV = dégâts), les deux
+  // lames cassent et on ne voyait jamais le flash. Sa dernière pose reste
+  // affichée en blanc jusqu'à la fin du flash.
+  private ghosts: THREE.InstancedMesh;
+  private ghostList: Array<{ matrix: THREE.Matrix4; until: number }> = [];
   private counts: number[] = new Array(4 * TIER_BUCKETS).fill(0);
   private idToIndex = new Map<string, { rarity: BladeRarity; tier: number; index: number }>();
   private entries = new Map<string, BladeEntry>();
@@ -244,6 +253,11 @@ export class BladeRenderer {
         this.root.add(mesh);
       }
     }
+    this.ghosts = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: FLASH_COLOR }), MAX_GHOSTS);
+    this.ghosts.count = 0;
+    this.ghosts.frustumCulled = false;
+    this.ghosts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.root.add(this.ghosts);
   }
 
   upsert(
@@ -287,6 +301,12 @@ export class BladeRenderer {
   remove(id: string): void {
     const e = this.entries.get(id);
     if (!e) return;
+    const ref = this.idToIndex.get(id);
+    if (ref && e.flashUntil > performance.now() && this.ghostList.length < MAX_GHOSTS) {
+      const matrix = new THREE.Matrix4();
+      this.meshes[bucketKey(ref.rarity, ref.tier)].getMatrixAt(ref.index, matrix);
+      this.ghostList.push({ matrix, until: e.flashUntil });
+    }
     this.incOwnerRing(e.ownerId, e.ringIndex, -1);
     this.entries.delete(id);
     this.removeInstance(id);
@@ -300,6 +320,8 @@ export class BladeRenderer {
     this.entries.clear();
     this.idToIndex.clear();
     this.perOwnerRingCount.clear();
+    this.ghostList.length = 0;
+    this.ghosts.count = 0;
     for (let i = 0; i < this.meshes.length; i++) {
       this.counts[i] = 0;
       const m = this.meshes[i];
@@ -381,10 +403,11 @@ export class BladeRenderer {
     if (e) e.flashUntil = now + FLASH_MS;
   }
 
-  // Lames en cours de flash (mode debug).
+  // Lames en cours de flash, brisées comprises (mode debug).
   flashingCount(now: number): number {
     let n = 0;
     for (const e of this.entries.values()) if (e.flashUntil > now) n++;
+    for (const g of this.ghostList) if (g.until > now) n++;
     return n;
   }
 
@@ -513,5 +536,12 @@ export class BladeRenderer {
     dirtyFlashes.forEach((key) => {
       this.flashes[key].needsUpdate = true;
     });
+
+    if (this.ghostList.length > 0 || this.ghosts.count > 0) {
+      this.ghostList = this.ghostList.filter((g) => g.until > now);
+      for (let i = 0; i < this.ghostList.length; i++) this.ghosts.setMatrixAt(i, this.ghostList[i].matrix);
+      this.ghosts.count = this.ghostList.length;
+      this.ghosts.instanceMatrix.needsUpdate = true;
+    }
   }
 }

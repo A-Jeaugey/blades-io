@@ -25,6 +25,9 @@ export const PREY_COLOR = 0x3dff8a;
 // tous les thèmes.
 export const DEBUG_HITBOX_COLOR = 0xffe14a;
 
+// Flash d'impact des lames qui clashent : blanc, le même sur tous les thèmes.
+export const FLASH_COLOR = 0xffffff;
+
 export type DecorVariant =
   // Cyberpunk d'origine : pilier central rose/cyan, cubes flottants émissifs,
   // bushes cylindre + sphères vertes.
