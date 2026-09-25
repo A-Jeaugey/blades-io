@@ -153,10 +153,11 @@ Objectif : fermer les failles et les défauts qui ne doivent pas vivre une semai
 
 Objectif : ce qu'on voit est ce qui se passe, et le personnage répond immédiatement. C'est la phase qui a le plus d'impact sur le plaisir de jeu.
 
-- [ ] **1.1 — Horloge serveur partagée et orbites synchronisées** · M · `FEEL-01`
+- [x] **1.1 — Horloge serveur partagée et orbites synchronisées** · M · `FEEL-01` · 2026-09-25 · `5641c34`
   - Quoi : le temps orbital du serveur dérive du numéro de tick (`t = tick × SERVER_DT`, déterministe) au lieu d'une somme de `dt` variables. Le client estime le temps serveur à partir de `state.tick` reçu à chaque patch (offset lissé) et calcule les angles des lames distantes à `tempsServeur − RENDER_DELAY`, le même instant que la position interpolée de leur propriétaire. Ajouter le multiplicateur du power-up Spin côté client. Ajouter un mode debug (touche ou paramètre d'URL) qui dessine les hitbox calculées.
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, `server/src/systems/orbitPositions.ts`, `shared/src/orbits.ts`, `client/src/main.ts`, `client/src/entities/BladeView.ts`, nouveau `client/src/net/ServerClock.ts`.
   - Acceptation : en mode debug, les hitbox et les lames rendues se superposent (écart angulaire < 0,1 rad pour les joueurs distants) ; dans un duel 3 contre 3, chaque étincelle de clash apparaît sur un contact visible ; le résultat est identique pour deux clients arrivés à des moments différents et après une mise en arrière-plan de l'onglet.
+  - Réalisé : au-delà du plan, le modèle d'angle `ω × multiplicateur × temps de la room` faisait sauter toutes les lames à chaque changement de vitesse (ramassage, tier, Spin), serveur compris. Remplacé par une horloge d'orbite par joueur synchronisée en segments (phase, tick, vitesse), recalée au changement de vitesse. Évènements de combat estampillés du tick et joués sur la ligne de temps du rendu. Mesures : écart d'angle ≤ 1e-7 rad, θ identique entre deux clients et après 5 s d'onglet gelé, étincelles à 0,11 u des lames dessinées (1,26 u si jouées à la réception). Mode debug : `?debug=hitbox`.
 
 - [ ] **1.8 — Échéances exprimées en temps serveur** · S · `FEEL-07` · Dépend de 1.1
   - Quoi : les badges d'effets, le halo de protection et le cooldown de lancer comparent les échéances au temps serveur estimé, et non à `Date.now()` du navigateur. Idéalement, les champs `*Until` deviennent des temps relatifs au démarrage de la room (plus compacts, cf. 2.3).
