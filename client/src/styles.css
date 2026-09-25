@@ -57,6 +57,19 @@ canvas#game {
   opacity: 0;
 }
 
+/* Mode debug hitbox (?debug=hitbox) : mesure affichée en bas à gauche. */
+.debug-hitbox-label {
+  position: fixed;
+  left: 12px;
+  bottom: 64px;
+  z-index: 20;
+  padding: 4px 8px;
+  font: 12px/1.3 ui-monospace, monospace;
+  color: var(--fg-bright);
+  background: rgba(0, 0, 0, .65);
+  pointer-events: none;
+}
+
 #hud {
   position: fixed;
   inset: 0;

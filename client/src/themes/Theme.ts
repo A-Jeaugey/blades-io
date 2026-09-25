@@ -21,6 +21,10 @@ import { BladeRarity, PowerUpType } from "@bladeio/shared";
 export const DANGER_COLOR = 0xff2a3d;
 export const PREY_COLOR = 0x3dff8a;
 
+// Hitbox serveur du mode debug (?debug=hitbox) : jaune vif, lisible sur
+// tous les thèmes.
+export const DEBUG_HITBOX_COLOR = 0xffe14a;
+
 export type DecorVariant =
   // Cyberpunk d'origine : pilier central rose/cyan, cubes flottants émissifs,
   // bushes cylindre + sphères vertes.

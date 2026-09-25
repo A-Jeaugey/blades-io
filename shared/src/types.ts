@@ -19,7 +19,15 @@ export interface RespawnMessage {
   name?: string;
 }
 
-export interface BladeDestroyedEvent {
+// Tick serveur de l'évènement de jeu. Le client joue l'évènement quand son
+// rendu (RENDER_DELAY dans le passé) atteint ce tick, au même instant que
+// les entités concernées : l'étincelle d'un clash apparaît sur le contact
+// visible, pas 80 ms avant.
+export interface TickStamped {
+  tick?: number;
+}
+
+export interface BladeDestroyedEvent extends TickStamped {
   bladeId: string;
   x: number;
   y: number;
@@ -27,32 +35,32 @@ export interface BladeDestroyedEvent {
   ownerId?: string;
 }
 
-export interface PlayerKilledEvent {
+export interface PlayerKilledEvent extends TickStamped {
   victimId: string;
   killerId: string | null;
   victimName: string;
   killerName: string | null;
 }
 
-export interface PickupEvent {
+export interface PickupEvent extends TickStamped {
   playerId: string;
   rarity: BladeRarity;
 }
 
-export interface CrateHitEvent {
+export interface CrateHitEvent extends TickStamped {
   crateId: string;
   x: number;
   y: number;
   hp: number;
 }
 
-export interface CrateDestroyedEvent {
+export interface CrateDestroyedEvent extends TickStamped {
   crateId: string;
   x: number;
   y: number;
 }
 
-export interface PowerUpPickupEvent {
+export interface PowerUpPickupEvent extends TickStamped {
   playerId: string;
   type: PowerUpType;
   rarity: BladeRarity;
@@ -63,7 +71,7 @@ export interface PowerUpPickupEvent {
 // Émis chaque fois que deux lames de joueurs différents entrent en contact
 // (avec ou sans destruction). Contient les deux ids et un tier "effectif"
 // (= max des deux tiers) qui pilote l'intensité du screen shake côté client.
-export interface ClashEvent {
+export interface ClashEvent extends TickStamped {
   aId: string;
   bId: string;
   x: number;        // point d'impact (milieu)
@@ -74,7 +82,7 @@ export interface ClashEvent {
 
 // Émis quand un joueur change de palier (passage Tier 1 → 2 → 3). Le client
 // déclenche la VFX de tier-up + son + shake si c'est le joueur local.
-export interface TierUpEvent {
+export interface TierUpEvent extends TickStamped {
   playerId: string;
   tier: number;     // nouveau tier (1 ou 2 ; tier 0 ne déclenche rien)
   x: number;
@@ -83,7 +91,7 @@ export interface TierUpEvent {
 
 // Émis quand un joueur lance une lame (commence le vol). Le client utilise
 // les coordonnées et la direction pour placer la VFX de tir + son.
-export interface BladeThrownEvent {
+export interface BladeThrownEvent extends TickStamped {
   bladeId: string;
   thrownBy: string;
   rarity: BladeRarity;
@@ -95,7 +103,7 @@ export interface BladeThrownEvent {
 
 // Émis à l'impact d'un projectile (joueur, lame, ou caisse). Sert au
 // client à afficher la VFX d'impact + son.
-export interface ProjectileImpactEvent {
+export interface ProjectileImpactEvent extends TickStamped {
   bladeId: string;
   rarity: BladeRarity;
   x: number;

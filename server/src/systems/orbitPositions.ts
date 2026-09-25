@@ -1,5 +1,6 @@
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
+import { Player } from "../state/Player";
 import {
   GROUND_BLADE_FRICTION,
   MAP_RADIUS,
@@ -10,8 +11,9 @@ import {
   POWERUP_SPIN_MULT,
   WALL_KILL_THICKNESS,
   bladeCountRotationMult,
+  orbitSlotAngle,
+  orbitThetaAt,
   ringRadius,
-  slotAngle,
   tierRotationMult,
 } from "@bladeio/shared";
 
@@ -26,7 +28,8 @@ const MAX_BLADES = MAX_BLADES_PER_PLAYER;
 const SPIN_MULT = POWERUP_SPIN_MULT;
 const GROUND_MAX_R = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;
 const GROUND_MAX_R_SQ = GROUND_MAX_R * GROUND_MAX_R;
-const angleOf = slotAngle;
+const angleOf = orbitSlotAngle;
+const thetaAt = orbitThetaAt;
 const radiusOf = ringRadius;
 const tierRot = tierRotationMult;
 const countRot = bladeCountRotationMult;
@@ -69,10 +72,8 @@ export class OrbitPositionCache {
 interface OwnerOrbit {
   x: number;
   y: number;
-  effT: number;
+  theta: number;
   spinPhase: number;
-  spinScale: number;
-  rotMult: number;
   ringCounts: number[];
 }
 
@@ -83,37 +84,46 @@ interface MagnetSource {
   radiusSq: number;
 }
 
+// Vitesse de l'horloge d'orbite d'un joueur : tier × nombre de lames ×
+// power-up Spin × échelle propre au joueur (désynchronise deux orbites
+// identiques), nulle pendant le hitlag. Arrondie en float32, le type du
+// champ synchronisé.
+function orbitRateOf(p: Player, nowMs: number): number {
+  if (p.hitlagUntil > nowMs) return 0;
+  const spinBoost = p.spinUntil > nowMs ? SPIN_MULT : 1;
+  return Math.fround(tierRot(p.tier) * countRot(p.bladeCount) * spinBoost * p.spinScale);
+}
+
 export function updateBladePositions(
   dt: number,
-  elapsed: number,
+  tick: number,
   state: ArenaState,
   cache: OrbitPositionCache,
 ): void {
   const nowMs = Date.now();
 
-  // Fiches joueurs. Pendant le hitlag d'un joueur, on avance son
-  // orbitTimeOffset au même rythme que `elapsed` : (elapsed -
-  // orbitTimeOffset) reste constant, donc les angles ne bougent pas. Le
-  // client lit ce champ et fait pareil.
+  // Fiches joueurs, avec l'horloge d'orbite du tick courant. Quand la
+  // vitesse change, on ouvre un nouveau segment à partir de la phase
+  // atteinte : l'angle reste continu, seule la vitesse change.
   const owners = new Map<string, OwnerOrbit>();
   const magnetGrid = new Map<number, MagnetSource[]>();
   let magnetCount = 0;
   state.players.forEach((p) => {
     if (!p.alive) return;
-    if (p.hitlagUntil > nowMs) p.orbitTimeOffset += dt;
+    const rate = orbitRateOf(p, nowMs);
+    if (rate !== p.orbitRate) {
+      p.orbitPhase = thetaAt(p.orbitPhase, p.orbitRate, p.orbitTick, tick);
+      p.orbitTick = tick;
+      p.orbitRate = rate;
+    }
     const bladeCount = p.bladeCount;
     const x = p.x;
     const y = p.y;
-    // Multiplicateur global de rotation = tier × blade-count × spin power-up.
-    // La hitbox élargie compense la fenêtre d'esquive raccourcie.
-    const spinBoost = p.spinUntil > nowMs ? SPIN_MULT : 1;
     owners.set(p.id, {
       x,
       y,
-      effT: elapsed - p.orbitTimeOffset,
+      theta: thetaAt(p.orbitPhase, p.orbitRate, p.orbitTick, tick),
       spinPhase: p.spinPhase,
-      spinScale: p.spinScale,
-      rotMult: tierRot(p.tier) * countRot(bladeCount) * spinBoost,
       ringCounts: [],
     });
     // Seuls les joueurs qui peuvent encore ramasser attirent les lames.
@@ -158,15 +168,7 @@ export function updateBladePositions(
       const owner = owners.get(ownerId);
       if (!owner) return;
       const ring = b.ringIndex;
-      const angle = angleOf(
-        ring,
-        b.slotIndex,
-        owner.ringCounts[ring] ?? 1,
-        owner.effT,
-        owner.spinPhase,
-        owner.spinScale,
-        owner.rotMult,
-      );
+      const angle = angleOf(ring, b.slotIndex, owner.ringCounts[ring] ?? 1, owner.theta, owner.spinPhase);
       const r = radiusOf(ring);
       // On stocke en local, PAS dans le schema (évite des patches inutiles).
       cache.set(b.id, owner.x + Math.cos(angle) * r, owner.y + Math.sin(angle) * r);

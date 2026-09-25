@@ -13,7 +13,8 @@ import {
   ringCapacity,
   ringRadius,
   shopPrice,
-  slotAngle,
+  orbitSlotAngle,
+  orbitThetaAt,
   tierBladeHitbox,
   tierFromBladeCount,
   tierRotationMult,
@@ -44,8 +45,11 @@ test("rotation : sens alterné, -12 % par anneau, multiplicateur appliqué", () 
   close(ringAngularVelocity(0), 5.5);
   close(ringAngularVelocity(1), -5.5 * 0.88);
   close(ringAngularVelocity(0, 2), 11);
-  // Slots répartis uniformément sur l'anneau.
-  close(slotAngle(0, 1, 4, 0), Math.PI / 2);
+  // Slots répartis uniformément sur l'anneau, puis vitesse de l'anneau × θ.
+  close(orbitSlotAngle(0, 1, 4, 0), Math.PI / 2);
+  close(orbitSlotAngle(1, 0, 4, 2, 0.5), 0.5 - 5.5 * 0.88 * 2);
+  // Horloge d'orbite : phase + vitesse × durée depuis le recalage (60 ticks = 1 s).
+  close(orbitThetaAt(3, 2, 100, 160), 3 + 2 * 1);
 });
 
 test("tiers : paliers à 10 et 20 lames", () => {

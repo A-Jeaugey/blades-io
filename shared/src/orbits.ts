@@ -5,6 +5,7 @@ import {
   RING_CAP_STEP,
   RING_RADIUS_STEP,
   RING_ROT_FALLOFF,
+  SERVER_DT,
 } from "./constants";
 
 // Capacité (nombre max de slots) de l'anneau d'index ringIndex (0-based).
@@ -24,40 +25,32 @@ export function ringAngularVelocity(ringIndex: number, rotMult: number = 1): num
   return ringIndex % 2 === 0 ? mag : -mag;
 }
 
-// Angle d'un slot donné à un instant t (secondes), avec phase + scale
-// optionnels propres à chaque joueur (pour désynchroniser deux orbites
-// qui auraient sinon les mêmes angles à jamais). rotMult = boost tier/power-up.
-export function slotAngle(
-  ringIndex: number,
-  slotIndex: number,
-  slotsInRing: number,
-  t: number,
-  spinPhase: number = 0,
-  spinScale: number = 1,
-  rotMult: number = 1,
-): number {
-  const n = Math.max(1, slotsInRing);
-  const base = (slotIndex / n) * Math.PI * 2;
-  return base + spinPhase + ringAngularVelocity(ringIndex, rotMult) * t * spinScale;
+// Horloge d'orbite θ d'un joueur. Elle avance à orbitRate par seconde de
+// jeu (tier × nombre de lames × Spin × échelle propre au joueur, 0 pendant
+// le hitlag) et n'est recalée qu'au changement de vitesse : θ vaut
+// orbitPhase au tick orbitTick. Serveur et clients la calculent à partir
+// des mêmes champs synchronisés, donc au même angle pour un tick donné,
+// quel que soit le moment où le client a rejoint la partie.
+//
+// Avant : angle = ω × multiplicateur × temps écoulé depuis la création de
+// la room. Chaque changement de multiplicateur (ramassage, tier, Spin)
+// décalait toutes les lames de Δmult × ω × t, soit des centaines de radians
+// dans une room ouverte depuis une heure : les orbites « téléportaient ».
+export function orbitThetaAt(phase: number, rate: number, sinceTick: number, tick: number): number {
+  return phase + rate * (tick - sinceTick) * SERVER_DT;
 }
 
-// Position monde d'une lame en orbite autour d'un joueur.
-export function orbitPosition(
-  ownerX: number,
-  ownerY: number,
+// Angle d'un slot : position uniforme dans l'anneau + déphasage propre au
+// joueur + vitesse de l'anneau (sens alterné, -12 % par anneau) × θ.
+export function orbitSlotAngle(
   ringIndex: number,
   slotIndex: number,
   slotsInRing: number,
-  t: number,
-  rotMult: number = 1,
-): { x: number; y: number; angle: number } {
-  const angle = slotAngle(ringIndex, slotIndex, slotsInRing, t, 0, 1, rotMult);
-  const r = ringRadius(ringIndex);
-  return {
-    x: ownerX + Math.cos(angle) * r,
-    y: ownerY + Math.sin(angle) * r,
-    angle,
-  };
+  theta: number,
+  spinPhase: number = 0,
+): number {
+  const n = Math.max(1, slotsInRing);
+  return (slotIndex / n) * Math.PI * 2 + spinPhase + ringAngularVelocity(ringIndex) * theta;
 }
 
 // Index de l'anneau le plus extérieur effectivement occupé pour un nombre

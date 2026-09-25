@@ -116,9 +116,9 @@ export function updateMovement(
       }
     }
 
-    // Hitlag : on fige le mouvement (input ET knockback). On laisse quand
-    // même les autres systèmes (rotation orbitale, push-out) tourner via
-    // orbitTimeOffset pour préserver la cohérence visuelle.
+    // Hitlag : on fige le mouvement (input ET knockback). Les orbites
+    // s'arrêtent aussi (vitesse d'orbite nulle, cf. orbitPositions) ; le
+    // push-out entre joueurs continue de s'appliquer.
     const inHitlag = p.hitlagUntil > now;
     if (inHitlag) {
       // Reset boost pour ne pas drainer pendant la pause.

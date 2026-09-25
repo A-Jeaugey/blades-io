@@ -40,6 +40,7 @@ import {
   CHAT_RATE_LIMIT_COUNT,
   CHAT_RATE_LIMIT_WINDOW_MS,
   resolveDecorCollision,
+  tierBladeHitbox,
   tierFromBladeCount,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -117,7 +118,6 @@ export class ArenaRoom extends Room<ArenaState> {
   private bots = new BotController();
   private crates = new CrateSystem();
   private powerups = new PowerUpSystem();
-  private elapsed = 0;
   // Options de la room (set au onCreate à partir des joinOptions du 1er
   // client, ou rempli par filterBy).
   private roomCode = "";
@@ -128,6 +128,9 @@ export class ArenaRoom extends Room<ArenaState> {
   private kickedSessions = new Set<string>();
   // Cooldowns de clash par paire (cf. resolveCollisions), propres à la room.
   private clashCooldowns = new Map<string, number>();
+  // Clients en mode debug hitbox (client lancé avec ?debug=hitbox) : ils
+  // reçoivent chaque tick la position serveur des lames en orbite proches.
+  private debugOrbitClients = new Set<string>();
 
   onCreate(options: { code?: string; bots?: boolean } = {}): void {
     this.roomCode = typeof options.code === "string" ? options.code.toUpperCase() : "";
@@ -161,6 +164,10 @@ export class ArenaRoom extends Room<ArenaState> {
     this.onMessage<RespawnMessage>("respawn", (client, msg) => this.handleRespawn(client, msg));
     this.onMessage<ChatMessage>("chat", (client, msg) => this.handleChat(client, msg));
     this.onMessage("ping", (client) => client.send("pong", { t: Date.now() }));
+    this.onMessage<{ on?: boolean }>("debugOrbits", (client, msg) => {
+      if (msg?.on) this.debugOrbitClients.add(client.sessionId);
+      else this.debugOrbitClients.delete(client.sessionId);
+    });
   }
 
   // Validation + rate limit + broadcast d'un message chat.
@@ -245,7 +252,10 @@ export class ArenaRoom extends Room<ArenaState> {
     p.spinPhase = Math.random() * Math.PI * 2;
     p.spinScale = 0.75 + Math.random() * 0.5;
     p.tier = 0;
-    p.orbitTimeOffset = 0;
+    // Nouvelle horloge d'orbite ; la vitesse est calculée au premier tick.
+    p.orbitPhase = 0;
+    p.orbitTick = this.state.tick;
+    p.orbitRate = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.state.players.set(client.sessionId, p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
@@ -295,6 +305,7 @@ export class ArenaRoom extends Room<ArenaState> {
   }
 
   private cleanupPlayer(sessionId: string): void {
+    this.debugOrbitClients.delete(sessionId);
     const toRemove: string[] = [];
     this.state.blades.forEach((b) => {
       if (b.ownerId === sessionId) toRemove.push(b.id);
@@ -391,7 +402,10 @@ export class ArenaRoom extends Room<ArenaState> {
     p.spinScale = 0.75 + Math.random() * 0.5;
     p.tier = 0;
     p.hitlagUntil = 0;
-    p.orbitTimeOffset = 0;
+    // Nouvelle horloge d'orbite ; la vitesse est calculée au premier tick.
+    p.orbitPhase = 0;
+    p.orbitTick = this.state.tick;
+    p.orbitRate = 0;
     p.knockbackVx = 0;
     p.knockbackVy = 0;
     p.recentLosses = [];
@@ -400,7 +414,6 @@ export class ArenaRoom extends Room<ArenaState> {
   }
 
   private tick(dt: number): void {
-    this.elapsed += dt;
     this.state.tick++;
     if (this.botsEnabled) {
       this.maintainBots();
@@ -416,7 +429,7 @@ export class ArenaRoom extends Room<ArenaState> {
       if (next > p.tier) {
         p.tier = next;
         const ev: TierUpEvent = { playerId: p.id, tier: next, x: p.x, y: p.y };
-        this.broadcast("tierUp", ev);
+        this.emit("tierUp", ev);
       } else if (next < p.tier) {
         p.tier = next;
       }
@@ -427,7 +440,13 @@ export class ArenaRoom extends Room<ArenaState> {
     // mise en projectile. Le cooldown est imposé serveur-side.
     const throwCb = this.makeThrowCallbacks();
     processThrows(this.state, throwCb);
-    updateBladePositions(dt, this.elapsed, this.state, this.orbitCache);
+    // Temps d'orbite dérivé du numéro de tick (déterministe, identique
+    // pour tous les clients), pas de la somme des dt réels.
+    updateBladePositions(dt, this.state.tick, this.state, this.orbitCache);
+    // Juste après le calcul des positions : les ramassages et destructions
+    // qui suivent dans ce tick réindexent des slots, la trame debug doit
+    // décrire l'état que les collisions vont réellement utiliser.
+    if (this.debugOrbitClients.size > 0) this.sendDebugOrbits();
     // Avancer les projectiles APRÈS updateBladePositions (qui skip les
     // projectiles), avant les collisions classiques (qui ignorent aussi).
     updateProjectiles(dt, this.state, throwCb);
@@ -439,7 +458,7 @@ export class ArenaRoom extends Room<ArenaState> {
       onBladeDestroyed: (blade) => this.handleBladeDestroyed(blade),
     });
     this.pickup.update(this.state, (player, blade) => {
-      this.broadcast("pickup", { playerId: player.id, rarity: blade.rarity });
+      this.emit("pickup", { playerId: player.id, rarity: blade.rarity });
     });
     resolveCollisions(this.state, this.orbitCache, {
       onBladeDestroyed: (blade) => this.handleBladeDestroyed(blade),
@@ -455,7 +474,7 @@ export class ArenaRoom extends Room<ArenaState> {
           tier: info.tier,
           destroyed: info.destroyed,
         };
-        this.broadcast("clash", ev);
+        this.emit("clash", ev);
       },
     }, this.clashCooldowns);
     // Collisions des projectiles : APRÈS resolveCollisions pour que les
@@ -472,13 +491,58 @@ export class ArenaRoom extends Room<ArenaState> {
     this.bots.cleanupDead(this.state);
   }
 
+  // Diffuse un évènement de jeu estampillé du tick courant (cf. TickStamped).
+  private emit(type: string, payload: object): void {
+    this.broadcast(type, { ...payload, tick: this.state.tick });
+  }
+
+  // Mode debug hitbox : positions et hitbox des lames en orbite, telles que
+  // les collisions de ce tick les voient, dans un rayon de 80 u autour du
+  // joueur. Le client les superpose à son rendu pour vérifier que ce qu'on
+  // voit est ce que le serveur calcule.
+  private sendDebugOrbits(): void {
+    const radiusSq = 80 * 80;
+    for (const sessionId of this.debugOrbitClients) {
+      const client = this.clients.find((c) => c.sessionId === sessionId);
+      const me = this.state.players.get(sessionId);
+      if (!client || !me) continue;
+      const owners: Record<string, [number, number]> = {};
+      const inRing = new Map<string, number>();
+      this.state.players.forEach((p) => {
+        if (!p.alive) return;
+        const dx = p.x - me.x;
+        const dy = p.y - me.y;
+        if (dx * dx + dy * dy <= radiusSq) owners[p.id] = [p.x, p.y];
+      });
+      this.state.blades.forEach((b) => {
+        if (!b.ownerId || !owners[b.ownerId]) return;
+        const key = `${b.ownerId}|${b.ringIndex}`;
+        inRing.set(key, (inRing.get(key) ?? 0) + 1);
+      });
+      // Anneau et slot tels que le serveur les a utilisés : la mesure côté
+      // client isole la phase d'orbite des changements de composition.
+      const rows: Array<[string, string, number, number, number, number, number, number]> = [];
+      this.state.blades.forEach((b) => {
+        if (!b.ownerId || !owners[b.ownerId]) return;
+        const pos = this.orbitCache.get(b.id);
+        if (!pos) return;
+        const owner = this.state.players.get(b.ownerId)!;
+        rows.push([
+          b.id, b.ownerId, pos.x, pos.y, tierBladeHitbox(owner.tier),
+          b.ringIndex, b.slotIndex, inRing.get(`${b.ownerId}|${b.ringIndex}`) ?? 1,
+        ]);
+      });
+      client.send("debugOrbits", { tick: this.state.tick, owners, blades: rows });
+    }
+  }
+
   // Callbacks partagés entre processThrows / updateProjectiles /
   // resolveProjectileCollisions. Reuse les helpers existants pour rester
   // cohérent avec le reste (kill drop, broadcast, score…).
   private makeThrowCallbacks() {
     return {
-      onBladeThrown: (ev: BladeThrownEvent) => this.broadcast("bladeThrown", ev),
-      onProjectileImpact: (ev: ProjectileImpactEvent) => this.broadcast("projectileImpact", ev),
+      onBladeThrown: (ev: BladeThrownEvent) => this.emit("bladeThrown", ev),
+      onProjectileImpact: (ev: ProjectileImpactEvent) => this.emit("projectileImpact", ev),
       onPlayerKilled: (victim: Player, killer: Player | null) =>
         this.killPlayer(victim, killer, "throw"),
       onCrateHit: (crate: Crate, attacker: Player | null) =>
@@ -492,7 +556,7 @@ export class ArenaRoom extends Room<ArenaState> {
   private handlePowerUpPickup(player: Player, pu: PowerUp): void {
     player.powerupsCollected++;
     updateScore(player);
-    this.broadcast("powerupPickup", {
+    this.emit("powerupPickup", {
       playerId: player.id,
       type: pu.type,
       rarity: pu.rarity,
@@ -502,7 +566,7 @@ export class ArenaRoom extends Room<ArenaState> {
   }
 
   private handleCrateHit(crate: Crate, _attacker: Player | null): void {
-    this.broadcast("crateHit", { crateId: crate.id, x: crate.x, y: crate.y, hp: crate.hp });
+    this.emit("crateHit", { crateId: crate.id, x: crate.x, y: crate.y, hp: crate.hp });
   }
 
   private handleCrateDestroyed(crate: Crate, attacker: Player | null): void {
@@ -510,7 +574,7 @@ export class ArenaRoom extends Room<ArenaState> {
       attacker.cratesDestroyed++;
       updateScore(attacker);
     }
-    this.broadcast("crateDestroyed", { crateId: crate.id, x: crate.x, y: crate.y });
+    this.emit("crateDestroyed", { crateId: crate.id, x: crate.x, y: crate.y });
     this.crates.destroyCrate(this.state, crate);
   }
 
@@ -530,7 +594,7 @@ export class ArenaRoom extends Room<ArenaState> {
     const cached = this.orbitCache.get(blade.id);
     const x = cached ? cached.x : blade.x;
     const y = cached ? cached.y : blade.y;
-    this.broadcast("bladeDestroyed", {
+    this.emit("bladeDestroyed", {
       bladeId: blade.id, x, y, rarity: blade.rarity, ownerId: blade.ownerId,
     });
     const ownerId = blade.ownerId;
@@ -655,7 +719,7 @@ export class ArenaRoom extends Room<ArenaState> {
     // disparaît et le joueur ne sait pas pourquoi il est mort.
     const killerLabel =
       killer?.name ?? (reason === "wall" ? "GRID BORDER" : null);
-    this.broadcast("playerKilled", {
+    this.emit("playerKilled", {
       victimId: victim.id,
       killerId: killer?.id ?? null,
       victimName: victim.name,

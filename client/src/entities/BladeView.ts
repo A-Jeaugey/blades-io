@@ -2,11 +2,9 @@ import * as THREE from "three";
 import {
   BladeRarity,
   RARITY_SCALE,
-  slotAngle,
+  orbitSlotAngle,
   ringRadius,
-  tierRotationMult,
   tierVisualScale,
-  bladeCountRotationMult,
 } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
 
@@ -112,12 +110,11 @@ export interface PlayerPositionProvider {
     x: number;
     y: number;
     spinPhase: number;
-    spinScale: number;
-    // Tier 0..2 du joueur, pilote l'échelle/glow visuels et le rotMult.
+    // Horloge d'orbite du joueur au tick de rendu (cf. orbitThetaAt) :
+    // intègre tier, nombre de lames, Spin et hitlag, comme sur le serveur.
+    theta: number;
+    // Tier 0..2 du joueur, pilote l'échelle et le glow visuels.
     tier: number;
-    // Décalage de temps imposé par le serveur (hitlag) : on soustrait à
-    // elapsedSec pour figer la rotation pendant le freeze.
-    orbitTimeOffset: number;
     // Vrai si le joueur est dans un buisson ET n'est pas le joueur local
     // (ce qui veut dire : invisible pour nous). On skip alors le rendu
     // de ses lames pour ne pas trahir sa présence.
@@ -335,6 +332,19 @@ export class BladeRenderer {
     this.allocate(id, rarity, newTier);
   }
 
+  // Place d'une lame en orbite (mode debug), relevée avant qu'elle ne
+  // disparaisse éventuellement dans le clash mesuré.
+  orbitInfo(id: string): { ownerId: string; ring: number; slot: number; inRing: number } | null {
+    const e = this.entries.get(id);
+    if (!e || !e.ownerId) return null;
+    const inRing = this.perOwnerRingCount.get(e.ownerId)?.get(e.ringIndex) ?? 1;
+    return { ownerId: e.ownerId, ring: e.ringIndex, slot: e.slotIndex, inRing };
+  }
+
+  isOrbiting(id: string): boolean {
+    return !!this.entries.get(id)?.ownerId;
+  }
+
   update(
     now: number, renderDelay: number, elapsedSec: number,
     players: PlayerPositionProvider,
@@ -380,23 +390,9 @@ export class BladeRenderer {
         }
         const rings = this.perOwnerRingCount.get(e.ownerId);
         const nInRing = rings?.get(e.ringIndex) ?? 1;
-        // spinPhase/spinScale du joueur : reste en phase avec le serveur qui
-        // désynchronise les orbites par joueur (sinon 2 joueurs = orbites
-        // jamais alignées → lames jamais en collision).
-        // (elapsedSec - orbitTimeOffset) : pendant un hitlag, le serveur
-        // incrémente offset au même rythme que elapsed → angle figé.
-        // tierRotationMult : palier de vitesse selon le tier du joueur.
-        const effT = elapsedSec - owner.orbitTimeOffset;
-        const rotMult = tierRotationMult(owner.tier) * bladeCountRotationMult(owner.bladeCount);
-        angle = slotAngle(
-          e.ringIndex,
-          e.slotIndex,
-          nInRing,
-          effT,
-          owner.spinPhase,
-          owner.spinScale,
-          rotMult,
-        );
+        // Même formule que le serveur, à l'horloge d'orbite du tick de rendu :
+        // la lame est dessinée là où le serveur la fait collisionner.
+        angle = orbitSlotAngle(e.ringIndex, e.slotIndex, nInRing, owner.theta, owner.spinPhase);
         const r = ringRadius(e.ringIndex);
         x = owner.x + Math.cos(angle) * r;
         y = owner.y + Math.sin(angle) * r;

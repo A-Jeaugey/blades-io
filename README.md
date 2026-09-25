@@ -49,7 +49,7 @@ server/   Authoritative Colyseus room (60 Hz tick and patches, 60 player cap)
 client/   Vite + Three.js + Colyseus.js
 ```
 
-The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends only `dx, dy, boost, throw` and renders remote entities 80 ms in the past (interpolation between snapshots) plus client-side prediction + reconciliation for the local player.
+The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends only `dx, dy, boost, throw` and renders remote entities 80 ms in the past (interpolation between snapshots) plus client-side prediction + reconciliation for the local player. Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
 
 ### Performance highlights
 
@@ -94,6 +94,8 @@ npm start                  # run the prod server (serves the built client)
 npm test                   # server system tests (node:test, simulated clock)
 node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated seconds
 ```
+
+Add `?debug=hitbox` to the game URL to overlay the server-side hitboxes of nearby orbiting blades and display the measured client/server drift.
 
 Every push and pull request runs the same build in GitHub Actions (`.github/workflows/ci.yml`): shared, server (full `tsc`) and client (`tsc` + `vite build`), then the server tests.
 

@@ -44,14 +44,19 @@ export class Player extends Schema {
   // puisse adapter la taille/forme/glow des lames sans avoir à recompter.
   @type("uint8") tier: number = 0;
   // Hitlag : pendant cette fenêtre (ms epoch), le joueur est figé en
-  // mouvement ET en rotation orbitale (cf. orbitTimeOffset). Permet de
-  // donner du poids au clash sans desync visuel client/serveur.
+  // mouvement ET en rotation orbitale (orbitRate à 0). Permet de donner du
+  // poids au clash sans desync visuel client/serveur.
   @type("float64") hitlagUntil: number = 0;
-  // Décalage de temps appliqué au calcul d'angle orbital. Le serveur
-  // l'incrémente pendant le hitlag pour que (elapsed - orbitTimeOffset)
-  // reste constant → les lames ne tournent plus, même côté client (qui
-  // utilise ce champ synchronisé).
-  @type("float32") orbitTimeOffset: number = 0;
+  // Horloge d'orbite θ (cf. orbitThetaAt dans shared) : θ vaut orbitPhase
+  // au tick orbitTick puis avance de orbitRate par seconde de jeu. Recalée
+  // uniquement quand la vitesse change (ramassage, perte de lame, tier,
+  // Spin, hitlag) : le client calcule l'angle exact de chaque lame à
+  // n'importe quel tick sans dépendre de sa propre horloge. orbitRate est
+  // arrondi en float32 dès le calcul : serveur et clients utilisent la même
+  // valeur exacte.
+  @type("float64") orbitPhase: number = 0;
+  @type("uint32") orbitTick: number = 0;
+  @type("float32") orbitRate: number = 0;
   // Fin du cooldown de lancer (timestamp ms). Synchronisé pour que le
   // client puisse afficher l'état "ready" du bouton THROW.
   @type("float64") throwCooldownUntil: number = 0;

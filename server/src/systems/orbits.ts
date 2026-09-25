@@ -1,6 +1,6 @@
-// Les helpers ringCapacity/ringRadius/slotAngle sont dans @bladeio/shared.
+// Les helpers d'anneaux et d'angles sont dans @bladeio/shared.
 // Ce fichier ne garde que les utilitaires propres au serveur.
-export { ringCapacity, ringRadius, ringAngularVelocity, slotAngle } from "@bladeio/shared";
+export { ringCapacity, ringRadius, ringAngularVelocity } from "@bladeio/shared";
 import { ringCapacity } from "@bladeio/shared";
 
 // Attribue (ringIndex, slotIndex) au slotGlobal-ième slot.

@@ -55,6 +55,27 @@ client/src/
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
 
+### Synchronisation client/serveur — important
+
+- Les entités distantes sont rendues `RENDER_DELAY` (80 ms) dans le passé.
+  `ServerClock` (`client/src/net/ServerClock.ts`) estime le tick serveur
+  correspondant : le **tick de rendu** de la frame.
+- **Orbites** : angle d'une lame = `orbitSlotAngle(anneau, slot, n, θ,
+  spinPhase)` (`shared/src/orbits.ts`), où θ est l'horloge d'orbite du
+  joueur, synchronisée sous forme de segment (`orbitPhase`, `orbitTick`,
+  `orbitRate`) et recalée à chaque changement de vitesse. Serveur et
+  clients calculent le même angle pour un tick donné. Ne jamais
+  réintroduire un temps local (horloge du navigateur, somme de `dt`) dans
+  ce calcul.
+- **Évènements de combat** (clash, lame détruite, impact, kill…) et
+  changements des lames en orbite : estampillés du tick serveur
+  (`TickStamped`, `emit()` côté serveur) et joués quand le tick de rendu
+  l'atteint (`atTick()` dans `client/src/main.ts`). Tout nouvel évènement
+  positionnel suit ce chemin, sinon il apparaît 80 ms avant l'image
+  correspondante.
+- **Mode debug** : `?debug=hitbox` dans l'URL dessine les hitbox serveur
+  des lames proches et affiche l'écart client/serveur (orbites, étincelles).
+
 ### Quality presets — important
 
 `getPresetConfig()` détecte le GPU via `WEBGL_debug_renderer_info` et choisit

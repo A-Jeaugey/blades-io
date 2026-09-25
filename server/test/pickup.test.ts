@@ -80,7 +80,7 @@ test("pas de ramassage mort ou au plafond de lames", () => {
 test("positions d'orbite : chaque lame à son rayon d'anneau", () => {
   const p = addPlayer(state, { x: 10, y: -20, blades: 17 });
   const cache = new OrbitPositionCache();
-  updateBladePositions(DT, 3.2, state, cache);
+  updateBladePositions(DT, 192, state, cache);
   for (const b of ownedBlades(state, p)) {
     const pos = cache.get(b.id)!;
     const expected = b.ringIndex === 0 ? 1.8 : 2.6;

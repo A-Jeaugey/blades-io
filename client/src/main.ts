@@ -14,7 +14,10 @@ import {
   ChatEvent,
   TierUpEvent,
   WALL_KILL_THICKNESS,
+  orbitSlotAngle,
+  orbitThetaAt,
   outerOrbitRadius,
+  ringRadius,
   BladeDestroyedEvent,
   BladeThrownEvent,
   CrateDestroyedEvent,
@@ -31,6 +34,8 @@ import {
 } from "@bladeio/shared";
 import { getStateCallbacks } from "colyseus.js";
 import { Connection, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
+import { ServerClock } from "./net/ServerClock";
+import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
 import { SceneStack } from "./scene/Scene";
 import { createGround, createBoundaryWall } from "./scene/Ground";
 import { createDecor } from "./scene/Decor";
@@ -71,6 +76,22 @@ const RENDER_DELAY = 80;
 // dépasse la zone mortelle, projectile qui l'atteint).
 const WALL_ZAP_RADIUS = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;
 
+type OrbitInfo = { ownerId: string; ring: number; slot: number; inRing: number };
+interface ClashCheck {
+  x: number;
+  y: number;
+  a: OrbitInfo | null;
+  b: OrbitInfo | null;
+}
+
+// Segment de l'horloge d'orbite d'un joueur (cf. Player.orbitPhase côté
+// serveur) : θ = phase au tick donné, puis + rate par seconde de jeu.
+interface OrbitSegment {
+  tick: number;
+  phase: number;
+  rate: number;
+}
+
 class Game {
   private canvas: HTMLCanvasElement;
   private sceneStack: SceneStack;
@@ -110,6 +131,35 @@ class Game {
   private nextBorderBeepAt = 0;
   private tmpNdcA = new THREE.Vector3();
   private tmpNdcB = new THREE.Vector3();
+  // Tick serveur estimé et tick de rendu de la frame : les joueurs distants
+  // sont affichés RENDER_DELAY dans le passé, leurs lames au même instant.
+  private serverClock = new ServerClock();
+  private renderTick = 0;
+  // Derniers segments d'horloge d'orbite reçus par joueur : le tick de
+  // rendu est 80 ms dans le passé, un nouveau segment a pu commencer depuis.
+  private orbitSegments = new Map<string, OrbitSegment[]>();
+  private debugHitboxes: DebugHitboxes | null = null;
+  // Ligne de temps du rendu : ce qui est reçu ~80 ms avant que le rendu
+  // n'atteigne son tick (évènements de combat, changements des lames en
+  // orbite, morts) y attend ce tick. Joué tout de suite, l'étincelle d'un
+  // clash apparaissait avant le contact et la lame cassée disparaissait
+  // avant d'atteindre l'impact.
+  private timeline: Array<{ tick: number; seq: number; run: () => void; fx: boolean }> = [];
+  private timelineSeq = 0;
+  private timelineSorted = true;
+  // Tick du dernier patch reçu : estampille des changements d'état.
+  private lastPatchTick = 0;
+  // Lames avec un changement en attente : les suivants attendent aussi,
+  // pour rester dans l'ordre (orbite → lancer, sol → orbite…).
+  private pendingBlades = new Map<string, number>();
+  // « Vivant » tel qu'affiché : un kill ne fait disparaître la victime
+  // qu'au tick du kill sur la ligne de temps.
+  private renderAlive = new Map<string, boolean>();
+  // Mode debug : clashes joués cette frame (et, pour comparaison, reçus
+  // cette frame), mesurés une fois les joueurs placés. La place des lames
+  // est relevée au moment du clash : une lame cassée disparaît au même tick.
+  private clashChecks: ClashCheck[] = [];
+  private clashChecksImmediate: ClashCheck[] = [];
   private settings: SettingsPanel;
   private chat!: ChatPanel;
   private nametags = new NametagOverlay();
@@ -181,6 +231,17 @@ class Game {
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
     this.borderWarning = new BorderWarning();
+    if (new URLSearchParams(window.location.search).get("debug") === "hitbox") {
+      this.debugHitboxes = new DebugHitboxes(this.sceneStack.scene);
+      (window as any).__bladeDebug = {
+        stats: this.debugHitboxes.stats,
+        thetaAt: (id: string, tick: number) => this.orbitThetaFor(id, tick),
+        tick: () => this.room?.state?.tick ?? 0,
+        ids: () => [...this.orbitSegments.keys()],
+        frames: () => ({ count: this.debugHitboxes?.frameCount ?? 0, lastTick: this.debugHitboxes?.lastFrameTick ?? -1, renderTick: this.renderTick }),
+        reset: () => this.debugHitboxes?.resetStats(),
+      };
+    }
     this.settings = new SettingsPanel();
     this.chat = new ChatPanel();
     this.chat.setSendCallback((text) => {
@@ -318,6 +379,22 @@ class Game {
     $(state).listen("code", applyRoomInfo);
     $(state).listen("isPrivate", applyRoomInfo);
 
+    // Horloge serveur : chaque patch apporte le tick courant.
+    this.serverClock.reset();
+    this.orbitSegments.clear();
+    this.timeline.length = 0;
+    this.pendingBlades.clear();
+    this.renderAlive.clear();
+    $(state).listen("tick", (tick: number) => {
+      this.lastPatchTick = tick;
+      this.serverClock.onTick(tick, performance.now());
+    });
+    if (this.debugHitboxes) {
+      const debug = this.debugHitboxes;
+      room.onMessage("debugOrbits", (frame: DebugOrbitFrame) => debug.push(frame));
+      room.send("debugOrbits", { on: true });
+    }
+
     const onPlayerAdd = (p: any, key: string) => {
       if (this.players.has(key)) return;
       const isLocal = key === this.myId;
@@ -336,11 +413,20 @@ class Game {
         this.errX = 0; this.errY = 0;
         this.simAccum = 0; this.predInit = true;
       }
+      this.recordOrbitSegment(key, p);
+      this.renderAlive.set(key, !!p.alive);
+      let aliveSeen = !!p.alive;
       $(p).onChange(() => {
         const now = performance.now();
+        this.recordOrbitSegment(key, p);
         view.setSnapshot(p.x, p.y, now);
-        view.root.visible = p.alive;
-        view.trail.visible = p.alive && isLocal;
+        if (!!p.alive !== aliveSeen) {
+          aliveSeen = !!p.alive;
+          const alive = aliveSeen;
+          // Mort au tick du kill ; mon propre respawn tout de suite.
+          if (isLocal && alive) this.renderAlive.set(key, true);
+          else this.atTick(this.lastPatchTick, () => this.renderAlive.set(key, alive), false);
+        }
         if (isLocal) this.reconcileLocal(p);
       });
     };
@@ -350,24 +436,38 @@ class Game {
       const v = this.players.get(key);
       if (v) { v.dispose(); v.trail.parent?.remove(v.trail); }
       this.players.delete(key);
+      this.orbitSegments.delete(key);
+      this.renderAlive.delete(key);
     });
 
-    const onBladeAdd = (b: any, key: string) => {
-      const now = performance.now();
-      this.blades.upsert(
-        key, b.rarity as BladeRarity, b.ownerId, b.ringIndex, b.slotIndex,
-        b.x, b.y, now, !!b.isProjectile, b.vx ?? 0, b.vy ?? 0, !!b.expiring,
-      );
-      $(b).onChange(() => {
-        const t = performance.now();
-        this.blades.upsert(
-          key, b.rarity as BladeRarity, b.ownerId, b.ringIndex, b.slotIndex,
-          b.x, b.y, t, !!b.isProjectile, b.vx ?? 0, b.vy ?? 0, !!b.expiring,
-        );
-      });
+    // Les lames en orbite (ou qui l'étaient) changent sur la ligne de temps,
+    // au tick du patch, comme les positions de leurs propriétaires ; les
+    // lames au sol et en vol restent immédiates (interpolées ou extrapolées
+    // à partir de l'instant de réception).
+    const bladeChanged = (b: any, key: string) => {
+      const t = performance.now();
+      const rarity = b.rarity as BladeRarity;
+      const ownerId: string = b.ownerId;
+      const ring: number = b.ringIndex;
+      const slot: number = b.slotIndex;
+      const x: number = b.x;
+      const y: number = b.y;
+      const proj = !!b.isProjectile;
+      const vx: number = b.vx ?? 0;
+      const vy: number = b.vy ?? 0;
+      const expiring = !!b.expiring;
+      const apply = () => this.blades.upsert(key, rarity, ownerId, ring, slot, x, y, t, proj, vx, vy, expiring);
+      if (ownerId || this.blades.isOrbiting(key) || this.pendingBlades.has(key)) this.deferBlade(key, apply);
+      else apply();
     };
-    $(state).blades.onAdd(onBladeAdd, true);
-    $(state).blades.onRemove((_b: any, key: string) => { this.blades.remove(key); });
+    $(state).blades.onAdd((b: any, key: string) => {
+      bladeChanged(b, key);
+      $(b).onChange(() => bladeChanged(b, key));
+    }, true);
+    $(state).blades.onRemove((_b: any, key: string) => {
+      if (this.blades.isOrbiting(key) || this.pendingBlades.has(key)) this.deferBlade(key, () => this.blades.remove(key));
+      else this.blades.remove(key);
+    });
 
     $(state).crates.onAdd((c: any, key: string) => {
       this.crates.add(key, c.x, c.y, c.hp, c.maxHp);
@@ -383,7 +483,7 @@ class Game {
       this.powerups.remove(key);
     });
 
-    room.onMessage("bladeDestroyed", (msg: BladeDestroyedEvent) => {
+    room.onMessage("bladeDestroyed", (msg: BladeDestroyedEvent) => this.atTick(msg.tick, () => {
       // Lame désintégrée par le mur : position au-delà du bord de l'arène
       // (orbite ou projectile entré dans la zone mortelle). Effet dédié,
       // pour qu'on comprenne d'où vient la perte.
@@ -397,7 +497,7 @@ class Game {
       this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
       if (msg.ownerId === this.myId) this.camera.shake.add(0.18);
       this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
-    });
+    }));
     room.onMessage("pickup", (msg: PickupEvent) => {
       if (msg.playerId === this.myId) {
         this.sound.pickup(msg.rarity);
@@ -428,51 +528,58 @@ class Game {
         this.camera.shake.add(0.08);
       }
     });
-    room.onMessage("playerKilled", (msg: PlayerKilledEvent) => {
+    room.onMessage("playerKilled", (msg: PlayerKilledEvent) => this.atTick(msg.tick, () => {
       const victim = this.players.get(msg.victimId);
       if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
       if (msg.killerId === this.myId) { this.camera.shake.add(0.5); this.sound.kill(); }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
-    });
+    }, false));
     room.onMessage("clash", (msg: ClashEvent) => {
-      // Sparks au point d'impact, tier-scaled. Couleur cyan/violet pour ne
-      // pas confondre avec les drops (sparks couleur rareté).
-      const count = 6 + msg.tier * 6;
-      const speed = 4 + msg.tier * 2.5;
-      this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
-      const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
-        : msg.tier === 1 ? BladeRarity.Rare
-        : BladeRarity.Epic;
-      // Screen shake : intensité tier-aware, mais SEULEMENT si le joueur
-      // local est l'un des deux protagonistes (sinon l'écran tremble pour
-      // chaque clash sur la map = nausée garantie).
-      if (msg.aId === this.myId || msg.bId === this.myId) {
-        this.camera.shake.add(tierClashShake(msg.tier));
-        this.sound.hit(r);
-      } else {
-        // Clash distant : son atténué selon distance, et petit shake si
-        // une lame a été cassée tout près de nous.
-        const gain = this.audibleGain(msg.x, msg.y);
-        if (msg.destroyed > 0 && gain > 0.6) {
-          this.camera.shake.add(tierClashShake(msg.tier) * 0.25);
+      // Mode debug : mesure aussi l'écart qu'aurait une étincelle jouée dès
+      // réception (comportement d'avant la ligne de temps).
+      if (this.debugHitboxes) this.clashChecksImmediate.push(this.clashCheckOf(msg));
+      this.atTick(msg.tick, () => {
+        if (this.debugHitboxes) this.clashChecks.push(this.clashCheckOf(msg));
+        // Sparks au point d'impact, tier-scaled. Couleur cyan/violet pour ne
+        // pas confondre avec les drops (sparks couleur rareté).
+        const count = 6 + msg.tier * 6;
+        const speed = 4 + msg.tier * 2.5;
+        this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
+        const r: BladeRarity = msg.tier === 0 ? BladeRarity.Common
+          : msg.tier === 1 ? BladeRarity.Rare
+          : BladeRarity.Epic;
+        // Screen shake : intensité tier-aware, mais SEULEMENT si le joueur
+        // local est l'un des deux protagonistes (sinon l'écran tremble pour
+        // chaque clash sur la map = nausée garantie).
+        if (msg.aId === this.myId || msg.bId === this.myId) {
+          this.camera.shake.add(tierClashShake(msg.tier));
+          this.sound.hit(r);
+        } else {
+          // Clash distant : son atténué selon distance, et petit shake si
+          // une lame a été cassée tout près de nous.
+          const gain = this.audibleGain(msg.x, msg.y);
+          if (msg.destroyed > 0 && gain > 0.6) {
+            this.camera.shake.add(tierClashShake(msg.tier) * 0.25);
+          }
+          this.sound.hit(r, gain);
         }
-        this.sound.hit(r, gain);
-      }
+      });
     });
     room.onMessage("bladeThrown", (msg: BladeThrownEvent) => {
-      // VFX au moment du lancer : burst de sparks à la rareté de la lame +
-      // son court (basé sur le synth pickup pour rester satisfaisant).
-      const color = this.theme.palette.rarityColor[msg.rarity];
-      this.particles.spawnSparks(msg.x, 1.0, msg.y, color, 14, 6);
-      // Plein volume pour mon propre lancer, atténué sinon.
-      const gain = msg.thrownBy === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
-      this.sound.throwBlade(msg.rarity, gain);
-      // Si c'est moi qui lance, petit shake et confirme audio.
+      // Mon lancer : son et secousse tout de suite (retour de l'input). Le
+      // burst visuel part au tick du lancer, quand la lame quitte l'orbite
+      // à l'écran.
       if (msg.thrownBy === this.myId) {
+        this.sound.throwBlade(msg.rarity, 1);
         this.camera.shake.add(0.12);
       }
+      this.atTick(msg.tick, () => {
+        const color = this.theme.palette.rarityColor[msg.rarity];
+        this.particles.spawnSparks(msg.x, 1.0, msg.y, color, 14, 6);
+        if (msg.thrownBy !== this.myId) this.sound.throwBlade(msg.rarity, this.audibleGain(msg.x, msg.y));
+      });
     });
-    room.onMessage("projectileImpact", (msg: ProjectileImpactEvent) => {
+    room.onMessage("projectileImpact", (msg: ProjectileImpactEvent) => this.atTick(msg.tick, () => {
       // Impact : sparks+son. Si c'est la dernière vie de la lame
       // (destroyed=true), explosion plus dense pour signifier la fin.
       const color = this.theme.palette.rarityColor[msg.rarity];
@@ -480,8 +587,8 @@ class Game {
       const speed = msg.destroyed ? 7 : 4;
       this.particles.spawnSparks(msg.x, 0.95, msg.y, color, count, speed);
       this.sound.hit(msg.rarity, this.audibleGain(msg.x, msg.y));
-    });
-    room.onMessage("tierUp", (msg: TierUpEvent) => {
+    }));
+    room.onMessage("tierUp", (msg: TierUpEvent) => this.atTick(msg.tick, () => {
       // Tier-up VFX : ring d'étincelles autour du joueur + shake si local.
       // On utilise une explosion bien dense pour signaler le palier passé.
       const color = msg.tier >= 2 ? this.theme.palette.fx.tierUpHi : this.theme.palette.fx.tierUpLo;
@@ -491,7 +598,7 @@ class Game {
         this.camera.shake.add(intensity);
         this.sound.pickup(msg.tier >= 2 ? BladeRarity.Legendary : BladeRarity.Epic);
       }
-    });
+    }));
     room.onMessage("chat", (msg: ChatEvent) => {
       this.chat.onChatEvent(msg);
     });
@@ -592,19 +699,116 @@ class Game {
       if (!v) return undefined;
       const p = this.room?.state?.players?.get(id);
       const spinPhase = p?.spinPhase ?? 0;
-      const spinScale = p?.spinScale ?? 1;
       const tier = p?.tier ?? 0;
-      // orbitTimeOffset est exprimé en secondes côté serveur. Le client
-      // utilise le même unit (elapsedSec) donc la soustraction directe
-      // figera proprement la rotation pendant un hitlag.
-      const orbitTimeOffset = p?.orbitTimeOffset ?? 0;
+      const theta = this.orbitThetaFor(id, this.renderTick);
       // Joueur dans un buisson ET pas moi → invisible pour mon client.
       // Le local player se voit toujours (sinon impossible à jouer).
       const hidden = id !== this.myId && isInBush(v.renderX, v.renderY);
       const bladeCount = p?.bladeCount ?? 0;
-      return { x: v.renderX, y: v.renderY, spinPhase, spinScale, tier, orbitTimeOffset, hidden, bladeCount };
+      return { x: v.renderX, y: v.renderY, spinPhase, theta, tier, hidden, bladeCount };
     },
   };
+
+  private clashCheckOf(msg: ClashEvent): ClashCheck {
+    return { x: msg.x, y: msg.y, a: this.blades.orbitInfo(msg.aId), b: this.blades.orbitInfo(msg.bId) };
+  }
+
+  // Distance entre le point d'un clash et le milieu des deux lames telles
+  // que dessinées à cette frame (tick de rendu courant).
+  private clashDistance(c: ClashCheck): number | null {
+    const pa = c.a && this.drawnOrbitPosition(c.a);
+    const pb = c.b && this.drawnOrbitPosition(c.b);
+    if (!pa || !pb) return null;
+    return Math.hypot((pa.x + pb.x) / 2 - c.x, (pa.y + pb.y) / 2 - c.y);
+  }
+
+  private drawnOrbitPosition(o: OrbitInfo): { x: number; y: number } | null {
+    const owner = this.playerPositions.getRenderPosition(o.ownerId);
+    if (!owner) return null;
+    const a = orbitSlotAngle(o.ring, o.slot, o.inRing, owner.theta, owner.spinPhase);
+    const r = ringRadius(o.ring);
+    return { x: owner.x + Math.cos(a) * r, y: owner.y + Math.sin(a) * r };
+  }
+
+  // Joue `run` quand le tick de rendu atteint `tick` (tout de suite si
+  // l'horloge n'est pas encore calée ou sans tick). fx : effet visuel ou
+  // sonore, sauté s'il est en retard de plus de 0,5 s (onglet revenu de
+  // l'arrière-plan) ; sinon (changement d'état), toujours appliqué.
+  private atTick(tick: number | undefined, run: () => void, fx = true): void {
+    if (tick === undefined || !this.serverClock.isReady) {
+      run();
+      return;
+    }
+    const last = this.timeline[this.timeline.length - 1];
+    if (last && tick < last.tick) this.timelineSorted = false;
+    this.timeline.push({ tick, seq: this.timelineSeq++, run, fx });
+  }
+
+  private flushTimeline(): void {
+    if (this.timeline.length === 0) return;
+    if (!this.timelineSorted) {
+      this.timeline.sort((a, b) => a.tick - b.tick || a.seq - b.seq);
+      this.timelineSorted = true;
+    }
+    const staleBefore = this.renderTick - 30;
+    let i = 0;
+    for (; i < this.timeline.length; i++) {
+      const item = this.timeline[i];
+      if (item.tick > this.renderTick) break;
+      if (!item.fx || item.tick >= staleBefore) item.run();
+    }
+    if (i > 0) this.timeline.splice(0, i);
+  }
+
+  // Change une lame au tick du patch courant, après ceux déjà en attente.
+  private deferBlade(key: string, run: () => void): void {
+    this.pendingBlades.set(key, (this.pendingBlades.get(key) ?? 0) + 1);
+    this.atTick(this.lastPatchTick, () => {
+      run();
+      const left = (this.pendingBlades.get(key) ?? 1) - 1;
+      if (left <= 0) this.pendingBlades.delete(key);
+      else this.pendingBlades.set(key, left);
+    }, false);
+  }
+
+  // Enregistre le segment d'horloge d'orbite courant d'un joueur s'il est
+  // nouveau. Appelé à chaque changement du joueur (donc à chaque patch où
+  // il bouge) : trois lectures de champ, négligeable.
+  private recordOrbitSegment(id: string, p: any): void {
+    let segs = this.orbitSegments.get(id);
+    if (!segs) {
+      segs = [];
+      this.orbitSegments.set(id, segs);
+    }
+    const tick: number = p.orbitTick ?? 0;
+    const phase: number = p.orbitPhase ?? 0;
+    const rate: number = p.orbitRate ?? 0;
+    const last = segs[segs.length - 1];
+    if (last && last.tick === tick) {
+      last.phase = phase;
+      last.rate = rate;
+      return;
+    }
+    // Tick antérieur au dernier segment : nouvel état (reconnexion) → on repart de zéro.
+    if (last && tick < last.tick) segs.length = 0;
+    segs.push({ tick, phase, rate });
+    if (segs.length > 16) segs.splice(0, segs.length - 16);
+  }
+
+  // Horloge d'orbite d'un joueur à un tick (fractionnaire) : segment le plus
+  // récent déjà commencé à ce tick ; à défaut, le plus ancien connu.
+  private orbitThetaFor(id: string, tick: number): number {
+    const segs = this.orbitSegments.get(id);
+    if (!segs || segs.length === 0) return 0;
+    let seg = segs[0];
+    for (let i = segs.length - 1; i >= 0; i--) {
+      if (segs[i].tick <= tick) {
+        seg = segs[i];
+        break;
+      }
+    }
+    return orbitThetaAt(seg.phase, seg.rate, seg.tick, tick);
+  }
 
   private handleLocalDeath(killerName: string | null): void {
     if (this.dead) return;
@@ -999,6 +1203,12 @@ class Game {
         this.lastInputSent = now;
         this.sendInput();
       }
+      // Tick de rendu de la frame, puis ce qui l'attendait sur la ligne de
+      // temps, avant de placer joueurs et lames.
+      this.renderTick = this.serverClock.isReady
+        ? this.serverClock.tickAt(now - RENDER_DELAY)
+        : (this.room?.state?.tick ?? 0);
+      this.flushTimeline();
       const localView = this.players.get(this.myId);
       const nowMs = Date.now();
       for (const [id, v] of this.players) {
@@ -1018,12 +1228,32 @@ class Game {
         // Le joueur local est toujours visible à moins d'être mort.
         // Les autres sont cachés s'ils sont dans un buisson ou morts.
         const p = this.room?.state?.players?.get(id);
-        const shouldBeVisible = p?.alive ? !inBush : false;
+        const aliveShown = this.renderAlive.get(id) ?? !!p?.alive;
+        const shouldBeVisible = aliveShown ? !inBush : false;
         
         if (v.root.visible !== shouldBeVisible) v.root.visible = shouldBeVisible;
         if (v.trail.visible !== (shouldBeVisible && isLocal)) v.trail.visible = shouldBeVisible && isLocal;
       }
       this.blades.update(now, RENDER_DELAY, this.elapsed * 0.001, this.playerPositions);
+      if (this.debugHitboxes) {
+        // Étincelle vs milieu des deux lames là où elles sont dessinées à
+        // cette frame.
+        for (const c of this.clashChecks) {
+          const d = this.clashDistance(c);
+          if (d !== null) this.debugHitboxes.recordClash(d);
+        }
+        for (const c of this.clashChecksImmediate) {
+          const d = this.clashDistance(c);
+          if (d !== null) this.debugHitboxes.recordImmediateClash(d);
+        }
+        this.clashChecks.length = 0;
+        this.clashChecksImmediate.length = 0;
+      }
+      this.debugHitboxes?.update(this.renderTick, this.myId, (ownerId, ring, slot, inRing, tick) => {
+        const owner = this.room?.state?.players?.get(ownerId);
+        if (!owner) return null;
+        return orbitSlotAngle(ring, slot, inRing, this.orbitThetaFor(ownerId, tick), owner.spinPhase ?? 0);
+      });
       this.crates.update(dt, this.elapsed * 0.001);
       this.powerups.update(dt, this.elapsed * 0.001);
       this.emitProjectileTrails(dt);
@@ -1046,7 +1276,7 @@ class Game {
       this.nametags.update(
         this.players,
         this.myId,
-        (id) => !!this.room?.state?.players?.get(id)?.alive,
+        (id) => this.renderAlive.get(id) ?? !!this.room?.state?.players?.get(id)?.alive,
         (id) => this.room?.state?.players?.get(id)?.name ?? "?",
         (id) => {
           const p = this.room?.state?.players?.get(id);
