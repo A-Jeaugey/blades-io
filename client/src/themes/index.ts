@@ -1,4 +1,4 @@
-import { Theme } from "./Theme";
+import { DANGER_COLOR, PREY_COLOR, Theme } from "./Theme";
 import { NEON_THEME } from "./neon";
 import { SANCTUAIRE_THEME } from "./sanctuaire";
 import { FORGE_VERMEILLE_THEME } from "./forge-vermeille";
@@ -57,6 +57,11 @@ function hexToCss(hex: number): string {
   return "#" + hex.toString(16).padStart(6, "0");
 }
 
+// "R, G, B" pour les constructions CSS rgba(var(--x-rgb), a).
+function rgbTriplet(hex: number): string {
+  return `${(hex >> 16) & 255}, ${(hex >> 8) & 255}, ${hex & 255}`;
+}
+
 // Injecte les variables CSS du thème dans :root au boot. Permet aux règles
 // CSS qui utilisent var(--cyan) etc. de basculer automatiquement quand on
 // change de thème (sans recompiler le CSS). Doit être appelé avant la
@@ -79,6 +84,9 @@ export function applyThemeCss(theme: Theme = activeTheme): void {
   // Usage côté CSS : `rgba(var(--accent-cool-rgb), 0.X)`.
   root.style.setProperty("--accent-cool-rgb", ui.accentCoolRgb);
   root.style.setProperty("--accent-warm-rgb", ui.accentWarmRgb);
+  // Couleurs de menace communes à tous les thèmes (nametags, alertes).
+  root.style.setProperty("--danger-rgb", rgbTriplet(DANGER_COLOR));
+  root.style.setProperty("--prey-rgb", rgbTriplet(PREY_COLOR));
   // Couleurs des raretés pour les éléments UI qui les affichent (rarity
   // strip dots du login screen, badges éventuels). Tirées de
   // theme.palette.rarityColor pour rester cohérent avec le rendu 3D.

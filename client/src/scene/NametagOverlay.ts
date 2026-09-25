@@ -3,7 +3,8 @@ import { PlayerView } from "../entities/PlayerView";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NametagOverlay — étiquettes 2D positionnées en screen-space au-dessus
-// des joueurs distants.
+// des joueurs distants : pseudo, nombre de lames et couleur de menace
+// (plus fort ou plus faible que soi).
 //
 // Implémentation : DOM overlay (un <div> par joueur) plutôt que sprite
 // Three.js avec CanvasTexture. Pourquoi DOM :
@@ -21,7 +22,21 @@ import { PlayerView } from "../entities/PlayerView";
 
 interface TagEntry {
   el: HTMLDivElement;
+  nameEl: HTMLSpanElement;
+  bladesEl: HTMLSpanElement;
   lastName: string;
+  lastBlades: number;
+  lastThreat: Threat;
+}
+
+// Menace relative au joueur local, d'après le nombre de lames. Tolérance de
+// 10 % (1 lame minimum) : à quelques lames près, le combat est incertain.
+type Threat = "stronger" | "weaker" | "even";
+function threatOf(theirs: number, mine: number): Threat {
+  const margin = Math.max(1, Math.round(mine * 0.1));
+  if (theirs - mine > margin) return "stronger";
+  if (mine - theirs > margin) return "weaker";
+  return "even";
 }
 
 // Distance world au-delà de laquelle on cache complètement le nametag.
@@ -63,6 +78,7 @@ export class NametagOverlay {
     isAlive: (id: string) => boolean,
     nameOf: (id: string) => string,
     isHidden: (id: string) => boolean,
+    bladesOf: (id: string) => number,
     camera: THREE.PerspectiveCamera,
     width: number,
     height: number,
@@ -72,6 +88,7 @@ export class NametagOverlay {
     const localView = players.get(localId);
     const lx = localView?.renderX ?? 0;
     const ly = localView?.renderY ?? 0;
+    const myBlades = bladesOf(localId);
 
     const stillPresent = new Set<string>();
 
@@ -124,8 +141,19 @@ export class NametagOverlay {
       // Update name si change (rename, etc.)
       const name = nameOf(id);
       if (name !== tag.lastName) {
-        tag.el.textContent = name;
+        tag.nameEl.textContent = name;
         tag.lastName = name;
+      }
+      const blades = bladesOf(id);
+      if (blades !== tag.lastBlades) {
+        tag.bladesEl.textContent = String(blades);
+        tag.lastBlades = blades;
+      }
+      const threat = threatOf(blades, myBlades);
+      if (threat !== tag.lastThreat) {
+        tag.el.classList.remove(`threat-${tag.lastThreat}`);
+        tag.el.classList.add(`threat-${threat}`);
+        tag.lastThreat = threat;
       }
       tag.el.style.display = "";
       tag.el.style.opacity = String(fadeT);
@@ -148,9 +176,14 @@ export class NametagOverlay {
     let tag = this.tags.get(id);
     if (!tag) {
       const el = document.createElement("div");
-      el.className = "nametag";
+      el.className = "nametag threat-even";
+      const nameEl = document.createElement("span");
+      nameEl.className = "nametag-name";
+      const bladesEl = document.createElement("span");
+      bladesEl.className = "nametag-blades";
+      el.append(nameEl, bladesEl);
       this.container.appendChild(el);
-      tag = { el, lastName: "" };
+      tag = { el, nameEl, bladesEl, lastName: "", lastBlades: -1, lastThreat: "even" };
       this.tags.set(id, tag);
     }
     return tag;

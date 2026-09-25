@@ -1,4 +1,4 @@
-import { BORDER_DANGER_COLOR } from "../themes/Theme";
+import { DANGER_COLOR } from "../themes/Theme";
 
 // Distance (u) entre l'orbite extérieure du joueur et la zone mortelle à
 // partir de laquelle l'alerte démarre. À la vitesse de boost (~19 u/s), il
@@ -17,7 +17,7 @@ export class BorderWarning {
 
   constructor() {
     this.el = document.getElementById("border-warning") as HTMLElement;
-    const c = BORDER_DANGER_COLOR;
+    const c = DANGER_COLOR;
     this.rgb = `${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}`;
   }
 

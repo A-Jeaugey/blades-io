@@ -1,6 +1,6 @@
 import { MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
-import { BORDER_DANGER_COLOR } from "../themes/Theme";
+import { DANGER_COLOR } from "../themes/Theme";
 
 function rgba(color: number, alpha: number): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
@@ -31,7 +31,7 @@ export class Minimap {
     this.ctx = this.canvas.getContext("2d")!;
     this.size = this.canvas.width;
     this.arenaEdge = rgba(getActiveTheme().palette.boundary, 0.9);
-    this.outsideFill = rgba(BORDER_DANGER_COLOR, 0.28);
+    this.outsideFill = rgba(DANGER_COLOR, 0.28);
   }
 
   draw(me: MinimapPlayer, others: MinimapPlayer[], legendaries: MinimapBlade[]): void {

@@ -8,11 +8,18 @@ export interface SettingsState {
   sfx: number;
   qualityChoice: "auto" | QualityPreset;
   joystickSens: number;
-  // Affichage des nametags au-dessus des joueurs distants (le local player
-  // n'a jamais de nametag — tu sais qui tu es). Off par défaut pour ne pas
-  // surcharger l'écran d'un .io 60 joueurs ; opt-in via Settings.
+  // Affichage des nametags au-dessus des joueurs distants proches (le
+  // joueur local n'en a pas). Actifs par défaut : le nombre de lames et la
+  // couleur de menace aident à décider qui attaquer ou fuir.
   showNametags: boolean;
+  // Version du format enregistré, pour les migrations de valeurs par défaut.
+  settingsVersion: number;
 }
+
+// v2 : nametags actifs par défaut. En v1 ils étaient désactivés par défaut,
+// et tout l'état était enregistré au premier réglage modifié : un « false »
+// stocké en v1 est presque toujours l'ancien défaut, pas un choix.
+const SETTINGS_VERSION = 2;
 
 export class SettingsPanel {
   private panel: HTMLElement;
@@ -23,7 +30,8 @@ export class SettingsPanel {
     sfx: 0.8,
     qualityChoice: "auto",
     joystickSens: 1,
-    showNametags: false,
+    showNametags: true,
+    settingsVersion: SETTINGS_VERSION,
   };
   private listeners: Array<(s: SettingsState) => void> = [];
   private quitListeners: Array<() => void> = [];
@@ -53,7 +61,9 @@ export class SettingsPanel {
     const saved = localStorage.getItem("blade.settings");
     if (saved) {
       try {
-        this.state = { ...this.state, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved) as Partial<SettingsState>;
+        if ((parsed.settingsVersion ?? 1) < 2) parsed.showNametags = true;
+        this.state = { ...this.state, ...parsed, settingsVersion: SETTINGS_VERSION };
       } catch {}
     }
     this.bindRange("vol-master", "master");

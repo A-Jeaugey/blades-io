@@ -2202,6 +2202,28 @@ button:hover {
   /* Petite flèche down vers la tête pour ancrer visuellement. */
   --arrow-color: rgba(var(--accent-cool-rgb), .45);
 }
+.nametag-blades {
+  margin-left: 7px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(var(--accent-cool-rgb), .35);
+  font-variant-numeric: tabular-nums;
+}
+/* Menace : couleur ET symbole (▲ plus fort, ▼ plus faible), pour rester
+   lisible sans distinguer le rouge du vert. */
+.nametag.threat-stronger {
+  border-color: rgba(var(--danger-rgb), .85);
+  box-shadow: 0 0 10px rgba(var(--danger-rgb), .35);
+  --arrow-color: rgba(var(--danger-rgb), .85);
+}
+.nametag.threat-stronger .nametag-blades { color: rgb(var(--danger-rgb)); }
+.nametag.threat-stronger .nametag-blades::after { content: " ▲"; }
+.nametag.threat-weaker {
+  border-color: rgba(var(--prey-rgb), .8);
+  box-shadow: 0 0 10px rgba(var(--prey-rgb), .3);
+  --arrow-color: rgba(var(--prey-rgb), .8);
+}
+.nametag.threat-weaker .nametag-blades { color: rgb(var(--prey-rgb)); }
+.nametag.threat-weaker .nametag-blades::after { content: " ▼"; }
 .nametag::after {
   content: "";
   position: absolute;

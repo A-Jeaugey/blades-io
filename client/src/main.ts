@@ -1052,6 +1052,7 @@ class Game {
           const p = this.room?.state?.players?.get(id);
           return !!p && isInBush(p.x, p.y);
         },
+        (id) => this.room?.state?.players?.get(id)?.bladeCount ?? 0,
         this.sceneStack.camera,
         window.innerWidth,
         window.innerHeight,

@@ -14,10 +14,12 @@ import { BladeRarity, PowerUpType } from "@bladeio/shared";
 // Theme satisfaisant cette interface, l'enregistrer dans themes/index.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Couleur d'alerte de la zone mortelle (vignette, minimap). Identique pour
-// tous les thèmes : une menace se lit de la même façon quel que soit le
-// cosmétique acheté (principe « aucun avantage payant » du plan).
-export const BORDER_DANGER_COLOR = 0xff2a3d;
+// Couleurs de menace, identiques pour tous les thèmes : une menace se lit
+// de la même façon quel que soit le cosmétique acheté (principe « aucun
+// avantage payant » du plan). Rouge : zone mortelle, joueur plus fort que
+// soi. Vert : joueur plus faible.
+export const DANGER_COLOR = 0xff2a3d;
+export const PREY_COLOR = 0x3dff8a;
 
 export type DecorVariant =
   // Cyberpunk d'origine : pilier central rose/cyan, cubes flottants émissifs,
