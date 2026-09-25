@@ -255,15 +255,17 @@ Objectif : un nouveau joueur comprend le jeu, survit à sa première minute et s
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, `server/src/systems/bots.ts`.
   - Acceptation : banc de sessions scriptées (joueurs qui marchent au hasard) : temps médian avant la première mort > 45 s, contre ~10 s à l'audit.
 
-- [ ] **3.3 — Bordure lisible** · S · `UX-03` `GFX-04`
+- [x] **3.3 — Bordure lisible** · S · `UX-03` `GFX-04` · 2026-09-25 · `687583c`
   - Quoi : cercle de l'arène sur la minimap ; à moins de 25 u de la zone mortelle, vignette rouge progressive et son d'alerte ; mur animé qui paraît dangereux ; effet spécifique quand une lame est détruite par le mur.
   - Fichiers : `client/src/ui/Minimap.ts`, `client/src/scene/Ground.ts`, `client/src/scene/PostFX.ts`, `client/src/audio/SoundManager.ts`, `client/src/main.ts`.
   - Acceptation : en test, aucun joueur ne meurt contre la bordure sans avoir reçu d'alerte.
+  - Réalisé : vignette en DOM (visible post-FX coupés), calculée depuis l'orbite extérieure et orientée vers le mur ; alarme à deux tons qui accélère ; cercle et zone mortelle sur la minimap ; bande de danger au sol à rayures animées (high/medium) ou pulsée (low/ultra), plus visible que le rideau vertical depuis la caméra plongeante ; effet et son dédiés aux lames désintégrées, reconnues à leur position (contrat figé par un test serveur). En test, alerte 2,4 s (medium) et 2,3 s (ultra) avant la mort. Couleur d'alerte commune à tous les thèmes.
 
 - [ ] **3.4 — HUD utile** · M · `UX-05` `FEEL-05` `GFX-01`
   - Quoi : fil des éliminations (4 lignes, 4 s) ; « +N 🏆 » flottant sur les évènements qui rapportent ; record personnel ; classement compact (top 5 + soi) ; nametags activés par défaut pour les joueurs proches, avec nombre de lames et couleur de menace (plus fort ou plus faible que soi) ; ping affiché ; remplacement de la barre de « boost » par une information réelle (coût du boost en lames/s) ; compteur de lames déplacé pour ne plus masquer la zone sous le joueur.
   - Fichiers : `client/src/ui/*.ts`, `client/src/scene/NametagOverlay.ts`, `client/index.html`, `client/src/styles.css`, `client/src/main.ts`.
   - Acceptation : lisible en 390 px de large ; comparaison avec les captures de l'audit.
+  - Avancement : nametags actifs par défaut (migration des réglages v1), avec nombre de lames et menace (couleur + ▲/▼) · 2026-09-25 · `d3b93a1`. Reste : fil des éliminations, « +N 🏆 », record, classement compact, ping, boost, position du compteur.
 
 - [ ] **3.5 — Mort et respawn** · M · `UX-09`
   - Quoi : 2 à 3 s de caméra sur le tueur (avec son nombre de lames), puis la carte récapitulative : score, record personnel, trophées, cause de la mort et un conseil adapté (bordure, lancer, joueur plus gros) ; texte invité corrigé.
