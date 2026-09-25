@@ -285,6 +285,11 @@ canvas#game {
   opacity: 0.45;
   filter: saturate(0.4);
 }
+/* Glisser de visée en cours depuis le bouton. */
+#throw-btn.aiming {
+  background: rgba(var(--accent-cool-rgb), 0.35);
+  transform: scale(1.08);
+}
 
 #settings-icon {
   position: absolute;

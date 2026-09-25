@@ -295,6 +295,8 @@ export class ArenaRoom extends Room<ArenaState> {
     p.inputDy = 0;
     p.inputBoost = false;
     p.inputThrow = false;
+    p.aimX = 0;
+    p.aimY = 0;
     try {
       await this.allowReconnection(client, 20);
     } catch {
@@ -378,7 +380,23 @@ export class ArenaRoom extends Room<ArenaState> {
     // Edge-trigger : on ne consomme le throw qu'au tick suivant. Si un client
     // envoie throw=true plusieurs fois rapidement, on coalesce (le cooldown
     // côté processThrows fait foi de toute façon).
-    if (msg.throw === true) p.inputThrow = true;
+    if (msg.throw === true) {
+      p.inputThrow = true;
+      // Visée du lancer, lue avec le flag : un message sans lancer arrivé
+      // dans le même tick ne doit pas l'effacer. Acceptée si finie et assez
+      // longue pour avoir une direction, normalisée ici. Sinon (clavier
+      // seul, tap mobile), le lancer suit la direction de déplacement.
+      const ax = Number(msg.aimX);
+      const ay = Number(msg.aimY);
+      const aimLen = Number.isFinite(ax) && Number.isFinite(ay) ? Math.hypot(ax, ay) : 0;
+      if (aimLen > 1e-3) {
+        p.aimX = ax / aimLen;
+        p.aimY = ay / aimLen;
+      } else {
+        p.aimX = 0;
+        p.aimY = 0;
+      }
+    }
     if (typeof msg.seq === "number" && msg.seq > p.lastSeq) p.lastSeq = msg.seq >>> 0;
     p.lastInputAt = now;
   }
@@ -390,7 +408,7 @@ export class ArenaRoom extends Room<ArenaState> {
     const spawn = randomSpawnPoint(this.state);
     p.x = spawn.x; p.y = spawn.y;
     p.inputDx = 0; p.inputDy = 0; p.inputBoost = false;
-    p.inputThrow = false;
+    p.inputThrow = false; p.aimX = 0; p.aimY = 0;
     p.throwCooldownUntil = 0;
     p.alive = true; p.boost = false;
     p.bladeCount = 0; p.bladeIds = [];

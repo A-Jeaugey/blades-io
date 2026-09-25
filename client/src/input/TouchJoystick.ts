@@ -1,4 +1,7 @@
 const DEADZONE = 0.15;
+// Glisser minimal (px) depuis le bouton THROW pour viser. En deçà, le
+// relâcher est un tap : le lancer suit la direction de déplacement.
+const THROW_DRAG_PX = 18;
 
 export class TouchJoystick {
   private base: HTMLElement;
@@ -16,8 +19,16 @@ export class TouchJoystick {
   public used = false;
   private boostActive = false;
   private boostTouchId: number | null = null;
-  // Edge-trigger pour le throw mobile : true UNE fois après tap.
-  private throwPending = false;
+  // Doigt posé sur THROW : départ et position courante (px client).
+  private throwTouchId: number | null = null;
+  private throwStartX = 0;
+  private throwStartY = 0;
+  private throwCurX = 0;
+  private throwCurY = 0;
+  private throwDragged = false;
+  // Lancer à transmettre, UNE fois : glisser au relâcher (px écran), ou
+  // (0, 0) pour un tap.
+  private throwPending: { x: number; y: number } | null = null;
 
   constructor(
     container: HTMLElement,
@@ -61,19 +72,65 @@ export class TouchJoystick {
     boostBtn.addEventListener("touchcancel", releaseBoost);
 
     if (throwBtn) {
-      // Tap unique = throw. Edge-trigger consommé par consumeThrow().
+      // Le lancer part au relâcher, comme un stick de visée : un tap suit
+      // la direction de déplacement, un glisser vise dans sa direction. Un
+      // glisser ramené au centre annule. Les évènements d'un doigt restent
+      // adressés au bouton même s'il en sort.
       throwBtn.addEventListener("touchstart", (e) => {
         e.stopPropagation();
         e.preventDefault();
-        this.throwPending = true;
+        if (this.throwTouchId !== null || e.changedTouches.length === 0) return;
+        const t = e.changedTouches[0];
+        this.throwTouchId = t.identifier;
+        this.throwStartX = this.throwCurX = t.clientX;
+        this.throwStartY = this.throwCurY = t.clientY;
+        this.throwDragged = false;
       }, { passive: false });
+      throwBtn.addEventListener("touchmove", (e) => {
+        if (this.throwTouchId === null) return;
+        const t = this.findTouch(e.changedTouches, this.throwTouchId);
+        if (!t) return;
+        e.preventDefault();
+        this.throwCurX = t.clientX;
+        this.throwCurY = t.clientY;
+        const aiming = this.throwDrag !== null;
+        if (aiming) this.throwDragged = true;
+        throwBtn.classList.toggle("aiming", aiming);
+      }, { passive: false });
+      const releaseThrow = (e: TouchEvent, cancelled: boolean) => {
+        if (this.throwTouchId === null) return;
+        const t = this.findTouch(e.changedTouches, this.throwTouchId);
+        if (!t) return;
+        e.stopPropagation();
+        this.throwCurX = t.clientX;
+        this.throwCurY = t.clientY;
+        const drag = this.throwDrag;
+        if (!cancelled) {
+          if (drag) this.throwPending = drag;
+          else if (!this.throwDragged) this.throwPending = { x: 0, y: 0 };
+        }
+        this.throwTouchId = null;
+        throwBtn.classList.remove("aiming");
+      };
+      throwBtn.addEventListener("touchend", (e) => releaseThrow(e, false));
+      throwBtn.addEventListener("touchcancel", (e) => releaseThrow(e, true));
     }
   }
 
-  consumeThrow(): boolean {
-    if (!this.throwPending) return false;
-    this.throwPending = false;
-    return true;
+  // Glisser en cours depuis THROW (px écran), null en deçà du seuil.
+  get throwDrag(): { x: number; y: number } | null {
+    if (this.throwTouchId === null) return null;
+    const x = this.throwCurX - this.throwStartX;
+    const y = this.throwCurY - this.throwStartY;
+    return Math.hypot(x, y) >= THROW_DRAG_PX ? { x, y } : null;
+  }
+
+  // Lancer relâché depuis le dernier appel : glisser (px écran), (0, 0) pour
+  // un tap, null s'il n'y en a pas.
+  consumeThrow(): { x: number; y: number } | null {
+    const t = this.throwPending;
+    this.throwPending = null;
+    return t;
   }
 
   // Retrouve un touch par son identifier dans une TouchList.

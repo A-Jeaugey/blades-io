@@ -1,17 +1,20 @@
 export class Mouse {
   public used = false;
-  private x = 0;
-  private y = 0;
+  // Dernière position du curseur, en pixels client. Suivie sur toute la
+  // fenêtre : au-dessus d'un élément du HUD, le canvas ne reçoit plus les
+  // mousemove et la direction restait figée sur l'ancienne position.
+  public x = 0;
+  public y = 0;
   private down = false;
   // Edge-trigger pour le throw : appuyé une fois → true pendant 1 frame.
   private throwPending = false;
 
   constructor(canvas: HTMLElement) {
-    canvas.addEventListener("mousemove", (e) => {
+    window.addEventListener("mousemove", (e) => {
       this.used = true;
       this.x = e.clientX;
       this.y = e.clientY;
-    });
+    }, { passive: true });
     canvas.addEventListener("mousedown", (e) => {
       // Bouton 0 = clic gauche → boost, bouton 2 = clic droit → throw.
       if (e.button === 2) {
@@ -34,17 +37,6 @@ export class Mouse {
     if (!this.throwPending) return false;
     this.throwPending = false;
     return true;
-  }
-
-  // Direction normalisée du centre écran vers le curseur
-  getDir(): { x: number; y: number } {
-    const cx = window.innerWidth / 2;
-    const cy = window.innerHeight / 2;
-    const dx = this.x - cx;
-    const dy = this.y - cy;
-    const m = Math.hypot(dx, dy);
-    if (m < 40) return { x: 0, y: 0 };
-    return { x: dx / m, y: dy / m };
   }
 
   get boost(): boolean {

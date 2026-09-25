@@ -19,7 +19,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 |---|---|
 | **Orbit rings** | More blades → denser rings, faster rotation, thicker shield |
 | **Tier system** | 0 (arrows) → 1 (swords, 10+ blades) → 2 (scythes, 20+ blades), with hitbox/visual scaling |
-| **Throw blade** | Detach your outermost blade and launch it as a projectile (Space / right-click / mobile button), 0.5 s cooldown |
+| **Throw blade** | Detach your outermost blade and launch it as a projectile toward your aim (mouse cursor, or drag from the THROW button on mobile), independently of where you walk; keyboard-only throws and a THROW tap follow your movement. 0.5 s cooldown; a dashed line on the ground shows the path while the throw is ready |
 | **Pierce by rarity** | Common/Rare: 1 hit · Epic: 2 hits · Legendary: 3 hits |
 | **Power-ups** | Speed, Spin, Magnet, Shield, +Blades — duration scales with rarity |
 | **Loot crates** | Shoot or orbit them to crack them open and dump weighted-rare loot |
@@ -32,12 +32,12 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 
 When the room has fewer than 15 players, bots fill in (capped at 10). Each bot picks one of four personalities at spawn:
 
-- **Aggressive** — picks fights even at parity, loose throw cone, low blade threshold
-- **Hunter** — precise throws, narrow cone, even-fight aggression
+- **Aggressive** — picks fights even at parity, loose aim, low blade threshold, throws back at pursuers
+- **Hunter** — precise throws, even-fight aggression, throws back at pursuers
 - **Farmer** — collects ground blades and crates, chips at crates with throws
 - **Camper** — sits on power-ups and bushes, conservative
 
-Their decision-making runs through a multi-factor scoring system (flee · chase · farm · power-up · crate · wander · avoid-wall) and they react with imperfect timing, aim jitter, perpendicular evasion, target prediction and anti-double-aggro.
+Their decision-making runs through a multi-factor scoring system (flee · chase · farm · power-up · crate · wander · avoid-wall) and they react with imperfect timing, aim jitter, perpendicular evasion, target prediction and anti-double-aggro. They aim like players: a throw goes at the predicted intercept of their target, whatever direction they are walking.
 
 ---
 
@@ -49,7 +49,7 @@ server/   Authoritative Colyseus room (60 Hz tick and patches, 60 player cap)
 client/   Vite + Three.js + Colyseus.js
 ```
 
-The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends only `dx, dy, boost, throw` and renders remote entities 80 ms in the past (interpolation between snapshots) plus client-side prediction + reconciliation for the local player. Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
+The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends only `dx, dy, boost, throw` (plus the aim direction of a throw) and renders remote entities 80 ms in the past (interpolation between snapshots) plus client-side prediction + reconciliation for the local player. Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
 
 ### Performance highlights
 
@@ -93,6 +93,7 @@ npm run build              # full prod build (shared + server + client)
 npm start                  # run the prod server (serves the built client)
 npm test                   # server system tests (node:test, simulated clock)
 node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated seconds
+node tools/bench-survival.js        # newcomer survival against bots (after npm test)
 ```
 
 Add `?debug=hitbox` to the game URL to overlay the server-side hitboxes of nearby orbiting blades and display the measured client/server drift.
@@ -107,9 +108,10 @@ Every push and pull request runs the same build in GitHub Actions (`.github/work
 |---|---|---|---|
 | Move | WASD or Arrow keys | follow cursor | virtual joystick (left) |
 | Boost | Shift | hold left-click | BOOST button (right) |
-| **Throw blade** | Space | right-click | THROW button (next to BOOST) |
+| Aim | mouse cursor, or none (throws follow your movement) | cursor | drag from the THROW button |
+| **Throw blade** | Space | right-click | release the THROW button (a tap throws along your movement) |
 
-The input mode follows the last device you used: touching the screen shows the touch controls, the keyboard or mouse hides them. Movement keys take over from the mouse until you click again.
+The input mode follows the last device you used: touching the screen shows the touch controls, the keyboard or mouse hides them. Movement keys take over from the mouse until you left-click again; while moving with the keyboard, moving the mouse makes the cursor your aim (WASD + mouse), so you can throw behind you while running away. Direction and aim are measured on the ground from your character: the cursor points exactly where you go or throw, despite the tilted camera. On mobile, dragging from THROW and bringing your finger back to the button cancels the throw.
 
 ### Gameplay tips
 
@@ -281,15 +283,16 @@ client/src/
   main.ts              # game loop, rendering, networking glue
   net/Connection.ts    # Colyseus client + reconnect logic
   scene/               # camera, ground, decor, post-processing
-  entities/            # PlayerView, BladeView, CrateView, PowerUpView
+  entities/            # PlayerView, BladeView, CrateView, PowerUpView, AimIndicator
   fx/                  # particles, screen shake
-  input/               # keyboard, mouse, touch joystick + throw button
+  input/               # keyboard, mouse (projected on the ground), touch joystick + throw button with drag aim
   ui/                  # HUD, login, death, leaderboard, minimap, settings, chat
   themes/              # cosmetic themes (palette, ground shader, decor, music)
   boutique/            # theme shop
   audio/SoundManager   # Tone.js procedural SFX + music player
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)
+tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s against bots
 ```
 
 Project docs:

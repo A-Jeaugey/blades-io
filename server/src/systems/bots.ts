@@ -615,17 +615,15 @@ export class BotController {
     bot.inputDy = dirY;
   }
 
-  // Tente un lancer si un ennemi (ou une caisse) est dans le cône de tir
-  // du bot. La direction de tir = direction de mouvement courante (le
-  // serveur lit p.dirX/dirY au moment du throw, valeur que processThrows
-  // verra après updateMovement). Aucun aim assist : si le bot regarde
-  // ailleurs, le tir part ailleurs.
+  // Tente un lancer, visé par le champ aim comme celui d'un humain : la
+  // direction ne dépend plus du sens de marche. En chasse, sur la cible
+  // poursuivie ; en fuite, sur le poursuivant (Hunter et Aggressive
+  // seulement, les autres courent) ; en récolte de caisses, sur la caisse
+  // visée (Farmer et Camper). Errance, évitement du mur et ramassage : pas
+  // de lancer.
   private tryThrow(bot: Player, arena: ArenaState, st: BotState): void {
     const now = Date.now();
     if (bot.throwCooldownUntil > now) return;
-    // Pas de tir en fuite (mauvaise direction) ni en errance/évitement
-    // mur (rien à viser). Le bot tire surtout en chase ou en farm_crate.
-    if (st.actionType === "flee" || st.actionType === "wander" || st.actionType === "avoid_wall") return;
 
     // Seuil de lames mini par personnalité : un bot qui n'a presque rien
     // ne gaspille pas une lame en projectile, il préfère farmer.
@@ -636,18 +634,6 @@ export class BotController {
     else if (st.personality === BotPersonality.Camper) minBlades = 7;
     if (bot.bladeCount < minBlades) return;
 
-    // Direction de tir = direction de mouvement (= input). Si pas de
-    // mouvement (bot en pause), pas de tir.
-    const aimMag = Math.hypot(bot.inputDx, bot.inputDy);
-    if (aimMag < 0.1) return;
-    const ax = bot.inputDx / aimMag;
-    const ay = bot.inputDy / aimMag;
-
-    // Cône d'acceptation par personnalité. Plus serré = plus précis.
-    let cosThreshold = 0.88; // ~28°
-    if (st.personality === BotPersonality.Aggressive) cosThreshold = 0.82; // ~35°
-    else if (st.personality === BotPersonality.Hunter) cosThreshold = 0.94; // ~20°
-
     // Plage de portée utile : trop près (<12) le projectile clash sur ses
     // propres lames ; au-delà de la portée max, la lame retombe au sol et
     // le tir est gaspillé (le bot ne touche rien). Petite marge anti-fuite
@@ -655,52 +641,84 @@ export class BotController {
     const minDist = 12;
     const maxDist = THROW_PROJECTILE_MAX_RANGE - 2;
 
-    let foundTarget = false;
-
-    arena.players.forEach((other) => {
-      if (foundTarget) return;
-      if (other.id === bot.id || !other.alive) return;
-      if (other.spawnProtectionUntil > now) return;
-      const dx = other.x - bot.x;
-      const dy = other.y - bot.y;
-      const d = Math.hypot(dx, dy);
-      if (d < minDist || d > maxDist) return;
-      // Lead aim au point d'interception : on aligne sur où la cible SERA
-      // quand le projectile arrive (pas où elle est). Sans ça les bots
-      // ratent toute cible en mouvement à >12u. La vitesse cible vient du
-      // cache lissé (vraie vitesse incluant knockback, pas juste l'intent
-      // input).
-      const v = this.getVelocity(other.id);
-      const intercept = predictIntercept(bot.x, bot.y, other.x, other.y, v.vx, v.vy, THROW_PROJECTILE_SPEED);
-      const idx = intercept.x - bot.x;
-      const idy = intercept.y - bot.y;
-      const idd = Math.hypot(idx, idy);
-      if (idd < 0.1) return;
-      const cos = ax * (idx / idd) + ay * (idy / idd);
-      if (cos < cosThreshold) return;
-      // Vérifie aussi que l'intercept reste DANS la portée — si la cible
-      // file, l'intercept peut sortir de maxDist et la lame finirait au sol.
-      if (idd > maxDist) return;
-      foundTarget = true;
-    });
-
-    // Caisses : seulement si pas de joueur trouvé. Caisses statiques donc
-    // pas d'intercept à calculer — alignement direct avec la position.
-    if (!foundTarget && (st.personality === BotPersonality.Farmer || st.personality === BotPersonality.Camper)) {
-      arena.crates?.forEach((c) => {
-        if (foundTarget) return;
-        if (c.hp <= 0) return;
-        const dx = c.x - bot.x;
-        const dy = c.y - bot.y;
-        const d = Math.hypot(dx, dy);
-        if (d < minDist || d > maxDist) return;
-        const cos = ax * (dx / d) + ay * (dy / d);
-        if (cos < cosThreshold) return;
-        foundTarget = true;
+    let aim: { x: number; y: number } | null = null;
+    if (st.actionType === "chase" && st.currentTargetId) {
+      const target = arena.players.get(st.currentTargetId);
+      if (target) aim = this.leadAim(bot, target, now, minDist, maxDist);
+    } else if (
+      st.actionType === "flee" &&
+      (st.personality === BotPersonality.Hunter || st.personality === BotPersonality.Aggressive)
+    ) {
+      // Poursuivant = menace (plus de lames) la plus proche.
+      let pursuer = null as Player | null;
+      let best = Infinity;
+      arena.players.forEach((other) => {
+        if (other.id === bot.id || !other.alive || other.bladeCount <= bot.bladeCount) return;
+        const d = Math.hypot(other.x - bot.x, other.y - bot.y);
+        if (d < best) { best = d; pursuer = other; }
       });
+      if (pursuer) aim = this.leadAim(bot, pursuer, now, minDist, maxDist);
+    } else if (
+      st.actionType === "farm_crate" &&
+      (st.personality === BotPersonality.Farmer || st.personality === BotPersonality.Camper)
+    ) {
+      // Caisse visée par la décision (la plus proche du point cible).
+      // Statique : pas d'intercept à calculer.
+      let crateX = 0;
+      let crateY = 0;
+      let best = Infinity;
+      arena.crates?.forEach((c) => {
+        if (c.hp <= 0) return;
+        const d = Math.hypot(c.x - st.targetX, c.y - st.targetY);
+        if (d < best) { best = d; crateX = c.x; crateY = c.y; }
+      });
+      if (best < 1) {
+        const d = Math.hypot(crateX - bot.x, crateY - bot.y);
+        if (d >= minDist && d <= maxDist) aim = { x: (crateX - bot.x) / d, y: (crateY - bot.y) / d };
+      }
     }
+    if (!aim) return;
 
-    if (foundTarget) bot.inputThrow = true;
+    // Erreur de visée uniforme par personnalité (rad). Avant la visée libre,
+    // le bot tirait dès que la cible entrait dans un cône de 20 à 35° autour
+    // de sa marche, et l'erreur allait jusqu'à ce demi-angle. Valeurs
+    // calibrées en simulation (joueur débutant face aux bots d'une room
+    // chauffée) pour garder la létalité des lancers d'avant : la visée libre
+    // change d'où partent les lancers, pas combien ils tuent. Avec 0,08 à
+    // 0,2 rad, les éliminations par lancer doublaient.
+    let spread = 0.3;
+    if (st.personality === BotPersonality.Hunter) spread = 0.18;
+    else if (st.personality === BotPersonality.Aggressive) spread = 0.45;
+    const angle = Math.atan2(aim.y, aim.x) + (Math.random() * 2 - 1) * spread;
+    bot.aimX = Math.cos(angle);
+    bot.aimY = Math.sin(angle);
+    bot.inputThrow = true;
+  }
+
+  // Direction (normalisée) vers le point d'interception d'une cible, ou
+  // null si elle est hors de portée utile ou protégée. On aligne sur où la
+  // cible SERA quand le projectile arrive (pas où elle est) : sans ça les
+  // bots ratent toute cible en mouvement à >12u. La vitesse cible vient du
+  // cache lissé (vraie vitesse incluant knockback, pas juste l'intent input).
+  private leadAim(
+    bot: Player,
+    target: Player,
+    now: number,
+    minDist: number,
+    maxDist: number,
+  ): { x: number; y: number } | null {
+    if (!target.alive || target.spawnProtectionUntil > now) return null;
+    const d = Math.hypot(target.x - bot.x, target.y - bot.y);
+    if (d < minDist || d > maxDist) return null;
+    const v = this.getVelocity(target.id);
+    const intercept = predictIntercept(bot.x, bot.y, target.x, target.y, v.vx, v.vy, THROW_PROJECTILE_SPEED);
+    const idx = intercept.x - bot.x;
+    const idy = intercept.y - bot.y;
+    const idd = Math.hypot(idx, idy);
+    // L'intercept doit rester DANS la portée — si la cible file, il peut
+    // sortir de maxDist et la lame finirait au sol.
+    if (idd < 0.1 || idd > maxDist) return null;
+    return { x: idx / idd, y: idy / idd };
   }
 
   cleanupDead(arena: ArenaState): void {

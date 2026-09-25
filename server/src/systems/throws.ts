@@ -51,18 +51,27 @@ function pickOutermostBlade(state: ArenaState, player: Player): Blade | null {
 }
 
 // Tente d'exécuter un throw pour chaque joueur dont inputThrow est true.
-// Respecte le cooldown ; consomme toujours le flag (même si refusé) pour
-// éviter de relancer au tick suivant.
+// Respecte le cooldown ; consomme toujours le flag et la visée (même si
+// refusé) pour éviter de relancer au tick suivant.
 export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
   const now = Date.now();
   state.players.forEach((p) => {
     if (!p.inputThrow) return;
     p.inputThrow = false;
+    // La visée est consommée avec le flag, même si le lancer est refusé :
+    // elle ne doit pas resservir à un lancer ultérieur envoyé sans visée.
+    const aimX = p.aimX;
+    const aimY = p.aimY;
+    p.aimX = 0;
+    p.aimY = 0;
     if (!p.alive) return;
     if (p.throwCooldownUntil > now) return;
     if (p.bladeCount <= 0) return;
-    const dx = p.dirX;
-    const dy = p.dirY;
+    // Visée libre (souris, glisser mobile, bots) ; à défaut, direction de
+    // déplacement.
+    const aiming = aimX * aimX + aimY * aimY > 0.01;
+    const dx = aiming ? aimX : p.dirX;
+    const dy = aiming ? aimY : p.dirY;
     const mag = Math.hypot(dx, dy);
     if (mag < 1e-3) return; // pas de direction → on n'envoie pas dans le néant
     const ndx = dx / mag;

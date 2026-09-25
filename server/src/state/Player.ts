@@ -78,6 +78,11 @@ export class Player extends Schema {
   // true ponctuellement à chaque appui, le serveur le remet à false après
   // traitement (ou après le tick si cooldown actif).
   inputThrow: boolean = false;
+  // Visée du lancer en attente, normalisée (0, 0 = aucune : le lancer suit
+  // la direction de déplacement). Écrite avec inputThrow (handleInput, bots),
+  // consommée par processThrows.
+  aimX: number = 0;
+  aimY: number = 0;
   lastInputAt: number = 0;
   inputCount: number = 0;
   inputWindowStart: number = 0;

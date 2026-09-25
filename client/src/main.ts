@@ -10,8 +10,10 @@ import {
   PLAYER_BOOST_MULT,
   PLAYER_BODY_RADIUS,
   PLAYER_SPEED,
+  THROW_COOLDOWN_MS,
   TIER_UP_SHAKE,
   ChatEvent,
+  InputMessage,
   TierUpEvent,
   WALL_KILL_THICKNESS,
   orbitSlotAngle,
@@ -42,6 +44,7 @@ import { createDecor } from "./scene/Decor";
 import { PostFX } from "./scene/PostFX";
 import { CameraRig } from "./scene/Camera";
 import { PlayerView } from "./entities/PlayerView";
+import { AimIndicator } from "./entities/AimIndicator";
 import { BladeRenderer, PlayerPositionProvider } from "./entities/BladeView";
 import { CrateRenderer } from "./entities/CrateView";
 import { PowerUpRenderer } from "./entities/PowerUpView";
@@ -194,9 +197,20 @@ class Game {
   private inputSeq = 0;
   private topPlayerId: string | null = null;
   // Edge-trigger throw : on stocke un appui détecté entre deux sendInput()
-  // (input rate ~30 Hz, alors que la frame tourne à 60 Hz). Sans ça, un
-  // appui dans la frame de gap entre deux sends se perd.
+  // (CLIENT_INPUT_RATE, pas forcément chaque frame). Sans ça, un appui dans
+  // la frame de gap entre deux sends se perd.
   private throwLatched = false;
+  private aimIndicator = new AimIndicator();
+  // Dernière direction montrée par l'indicateur : gardée pendant son fondu
+  // de sortie.
+  private aimDirX = 0;
+  private aimDirY = 1;
+  private throwBtn: HTMLElement | null = null;
+  private throwBtnCooldown = false;
+  // Fin du cooldown prédite au dernier lancer envoyé (heure du serveur) :
+  // indicateur et bouton THROW réagissent sans attendre l'aller-retour,
+  // l'échéance du serveur prend le relais à la réception.
+  private predictedThrowReadyAt = 0;
   // Rayon d'audibilité des SFX spatialisés (clash, lancer, impact, pickup
   // distant…). En deçà de NEAR le son joue à plein volume, au-delà de FAR il
   // est muet, entre les deux on atténue linéairement. Sans ce gating, les
@@ -227,6 +241,7 @@ class Game {
     this.sceneStack.scene.add(this.powerups.root);
     this.sceneStack.scene.add(this.particles.object3d);
     this.sceneStack.scene.add(this.wisps.object3d);
+    this.sceneStack.scene.add(this.aimIndicator.object);
     this.hud = new Hud();
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
@@ -242,6 +257,29 @@ class Game {
         reset: () => this.debugHitboxes?.resetStats(),
         serverNow: () => this.serverNow(),
         protectedShown: () => !!this.players.get(this.myId)?.isProtectedShown,
+        // Visée (tâches 1.3 et 1.4) : direction de marche et de visée
+        // calculées, position dessinée du joueur local, projection d'un
+        // point du sol à l'écran, projectiles lancés par le joueur local.
+        input: () => this.input.peekDirBoost(),
+        aim: () => this.input.aim(),
+        me: () => {
+          const v = this.players.get(this.myId);
+          const p = this.room?.state?.players?.get(this.myId);
+          return v && p ? { x: v.renderX, y: v.renderY, blades: p.bladeCount, dirX: p.dirX, dirY: p.dirY, alive: p.alive } : null;
+        },
+        screenOf: (x: number, y: number) => this.camera.screenOf(x, y),
+        state: () => this.room?.state,
+        myProjectiles: () => {
+          const out: Array<{ id: string; vx: number; vy: number }> = [];
+          this.room?.state?.blades?.forEach((b: any, id: string) => {
+            if (b.isProjectile && b.thrownBy === this.myId) out.push({ id, vx: b.vx, vy: b.vy });
+          });
+          return out;
+        },
+        indicator: () => ({
+          visible: this.aimIndicator.object.visible,
+          rotationY: this.aimIndicator.object.rotation.y,
+        }),
       };
     }
     this.settings = new SettingsPanel();
@@ -262,6 +300,17 @@ class Game {
       document.getElementById("boost-btn")!,
       document.getElementById("throw-btn"),
     );
+    // Souris et glisser de visée projetés sur le sol depuis le joueur local
+    // tel qu'il est dessiné (celui que suit la caméra).
+    this.input.setProjector({
+      groundAt: (x, y) => this.camera.groundAt(x, y),
+      screenOf: (x, y) => this.camera.screenOf(x, y),
+      player: () => {
+        const v = this.players.get(this.myId);
+        return v && !this.dead ? { x: v.renderX, y: v.renderY } : null;
+      },
+    });
+    this.throwBtn = document.getElementById("throw-btn");
     // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
     // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
     this.input.onModeChange((touch) => {
@@ -383,6 +432,7 @@ class Game {
 
     // Horloge serveur : chaque patch apporte le tick courant.
     this.serverClock.reset();
+    this.predictedThrowReadyAt = 0;
     this.orbitSegments.clear();
     this.timeline.length = 0;
     this.pendingBlades.clear();
@@ -921,15 +971,23 @@ class Game {
 
   private sendInput(): void {
     if (!this.room) return;
-    const { dx, dy, boost, throwPressed } = this.input.getInput();
+    const { dx, dy, boost, throwPressed, aimX, aimY } = this.input.getInput();
     if (throwPressed) this.throwLatched = true;
     this.inputSeq = (this.inputSeq + 1) >>> 0;
-    const payload: { dx: number; dy: number; boost: boolean; seq: number; throw?: boolean } = {
-      dx, dy, boost, seq: this.inputSeq,
-    };
+    const payload: InputMessage = { dx, dy, boost, seq: this.inputSeq };
     if (this.throwLatched) {
       payload.throw = true;
+      // Le serveur ne lit la visée qu'avec le lancer.
+      if (aimX !== 0 || aimY !== 0) {
+        payload.aimX = aimX;
+        payload.aimY = aimY;
+      }
       this.throwLatched = false;
+      // Seulement pour un lancer que le serveur acceptera : marteler Espace
+      // pendant le cooldown ne doit pas le prolonger à l'écran.
+      const me = this.room.state?.players?.get(this.myId);
+      const now = this.serverNow();
+      if (me?.alive && this.throwReady(me, now)) this.predictedThrowReadyAt = now + THROW_COOLDOWN_MS;
     }
     this.room.send("input", payload);
     this.sound.setBoost(!!boost && (dx !== 0 || dy !== 0));
@@ -1001,6 +1059,59 @@ class Game {
       const s = maxErr / Math.sqrt(em2);
       this.errX *= s; this.errY *= s;
     }
+  }
+
+  // Indicateur de visée : trajectoire du prochain lancer quand il est
+  // disponible (lames, cooldown écoulé à l'heure du serveur). Visée libre
+  // (curseur, glisser sur THROW) marquée ; direction de marche (clavier
+  // seul, tap mobile) discrète. Un glisser en cours reste visible, atténué,
+  // pendant le cooldown : le doigt voit où il vise.
+  private updateAimIndicator(localView: PlayerView | undefined, dt: number, serverNowMs: number): void {
+    const me = this.room?.state?.players?.get(this.myId);
+    const alive = !!me && !!localView && !this.dead && (this.renderAlive.get(this.myId) ?? !!me.alive);
+    const ready = alive && this.throwReady(me, serverNowMs);
+    let opacity = 0;
+    const aim = alive ? this.input.aim() : null;
+    if (aim) {
+      this.aimDirX = aim.x;
+      this.aimDirY = aim.y;
+      opacity = ready ? 0.6 : this.input.dragAiming ? 0.22 : 0;
+    } else if (ready) {
+      // Lancer sans visée : direction de marche en cours, sinon la dernière
+      // retenue par le serveur (p.dirX/dirY), comme processThrows.
+      const move = this.input.peekDirBoost();
+      const moving = Math.hypot(move.dx, move.dy) > 0.05;
+      const fx = moving ? move.dx : me.dirX;
+      const fy = moving ? move.dy : me.dirY;
+      const m = Math.hypot(fx, fy);
+      if (m > 1e-3) {
+        this.aimDirX = fx / m;
+        this.aimDirY = fy / m;
+        opacity = 0.25;
+      }
+    }
+    this.aimIndicator.update(
+      dt,
+      this.elapsed * 0.001,
+      localView?.renderX ?? 0,
+      localView?.renderY ?? 0,
+      this.aimDirX,
+      this.aimDirY,
+      me?.bladeCount ?? 0,
+      opacity,
+    );
+    // Bouton THROW mobile grisé tant que le lancer n'est pas disponible.
+    const cooldown = alive && !ready;
+    if (this.throwBtn && cooldown !== this.throwBtnCooldown) {
+      this.throwBtnCooldown = cooldown;
+      this.throwBtn.classList.toggle("cooldown", cooldown);
+    }
+  }
+
+  // Lancer disponible pour le joueur local : des lames et le cooldown écoulé
+  // à l'heure du serveur, celui prédit au dernier envoi compris.
+  private throwReady(me: any, serverNowMs: number): boolean {
+    return me.bladeCount > 0 && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
   }
 
   // Alerte d'approche de la bordure : vignette et bip, selon l'écart entre
@@ -1276,6 +1387,7 @@ class Game {
       this.ground.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);
       this.updateBorderWarning(localView, dt);
+      this.updateAimIndicator(localView, dt, serverNowMs);
       this.decor.update(this.elapsed * 0.001);
       // Wisps ambient : centrés sur le joueur local pour qu'on en voie
       // toujours autour de soi. Au lobby (pas de localView) on les laisse

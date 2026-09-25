@@ -9,6 +9,12 @@ export interface InputMessage {
   // tenir.
   throw?: boolean;
   seq?: number;
+  // Direction du lancer au sol, indépendante du déplacement (curseur de la
+  // souris, glisser depuis THROW sur mobile). Lue seulement avec throw,
+  // normalisée par le serveur. Absente : le lancer part dans la direction
+  // de déplacement.
+  aimX?: number;
+  aimY?: number;
 }
 
 export interface SetNameMessage {

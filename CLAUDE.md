@@ -2,7 +2,7 @@
 
 Guide pour Claude (et autres assistants IA) qui travaillent sur ce repo.
 
-> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js`. La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
+> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js`. Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
 
 ---
 
@@ -21,7 +21,7 @@ client/    Vite + Three.js + Colyseus.js. Entités distantes rendues 80 ms
 
 **Règles d'or** :
 - `shared/` est un **contrat**. Toute modif y casse client+serveur+balance. Touchez avec précaution.
-- Le **serveur est autoritatif**. Le client envoie `{dx, dy, boost, throw}` et reçoit des snapshots. Ne tentez pas de "fixer" un comportement gameplay côté client — c'est forcément côté serveur.
+- Le **serveur est autoritatif**. Le client envoie `{dx, dy, boost, throw}` (plus `aimX/aimY`, la visée d'un lancer) et reçoit des snapshots. Ne tentez pas de "fixer" un comportement gameplay côté client — c'est forcément côté serveur.
 - **Tout est procédural** : zéro asset PNG/SVG. Géométries Three.js + shaders GLSL inline. Conséquence : tout s'instancie, tout se thème.
 
 ---
@@ -45,7 +45,8 @@ client/src/
 │   ├── BladeView.ts     InstancedMesh×12 (4 raretés × 3 tiers)
 │   ├── PlayerView.ts    Capsule corps + tête + ring + halo + trail
 │   ├── CrateView.ts     Boîte émissive + edges
-│   └── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
+│   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
+│   └── AimIndicator.ts  Trajectoire du prochain lancer au sol (visée)
 ├── fx/
 │   ├── Particles.ts     Pool de Points pour bursts (sparks/explosions)
 │   └── ScreenShake.ts

@@ -9,9 +9,31 @@ export interface FrameInput {
   dy: number;
   boost: boolean;
   // Edge-triggered : true UNE seule fois pour un appui (Espace, clic droit
-  // ou bouton THROW mobile). Consommé immédiatement par le caller.
+  // ou bouton THROW mobile relâché). Consommé immédiatement par le caller.
   throwPressed: boolean;
+  // Visée du lancer au sol, normalisée ; (0, 0) : le lancer suit la
+  // direction de déplacement.
+  aimX: number;
+  aimY: number;
 }
+
+// Projection écran ↔ sol fournie par le jeu (caméra et joueur local).
+export interface GroundProjector {
+  // Point du sol sous un point de l'écran (px client), null hors du sol.
+  groundAt(clientX: number, clientY: number): { x: number; y: number } | null;
+  // Position à l'écran (px client) d'un point du sol.
+  screenOf(x: number, y: number): { x: number; y: number };
+  // Position au sol du joueur local telle que dessinée, null hors partie.
+  player(): { x: number; y: number } | null;
+}
+
+// Zone morte autour du joueur, mesurée à l'écran : curseur posé sur le
+// personnage, il s'arrête.
+const MOUSE_DEAD_ZONE_PX = 40;
+// Distance à l'écran du point projeté pour convertir un glisser en
+// direction au sol : assez loin pour la précision, assez près pour rester
+// sous l'horizon.
+const DRAG_PROBE_PX = 120;
 
 // Touches qui font passer en déplacement clavier. Espace (lancer) n'en fait
 // pas partie : un joueur souris qui lance avec Espace doit continuer à
@@ -45,6 +67,11 @@ export class InputManager {
   // Mode sticky desktop : dès qu'on touche le clavier, on ignore la souris
   // jusqu'à ce qu'on re-clique. Et inversement.
   private desktopMode: "keyboard" | "mouse" = "mouse";
+  // Au clavier, le curseur ne vise que si la souris a bougé depuis le
+  // passage en mode clavier : un joueur tout clavier garde la visée dans le
+  // sens de marche, un joueur clavier + souris vise au curseur.
+  private mouseAims = false;
+  private projector: GroundProjector | null = null;
 
   constructor(
     gameCanvas: HTMLElement,
@@ -64,7 +91,10 @@ export class InputManager {
     window.addEventListener("keydown", (e) => {
       if (this.isTypingInTextField()) return;
       const move = MOVE_KEYS.includes(e.code);
-      if (move) this.desktopMode = "keyboard";
+      if (move && this.desktopMode !== "keyboard") {
+        this.desktopMode = "keyboard";
+        this.mouseAims = false;
+      }
       if (move || e.code === "Space") this.setTouchMode(false);
     });
     // pointerType distingue un vrai doigt d'une vraie souris, là où les
@@ -74,12 +104,21 @@ export class InputManager {
       else if (e.pointerType === "mouse") this.setTouchMode(false);
     }, { capture: true, passive: true });
     window.addEventListener("pointermove", (e) => {
-      if (e.pointerType === "mouse" && (e.movementX !== 0 || e.movementY !== 0)) this.setTouchMode(false);
+      if (e.pointerType === "mouse" && (e.movementX !== 0 || e.movementY !== 0)) {
+        this.setTouchMode(false);
+        this.mouseAims = true;
+      }
     }, { passive: true });
-    // Clic souris → repasse en mode souris
-    gameCanvas.addEventListener("mousedown", () => {
-      this.desktopMode = "mouse";
+    // Clic gauche → repasse en déplacement souris. Pas le clic droit (lancer) :
+    // un joueur clavier + souris lance au clic droit sans perdre le
+    // déplacement clavier.
+    gameCanvas.addEventListener("mousedown", (e) => {
+      if (e.button === 0) this.desktopMode = "mouse";
     });
+  }
+
+  setProjector(projector: GroundProjector): void {
+    this.projector = projector;
   }
 
   get isTouch(): boolean {
@@ -113,41 +152,55 @@ export class InputManager {
 
   getInput(): FrameInput {
     if (this.isTypingInTextField()) {
-      return { dx: 0, dy: 0, boost: false, throwPressed: false };
+      return { dx: 0, dy: 0, boost: false, throwPressed: false, aimX: 0, aimY: 0 };
     }
     // Le throw est universel : Espace clavier, clic droit souris, ou bouton
     // THROW touch. On combine les 3 sources pour qu'aucun appui ne soit
     // perdu selon le mode actif.
-    const throwPressed =
-      this.keyboard.consumeThrow() ||
-      this.mouse.consumeThrow() ||
-      this.touch.consumeThrow();
-    if (this.isTouch) {
-      const d = this.touch.getDir();
-      return { dx: d.x, dy: d.y, boost: this.touch.boost, throwPressed };
-    }
-    if (this.desktopMode === "keyboard") {
-      const kbd = this.keyboard.dir;
-      return { dx: kbd.x, dy: kbd.y, boost: this.keyboard.boost, throwPressed };
-    }
-    // Mode souris : suit le curseur. Shift reste actif pour le boost.
-    const md = this.mouse.getDir();
-    return {
-      dx: md.x,
-      dy: md.y,
-      boost: this.keyboard.boost || this.mouse.boost,
-      throwPressed,
-    };
+    const touchThrow = this.touch.consumeThrow();
+    const keyThrow = this.keyboard.consumeThrow();
+    const mouseThrow = this.mouse.consumeThrow();
+    const throwPressed = keyThrow || mouseThrow || touchThrow !== null;
+    // Visée : glisser relâché sur THROW (un tap suit le déplacement), sinon
+    // visée courante.
+    let aim: { x: number; y: number } | null;
+    if (touchThrow) aim = touchThrow.x !== 0 || touchThrow.y !== 0 ? this.dragDir(touchThrow.x, touchThrow.y) : null;
+    else aim = this.aim();
+    const move = this.moveInput();
+    return { ...move, throwPressed, aimX: aim?.x ?? 0, aimY: aim?.y ?? 0 };
   }
 
   // Variante non-consommante : ne touche pas au flag throw. Utilisée pour
-  // la prédiction locale (qui tourne à 60 Hz, alors que sendInput tourne
-  // à 30 Hz). Sans ça, l'appui Espace est consommé par la prédiction et
-  // jamais transmis au serveur.
+  // la prédiction locale (pas fixe de 60 Hz, alors que sendInput suit
+  // CLIENT_INPUT_RATE). Sans ça, l'appui Espace est consommé par la
+  // prédiction et jamais transmis au serveur.
   peekDirBoost(): { dx: number; dy: number; boost: boolean } {
     if (this.isTypingInTextField()) {
       return { dx: 0, dy: 0, boost: false };
     }
+    return this.moveInput();
+  }
+
+  // Visée courante, sans consommer de lancer : curseur (souris seule, ou
+  // clavier + souris), glisser en cours sur THROW. null : le lancer suivra
+  // la direction de déplacement.
+  aim(): { x: number; y: number } | null {
+    if (this.isTypingInTextField()) return null;
+    if (this.isTouch) {
+      const drag = this.touch.throwDrag;
+      return drag ? this.dragDir(drag.x, drag.y) : null;
+    }
+    if (this.desktopMode === "keyboard" && !this.mouseAims) return null;
+    return this.cursorDir();
+  }
+
+  // Doigt en train de viser depuis THROW : l'indicateur reste affiché même
+  // si le lancer n'est pas encore disponible.
+  get dragAiming(): boolean {
+    return this.isTouch && this.touch.throwDrag !== null;
+  }
+
+  private moveInput(): { dx: number; dy: number; boost: boolean } {
     if (this.isTouch) {
       const d = this.touch.getDir();
       return { dx: d.x, dy: d.y, boost: this.touch.boost };
@@ -156,11 +209,44 @@ export class InputManager {
       const kbd = this.keyboard.dir;
       return { dx: kbd.x, dy: kbd.y, boost: this.keyboard.boost };
     }
-    const md = this.mouse.getDir();
-    return { dx: md.x, dy: md.y, boost: this.keyboard.boost || this.mouse.boost };
+    // Mode souris : suit le curseur. Shift reste actif pour le boost.
+    const md = this.cursorDir();
+    return { dx: md?.x ?? 0, dy: md?.y ?? 0, boost: this.keyboard.boost || this.mouse.boost };
+  }
+
+  // Direction au sol du joueur vers le point sous le curseur. La caméra est
+  // inclinée : l'angle mesuré à l'écran depuis le centre (ancien calcul) ne
+  // correspondait pas à l'angle au sol, et marche comme visée déviaient hors
+  // des axes. null dans la zone morte, hors partie, ou avant tout mouvement
+  // de souris.
+  private cursorDir(): { x: number; y: number } | null {
+    const pr = this.projector;
+    const me = pr?.player();
+    if (!pr || !me || !this.mouse.used) return null;
+    const s = pr.screenOf(me.x, me.y);
+    if (Math.hypot(this.mouse.x - s.x, this.mouse.y - s.y) < MOUSE_DEAD_ZONE_PX) return null;
+    const g = pr.groundAt(this.mouse.x, this.mouse.y);
+    return g ? unit(g.x - me.x, g.y - me.y) : null;
+  }
+
+  // Direction au sol d'un glisser à l'écran, depuis le joueur : le trait de
+  // visée suit le doigt tel qu'on le voit, malgré l'inclinaison.
+  private dragDir(dragX: number, dragY: number): { x: number; y: number } | null {
+    const pr = this.projector;
+    const me = pr?.player();
+    const m = Math.hypot(dragX, dragY);
+    if (!pr || !me || m < 1e-6) return null;
+    const s = pr.screenOf(me.x, me.y);
+    const g = pr.groundAt(s.x + (dragX / m) * DRAG_PROBE_PX, s.y + (dragY / m) * DRAG_PROBE_PX);
+    return g ? unit(g.x - me.x, g.y - me.y) : null;
   }
 
   setSensitivity(v: number): void {
     this.touch.sensitivity = v;
   }
+}
+
+function unit(x: number, y: number): { x: number; y: number } | null {
+  const m = Math.hypot(x, y);
+  return m > 1e-6 ? { x: x / m, y: y / m } : null;
 }

@@ -115,6 +115,41 @@ test("lancer : cooldown de 0,5 s, flag consommé même si refusé", () => {
   assert.equal(r.thrown.length, 2);
 });
 
+test("lancer visé : la visée prime sur la direction de déplacement", () => {
+  const p = thrower();
+  // Le joueur marche vers +x, vise derrière lui.
+  p.aimX = -0.6;
+  p.aimY = 0.8;
+  p.inputThrow = true;
+  const r = recorder();
+  processThrows(state, r);
+  const blade = state.blades.get(r.thrown[0].bladeId)!;
+  assert.ok(Math.abs(blade.vx - -0.6 * THROW_PROJECTILE_SPEED) < 1e-9);
+  assert.ok(Math.abs(blade.vy - 0.8 * THROW_PROJECTILE_SPEED) < 1e-9);
+  assert.ok(blade.x < p.x && blade.y > p.y, "départ côté visée");
+  assert.deepEqual([r.thrown[0].dirX, r.thrown[0].dirY], [-0.6, 0.8]);
+  assert.equal(p.aimX, 0);
+  assert.equal(p.aimY, 0);
+});
+
+test("lancer visé : la visée est consommée même si le lancer est refusé", () => {
+  const p = thrower();
+  p.throwCooldownUntil = clock.now + 100;
+  p.aimX = 0;
+  p.aimY = -1;
+  p.inputThrow = true;
+  const r = recorder();
+  processThrows(state, r);
+  assert.equal(r.thrown.length, 0);
+  assert.equal(p.aimX, 0);
+  assert.equal(p.aimY, 0);
+  // Lancer suivant sans visée : direction de déplacement, pas l'ancienne visée.
+  clock.advance(100);
+  p.inputThrow = true;
+  processThrows(state, r);
+  assert.deepEqual([r.thrown[0].dirX, r.thrown[0].dirY], [1, 0]);
+});
+
 test("lancer refusé sans direction, sans lame ou mort", () => {
   const still = thrower(0, 0);
   still.dirX = 0;

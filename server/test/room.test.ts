@@ -119,6 +119,51 @@ test("input : valeurs bornées, non finies ignorées", () => {
   assert.equal(p.inputDy, -0.5);
 });
 
+test("input : visée normalisée, lue seulement avec le lancer", () => {
+  const r = new TestRoom(clock);
+  const p = r.join("p1");
+  // Sans lancer, la visée est ignorée.
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0, aimX: 3, aimY: 4 });
+  assert.equal(p.aimX, 0);
+  assert.equal(p.aimY, 0);
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0, throw: true, aimX: 3, aimY: 4 });
+  assert.equal(p.inputThrow, true);
+  assert.ok(Math.abs(p.aimX - 0.6) < 1e-12 && Math.abs(p.aimY - 0.8) < 1e-12);
+  // Un message sans lancer arrivé dans le même tick ne l'efface pas.
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0, aimX: -1, aimY: 0 });
+  assert.ok(Math.abs(p.aimX - 0.6) < 1e-12);
+  // Visée non finie, nulle ou absente : pas de visée, le lancer suivra le
+  // déplacement.
+  for (const bad of [
+    { aimX: Number.NaN, aimY: 1 },
+    { aimX: Number.POSITIVE_INFINITY, aimY: 0 },
+    { aimX: 0, aimY: 0 },
+    { aimX: "1", aimY: {} },
+    {},
+  ]) {
+    r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0, throw: true, ...bad });
+    assert.equal(p.aimX, 0);
+    assert.equal(p.aimY, 0);
+  }
+});
+
+test("lancer visé bout à bout : on lance derrière soi en fuyant", () => {
+  const r = new TestRoom(clock);
+  const p = r.join("p1");
+  p.x = 0; p.y = -30;
+  for (let i = 0; i < 5; i++) giveBlade(r.state, p);
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0 });
+  r.tick(10);
+  r.room.handleInput(fakeClient("p1"), { dx: 1, dy: 0, throw: true, aimX: -1, aimY: 0 });
+  r.tick();
+  const [ev] = r.eventsOf("bladeThrown");
+  assert.ok(ev, "aucun lancer");
+  assert.equal(ev.dirX, -1);
+  assert.ok(p.dirX > 0.99, "le joueur continue de fuir vers +x");
+  const blade = r.state.blades.get(ev.bladeId)!;
+  assert.ok(blade.vx < 0 && blade.x < p.x);
+});
+
 test("input : un joueur muet depuis 500 ms s'arrête", () => {
   const r = new TestRoom(clock);
   const p = r.join("p1");
