@@ -12,6 +12,7 @@ import {
 import { ArenaState } from "../src/state/ArenaState";
 import { Blade } from "../src/state/Blade";
 import { attachBladeToPlayer, PickupSystem } from "../src/systems/pickup";
+import { updateScore } from "../src/systems/scoring";
 import { OrbitPositionCache, recompactOwnerRing, updateBladePositions } from "../src/systems/orbitPositions";
 import { DT, FakeClock, addGroundBlade, addPlayer, giveBlade, ownedBlades } from "./helpers";
 
@@ -134,4 +135,15 @@ test("recompactOwnerRing renumérote les slots sans trou, dans l'ordre", () => {
   // Une nouvelle lame reprend le premier slot libre.
   const extra = giveBlade(state, p);
   assert.equal(extra.slotIndex, 3);
+});
+
+test("ramasser une lame ne fait pas retomber le score composite", () => {
+  const p = addPlayer(state, { x: 0, y: -20, blades: 5 });
+  p.kills = 4;
+  updateScore(p);
+  const composite = p.score;
+  assert.equal(composite, 4 * 15 + 5);
+  giveBlade(state, p);
+  // Avant : score = maxBladeCount (6) jusqu'à la fin du tick.
+  assert.equal(p.score, composite);
 });

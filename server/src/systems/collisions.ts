@@ -37,71 +37,106 @@ export interface CollisionCallbacks {
   onClash: (info: ClashInfo) => void;
 }
 
-const lastHitAt = new Map<string, number>();
 function pairKey(idA: string, idB: string): string {
   return idA < idB ? `${idA}|${idB}` : `${idB}|${idA}`;
 }
 
+// Copies locales : les exports de @bladeio/shared sont lus via des getters
+// CommonJS (ré-exports), coûteux dans les boucles chaudes.
+const BODY_RADIUS = PLAYER_BODY_RADIUS;
+const BODY_COLLISION = PLAYER_BODY_COLLISION;
+const CRATE_RADIUS = CRATE_HITBOX;
+const COOLDOWN = BLADE_COLLISION_COOLDOWN;
+const SHIELD_REDUC = POWERUP_SHIELD_DMG_REDUC;
+const DAMAGE = RARITY_DAMAGE;
+
 interface OrbitingEntry {
   blade: Blade;
+  id: string;
+  damage: number;
   x: number;
   y: number;
   // hitbox effective de la lame (= BLADE_HITBOX × tier multiplier du proprio)
   hitbox: number;
 }
 
+// Fiche d'un joueur vivant, figée pour la durée de resolveCollisions : les
+// positions, protections et power-ups ne changent pas pendant la
+// résolution. Les champs qui, eux, évoluent (alive, hitlag, knockback, PV
+// des lames) restent lus et écrits sur le schema. Chaque lecture d'un champ
+// synchronisé passe par un accesseur @colyseus/schema : on les fait une
+// fois par joueur plutôt qu'une fois par paire.
 interface OwnerBucket {
   player: Player;
+  id: string;
+  x: number;
+  y: number;
   tier: number;
   // rayon d'englobement = outer orbit + max hitbox de ses lames. Sert au
   // broad-phase joueur-vs-joueur (pas besoin d'itérer les paires de lames
   // si les deux centres sont trop éloignés).
   reach: number;
+  spawnProtected: boolean;
+  shielded: boolean;
   blades: OrbitingEntry[];
 }
 
+// lastHitAt : cooldown par paire (lame|lame ou lame|caisse), en secondes.
+// Tenu par la room : une Map de module aurait été partagée entre toutes
+// les rooms du process.
 export function resolveCollisions(
   state: ArenaState,
   orbitCache: OrbitPositionCache,
   cb: CollisionCallbacks,
+  lastHitAt: Map<string, number>,
 ): void {
+  const nowSec = Date.now() / 1000;
+  const nowMs = Date.now();
+
   // -------- Phase 0 : indexation des lames orbitales par propriétaire ------
   // On groupe par owner pour pouvoir faire un early-out joueur-vs-joueur
   // (broad phase). Sans ça, on insérait toutes les lames dans un spatial
   // hash et on faisait des queries coûteuses pour chaque lame, même quand
   // les joueurs sont à 200 unités l'un de l'autre.
   const buckets = new Map<string, OwnerBucket>();
+  const owners: OwnerBucket[] = [];
   state.players.forEach((p) => {
     if (!p.alive) return;
     const tier = p.tier;
-    const hitbox = tierBladeHitbox(tier);
-    const orbit = outerOrbitRadius(p.bladeCount);
-    buckets.set(p.id, {
+    const bucket: OwnerBucket = {
       player: p,
+      id: p.id,
+      x: p.x,
+      y: p.y,
       tier,
-      reach: orbit + hitbox,
+      reach: outerOrbitRadius(p.bladeCount) + tierBladeHitbox(tier),
+      spawnProtected: p.spawnProtectionUntil > nowMs,
+      shielded: p.shieldUntil > nowMs,
       blades: [],
-    });
+    };
+    buckets.set(bucket.id, bucket);
+    owners.push(bucket);
   });
 
   state.blades.forEach((b) => {
-    if (!b.ownerId) return;
-    const bucket = buckets.get(b.ownerId);
+    const ownerId = b.ownerId;
+    if (!ownerId) return;
+    const bucket = buckets.get(ownerId);
     if (!bucket) return;
-    const pos = orbitCache.get(b.id);
+    const id = b.id;
+    const pos = orbitCache.get(id);
     if (!pos) return;
     bucket.blades.push({
       blade: b,
+      id,
+      damage: DAMAGE[b.rarity as BladeRarity],
       x: pos.x,
       y: pos.y,
       hitbox: tierBladeHitbox(bucket.tier),
     });
   });
 
-  const owners = Array.from(buckets.values());
   const destroyed = new Set<string>();
-  const nowSec = Date.now() / 1000;
-  const nowMs = Date.now();
 
   // -------- Phase 1 : blade-vs-blade entre joueurs DIFFÉRENTS --------------
   // Broad phase O(P²) sur les centres joueurs. Pour P=60 c'est 1770 paires,
@@ -111,8 +146,8 @@ export function resolveCollisions(
     const A = owners[i];
     for (let j = i + 1; j < owners.length; j++) {
       const B = owners[j];
-      const cdx = A.player.x - B.player.x;
-      const cdy = A.player.y - B.player.y;
+      const cdx = A.x - B.x;
+      const cdy = A.y - B.y;
       const reach = A.reach + B.reach;
       if (cdx * cdx + cdy * cdy > reach * reach) continue;
 
@@ -120,13 +155,13 @@ export function resolveCollisions(
       // ses lames sont intangibles ET ne font pas de dégât → on skip toute
       // la narrow phase. Empêche un joueur de se faire shred avant d'avoir
       // chargé le HUD, et empêche aussi le spawn-camp offensif.
-      if (A.player.spawnProtectionUntil > nowMs || B.player.spawnProtectionUntil > nowMs) continue;
+      if (A.spawnProtected || B.spawnProtected) continue;
 
       // Narrow phase. Les deux orbites se touchent : on teste les lames
       // entre elles. On tolère un coût O(N_a × N_b) car ce cas (deux
       // joueurs en contact direct) est précisément celui qui DOIT générer
       // un combat — pas le cas dégénéré.
-      narrowPhaseClash(A, B, destroyed, nowSec, nowMs, cb);
+      narrowPhaseClash(A, B, destroyed, nowSec, nowMs, lastHitAt, cb);
     }
   }
 
@@ -144,27 +179,29 @@ export function resolveCollisions(
   // distance² très bon marché.
   state.crates.forEach((crate) => {
     if (crate.hp <= 0) return;
+    const crateX = crate.x;
+    const crateY = crate.y;
+    const crateId = crate.id;
     for (const owner of owners) {
       // Early-out par owner : si le centre du joueur est plus loin que
       // (reach + CRATE_HITBOX), aucune de ses lames ne peut toucher.
-      const cdx = owner.player.x - crate.x;
-      const cdy = owner.player.y - crate.y;
-      const cReach = owner.reach + CRATE_HITBOX;
+      const cdx = owner.x - crateX;
+      const cdy = owner.y - crateY;
+      const cReach = owner.reach + CRATE_RADIUS;
       if (cdx * cdx + cdy * cdy > cReach * cReach) continue;
 
       for (const e of owner.blades) {
-        if (destroyed.has(e.blade.id)) continue;
-        const minDist = CRATE_HITBOX + e.hitbox;
-        const dx = e.x - crate.x;
-        const dy = e.y - crate.y;
+        if (destroyed.has(e.id)) continue;
+        const minDist = CRATE_RADIUS + e.hitbox;
+        const dx = e.x - crateX;
+        const dy = e.y - crateY;
         if (dx * dx + dy * dy > minDist * minDist) continue;
-        const key = pairKey(e.blade.id, crate.id);
+        const key = pairKey(e.id, crateId);
         const last = lastHitAt.get(key) ?? 0;
-        if (nowSec - last < BLADE_COLLISION_COOLDOWN) continue;
+        if (nowSec - last < COOLDOWN) continue;
         lastHitAt.set(key, nowSec);
-        const dmg = RARITY_DAMAGE[e.blade.rarity as BladeRarity];
-        crate.hp = Math.max(0, crate.hp - dmg);
-        const attacker = state.players.get(e.blade.ownerId) ?? null;
+        crate.hp = Math.max(0, crate.hp - e.damage);
+        const attacker = owner.player;
         if (crate.hp <= 0) {
           cb.onCrateDestroyed(crate, attacker);
           return;
@@ -178,57 +215,65 @@ export function resolveCollisions(
   // Hitbox élargie : avec un joueur tier 2 (hitbox x3), un autre joueur
   // qui rentre dans son cylindre meurt à 2 unités du centre, pas à 1.3.
   // Ça résout le "syndrome de la passoire" sur les attaques au corps.
-  state.players.forEach((target) => {
-    if (!target.alive) return;
+  // Les cibles sont les joueurs vivants de la phase 0 ; `alive` est relu à
+  // chaque cible car un kill de cette phase peut en retirer une.
+  for (const target of owners) {
+    if (!target.player.alive) continue;
     // Spawn protection : la cible ne peut pas être tuée pendant l'invuln.
-    if (target.spawnProtectionUntil > nowMs) return;
+    if (target.spawnProtected) continue;
+    let killed = false;
     for (const owner of owners) {
-      if (owner.player.id === target.id) continue;
+      if (owner.id === target.id) continue;
       // L'attaquant est protégé → ses lames ne font pas de dégât.
-      if (owner.player.spawnProtectionUntil > nowMs) continue;
+      if (owner.spawnProtected) continue;
       // Broad phase : la cible peut-elle être à portée d'une lame ?
-      const cdx = owner.player.x - target.x;
-      const cdy = owner.player.y - target.y;
-      const cReach = owner.reach + PLAYER_BODY_RADIUS;
+      const cdx = owner.x - target.x;
+      const cdy = owner.y - target.y;
+      const cReach = owner.reach + BODY_RADIUS;
       if (cdx * cdx + cdy * cdy > cReach * cReach) continue;
 
       for (const e of owner.blades) {
-        if (destroyed.has(e.blade.id)) continue;
-        const minDist = PLAYER_BODY_RADIUS + e.hitbox;
+        if (destroyed.has(e.id)) continue;
+        const minDist = BODY_RADIUS + e.hitbox;
         const dx = e.x - target.x;
         const dy = e.y - target.y;
         if (dx * dx + dy * dy > minDist * minDist) continue;
-        const killer = state.players.get(e.blade.ownerId) ?? null;
-        cb.onPlayerKilled(target, killer);
-        return;
+        cb.onPlayerKilled(target.player, owner.player);
+        killed = true;
+        break;
       }
+      if (killed) break;
     }
-  });
+  }
 
   // -------- Phase 4 : body-vs-body (joueurs sans lame) ---------------------
-  const players: Player[] = [];
-  state.players.forEach((p) => { if (p.alive) players.push(p); });
-  for (let i = 0; i < players.length; i++) {
-    for (let j = i + 1; j < players.length; j++) {
-      const a = players[i];
-      const b = players[j];
-      if (!a.alive || !b.alive) continue;
+  // bladeCount est lu ici, après les destructions de lames des phases
+  // précédentes ; alive est relu à chaque paire.
+  const bodies: Array<{ player: Player; x: number; y: number; empty: boolean; spawnProtected: boolean }> = [];
+  for (const o of owners) {
+    if (o.player.alive) {
+      bodies.push({ player: o.player, x: o.x, y: o.y, empty: o.player.bladeCount <= 0, spawnProtected: o.spawnProtected });
+    }
+  }
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i];
+      const b = bodies[j];
       // Spawn protection : aucun des deux ne peut tuer ou être tué pendant
       // l'invuln (autant le défendre, autant l'empêcher d'aller body-camper).
-      if (a.spawnProtectionUntil > nowMs || b.spawnProtectionUntil > nowMs) continue;
-      const aEmpty = a.bladeCount <= 0;
-      const bEmpty = b.bladeCount <= 0;
-      if (!aEmpty && !bEmpty) continue;
+      if (a.spawnProtected || b.spawnProtected) continue;
+      if (!a.empty && !b.empty) continue;
       const dx = a.x - b.x;
       const dy = a.y - b.y;
-      if (dx * dx + dy * dy > PLAYER_BODY_COLLISION * PLAYER_BODY_COLLISION) continue;
-      if (aEmpty && bEmpty) {
-        cb.onPlayerKilled(a, b);
-        cb.onPlayerKilled(b, a);
-      } else if (aEmpty) {
-        cb.onPlayerKilled(a, b);
+      if (dx * dx + dy * dy > BODY_COLLISION * BODY_COLLISION) continue;
+      if (!a.player.alive || !b.player.alive) continue;
+      if (a.empty && b.empty) {
+        cb.onPlayerKilled(a.player, b.player);
+        cb.onPlayerKilled(b.player, a.player);
+      } else if (a.empty) {
+        cb.onPlayerKilled(a.player, b.player);
       } else {
-        cb.onPlayerKilled(b, a);
+        cb.onPlayerKilled(b.player, a.player);
       }
     }
   }
@@ -242,46 +287,45 @@ function narrowPhaseClash(
   destroyed: Set<string>,
   nowSec: number,
   nowMs: number,
+  lastHitAt: Map<string, number>,
   cb: CollisionCallbacks,
 ): void {
   const ownerA = A.player;
   const ownerB = B.player;
-  const reducA = ownerA.shieldUntil > nowMs ? POWERUP_SHIELD_DMG_REDUC : 1;
-  const reducB = ownerB.shieldUntil > nowMs ? POWERUP_SHIELD_DMG_REDUC : 1;
+  const reducA = A.shielded ? SHIELD_REDUC : 1;
+  const reducB = B.shielded ? SHIELD_REDUC : 1;
   // Tier effectif du clash = max des deux. Donne du jus aux duels asymétriques
   // (un Tier 2 vs Tier 0 a quand même l'air gros).
   const clashTier = A.tier > B.tier ? A.tier : B.tier;
 
   for (const ea of A.blades) {
-    if (destroyed.has(ea.blade.id)) continue;
+    if (destroyed.has(ea.id)) continue;
     for (const eb of B.blades) {
-      if (destroyed.has(eb.blade.id)) continue;
+      if (destroyed.has(eb.id)) continue;
       const minDist = ea.hitbox + eb.hitbox;
       const dx = ea.x - eb.x;
       const dy = ea.y - eb.y;
       if (dx * dx + dy * dy > minDist * minDist) continue;
 
-      const key = pairKey(ea.blade.id, eb.blade.id);
+      const key = pairKey(ea.id, eb.id);
       const last = lastHitAt.get(key) ?? 0;
-      if (nowSec - last < BLADE_COLLISION_COOLDOWN) continue;
+      if (nowSec - last < COOLDOWN) continue;
       lastHitAt.set(key, nowSec);
 
       const a = ea.blade;
       const b = eb.blade;
-      const dmgA = RARITY_DAMAGE[a.rarity as BladeRarity];
-      const dmgB = RARITY_DAMAGE[b.rarity as BladeRarity];
-      a.hp = Math.max(0, a.hp - Math.max(1, Math.floor(dmgB * reducA)));
-      b.hp = Math.max(0, b.hp - Math.max(1, Math.floor(dmgA * reducB)));
+      a.hp = Math.max(0, a.hp - Math.max(1, Math.floor(eb.damage * reducA)));
+      b.hp = Math.max(0, b.hp - Math.max(1, Math.floor(ea.damage * reducB)));
       const aDead = a.hp <= 0;
       const bDead = b.hp <= 0;
       let killCount = 0;
       if (bDead) {
-        destroyed.add(b.id);
+        destroyed.add(eb.id);
         cb.onBladeDestroyed(b);
         killCount++;
       }
       if (aDead) {
-        destroyed.add(a.id);
+        destroyed.add(ea.id);
         cb.onBladeDestroyed(a);
         killCount++;
       }
@@ -298,8 +342,8 @@ function narrowPhaseClash(
       // Knockback : direction = vecteur reliant les deux centres joueurs
       // (et non les deux lames : on veut repousser les bonshommes, pas
       // un point arbitraire de leur orbite). Force tier-aware.
-      const px = ownerA.x - ownerB.x;
-      const py = ownerA.y - ownerB.y;
+      const px = A.x - B.x;
+      const py = A.y - B.y;
       const pd = Math.hypot(px, py);
       if (pd > 1e-3) {
         const nx = px / pd;
@@ -332,7 +376,7 @@ function narrowPhaseClash(
   // dans la phase blade-vs-body (elles ne sont plus dans le state mais elles
   // sont encore dans les buckets).
   if (destroyed.size > 0) {
-    A.blades = A.blades.filter((e) => !destroyed.has(e.blade.id));
-    B.blades = B.blades.filter((e) => !destroyed.has(e.blade.id));
+    A.blades = A.blades.filter((e) => !destroyed.has(e.id));
+    B.blades = B.blades.filter((e) => !destroyed.has(e.id));
   }
 }

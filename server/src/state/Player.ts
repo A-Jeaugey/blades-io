@@ -10,7 +10,7 @@ export class Player extends Schema {
   @type("boolean") alive: boolean = true;
   @type("boolean") boost: boolean = false;
   @type("uint16") bladeCount: number = 0;
-  @type("uint32") score: number = 0; // = bladeCount max atteint (leaderboard)
+  @type("uint32") score: number = 0; // score composite, cf. systems/scoring.ts
   @type("uint16") kills: number = 0;
   // Stats de session
   @type("float64") spawnedAt: number = 0;
@@ -86,8 +86,9 @@ export class Player extends Schema {
   knockbackVx: number = 0;
   knockbackVy: number = 0;
   // Buffer circulaire des lames perdues en clash (rareté + ts ms). Sert au
-  // drop de mort : on restitue ~50 % des lames cassées dans les N dernières
-  // secondes pour que le tueur loote un butin cohérent avec le combat
+  // drop de mort : on restitue les lames cassées dans les N dernières
+  // secondes (RECENT_LOSS_DROP_RATIO, 100 % aujourd'hui) pour que le
+  // tueur loote un butin cohérent avec le combat
   // qu'il vient de gagner. Capé à RECENT_LOSS_BUFFER_CAP pour éviter
   // l'accumulation sur les longs combats.
   recentLosses: Array<{ rarity: number; ts: number }> = [];

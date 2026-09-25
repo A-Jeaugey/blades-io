@@ -10,8 +10,8 @@ export const WALL_KILL_THICKNESS = 2; // épaisseur de la zone fatale au bord
 // changement de direction / arrêt-reprise / spam de sprint, l'input
 // se propage 3× plus vite à la simulation → plus de saccade perçue.
 // Coût mesuré (tools/bench-server.js, 60 bots, 2026-09) : tick moyen de
-// 3,9 ms après l'optimisation de l'aimantation (tâche 2.1 du plan ; 9,7 ms
-// avant), et ~95 Ko/s envoyés par client (patchs à 60 Hz eux aussi).
+// 2,0 ms après les tâches 2.1 et 2.2 du plan (9,7 ms avant), et ~95 Ko/s
+// envoyés par client (patchs à 60 Hz eux aussi).
 export const SERVER_TICKRATE = 60; // Hz
 export const SERVER_DT = 1 / SERVER_TICKRATE;
 export const CLIENT_INPUT_RATE = 60; // Hz (matche le tickrate)

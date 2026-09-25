@@ -200,6 +200,17 @@ test("trophées : crédités en fin de vie en public, jamais en privé ni pour u
   assert.deepEqual(recorded, []);
 });
 
+test("trophées : un ramassage juste avant la mort ne réduit pas le score crédité", () => {
+  const r = new TestRoom(clock);
+  const p = r.join("p1", { guestId: "g-9" });
+  p.kills = 3;
+  r.tick(); // updateScore : 3 × 15 + record de 3 lames
+  const composite = p.score;
+  giveBlade(r.state, p);
+  r.room.killPlayer(p, null, "wall");
+  assert.deepEqual(credits, [["guest", "g-9", composite]]);
+});
+
 test("respawn : 3 lames, statistiques remises à zéro, protection de spawn", () => {
   const r = new TestRoom(clock);
   const p = armed(r, "p1", 12);

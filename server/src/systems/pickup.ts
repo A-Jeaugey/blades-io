@@ -48,7 +48,9 @@ export function attachBladeToPlayer(state: ArenaState, player: Player, blade: Bl
   player.bladeCount++;
   player.bladeIds.push(blade.id);
   if (player.bladeCount > player.maxBladeCount) player.maxBladeCount = player.bladeCount;
-  player.score = player.maxBladeCount;
+  // Pas de score ici : il est recalculé par updateScore (formule composite).
+  // L'ancien `score = maxBladeCount` le faisait retomber jusqu'à la fin du
+  // tick, et une mort dans le même tick enregistrait ce score amputé.
 }
 
 export class PickupSystem {

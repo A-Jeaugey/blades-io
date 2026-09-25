@@ -126,6 +126,8 @@ export class ArenaRoom extends Room<ArenaState> {
   // Sessions expulsées pour flood d'inputs : onLeave les nettoie sans
   // ouvrir la fenêtre de reconnexion (sinon le client reviendrait aussitôt).
   private kickedSessions = new Set<string>();
+  // Cooldowns de clash par paire (cf. resolveCollisions), propres à la room.
+  private clashCooldowns = new Map<string, number>();
 
   onCreate(options: { code?: string; bots?: boolean } = {}): void {
     this.roomCode = typeof options.code === "string" ? options.code.toUpperCase() : "";
@@ -455,7 +457,7 @@ export class ArenaRoom extends Room<ArenaState> {
         };
         this.broadcast("clash", ev);
       },
-    });
+    }, this.clashCooldowns);
     // Collisions des projectiles : APRÈS resolveCollisions pour que les
     // lames orbitantes restent référence (orbitCache à jour, position des
     // joueurs aussi). Les projectiles consomment leur "pierce" sur chaque

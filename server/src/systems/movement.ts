@@ -32,18 +32,31 @@ function playerShieldRadius(p: Player): number {
 // Push-out symétrique entre deux joueurs : on pousse les deux centres
 // jusqu'à ce que la distance soit au moins R_a + R_b. Itéré une seule fois,
 // la dérive éventuelle sera corrigée au tick suivant.
+// Positions et rayons de bouclier sont lus une fois par joueur dans des
+// tableaux (les champs du schema passent par des accesseurs, et le rayon
+// était recalculé pour chaque paire) ; les paires suivantes voient les
+// positions déjà corrigées, comme avant. Avec des nombres en tableau, les
+// ~1 800 paires d'une room de 60 joueurs coûtent quelques microsecondes :
+// pas besoin de grille spatiale.
 function pushOutPlayers(state: ArenaState): void {
   const list: Player[] = [];
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const radii: number[] = [];
   state.players.forEach((p) => {
-    if (p.alive) list.push(p);
+    if (!p.alive) return;
+    list.push(p);
+    xs.push(p.x);
+    ys.push(p.y);
+    radii.push(playerShieldRadius(p));
   });
-  for (let i = 0; i < list.length; i++) {
-    for (let j = i + 1; j < list.length; j++) {
-      const a = list[i];
-      const b = list[j];
-      const minDist = playerShieldRadius(a) + playerShieldRadius(b);
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
+  const n = list.length;
+  const moved = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const minDist = radii[i] + radii[j];
+      const dx = xs[i] - xs[j];
+      const dy = ys[i] - ys[j];
       const d2 = dx * dx + dy * dy;
       if (d2 >= minDist * minDist) continue;
       const dist = Math.sqrt(d2);
@@ -58,11 +71,18 @@ function pushOutPlayers(state: ArenaState): void {
         ny = dy / dist;
       }
       const overlap = minDist - dist;
-      a.x += nx * overlap * 0.5;
-      a.y += ny * overlap * 0.5;
-      b.x -= nx * overlap * 0.5;
-      b.y -= ny * overlap * 0.5;
+      xs[i] += nx * overlap * 0.5;
+      ys[i] += ny * overlap * 0.5;
+      xs[j] -= nx * overlap * 0.5;
+      ys[j] -= ny * overlap * 0.5;
+      moved[i] = 1;
+      moved[j] = 1;
     }
+  }
+  for (let i = 0; i < n; i++) {
+    if (!moved[i]) continue;
+    list[i].x = xs[i];
+    list[i].y = ys[i];
   }
 }
 
