@@ -86,10 +86,9 @@ interface MagnetSource {
 
 // Vitesse de l'horloge d'orbite d'un joueur : tier × nombre de lames ×
 // power-up Spin × échelle propre au joueur (désynchronise deux orbites
-// identiques), nulle pendant le hitlag. Arrondie en float32, le type du
-// champ synchronisé.
+// identiques). Le hitlag ne la gèle plus (tâche 1.6). Arrondie en float32,
+// le type du champ synchronisé.
 function orbitRateOf(p: Player, nowMs: number): number {
-  if (p.hitlagUntil > nowMs) return 0;
   const spinBoost = p.spinUntil > nowMs ? SPIN_MULT : 1;
   return Math.fround(tierRot(p.tier) * countRot(p.bladeCount) * spinBoost * p.spinScale);
 }

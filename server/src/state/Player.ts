@@ -43,9 +43,8 @@ export class Player extends Schema {
   // Tier dérivé de bladeCount (0..2). Synchronisé pour que le client
   // puisse adapter la taille/forme/glow des lames sans avoir à recompter.
   @type("uint8") tier: number = 0;
-  // Hitlag : pendant cette fenêtre (ms epoch), le joueur est figé en
-  // mouvement ET en rotation orbitale (orbitRate à 0). Permet de donner du
-  // poids au clash sans desync visuel client/serveur.
+  // Hitlag : pendant cette fenêtre (ms epoch), le déplacement du joueur est
+  // figé (ses orbites tournent). Donne du poids au clash.
   @type("float64") hitlagUntil: number = 0;
   // Horloge d'orbite θ (cf. orbitThetaAt dans shared) : θ vaut orbitPhase
   // au tick orbitTick puis avance de orbitRate par seconde de jeu. Recalée
@@ -78,6 +77,9 @@ export class Player extends Schema {
   // true ponctuellement à chaque appui, le serveur le remet à false après
   // traitement (ou après le tick si cooldown actif).
   inputThrow: boolean = false;
+  // Pas de nouveau hitlag avant cette date (ms epoch) : fin du gel en cours
+  // + HITLAG_COOLDOWN_MS.
+  hitlagReadyAt: number = 0;
   // Visée du lancer en attente, normalisée (0, 0 = aucune : le lancer suit
   // la direction de déplacement). Écrite avec inputThrow (handleInput, bots),
   // consommée par processThrows.

@@ -21,6 +21,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Tier system** | 0 (arrows) → 1 (swords, 10+ blades) → 2 (scythes, 20+ blades), with hitbox/visual scaling |
 | **Throw blade** | Detach your outermost blade and launch it as a projectile toward your aim (mouse cursor, or drag from the THROW button on mobile), independently of where you walk; keyboard-only throws and a THROW tap follow your movement. 0.5 s cooldown; a dashed line on the ground shows the path while the throw is ready |
 | **Pierce by rarity** | Common/Rare: 1 hit · Epic: 2 hits · Legendary: 3 hits |
+| **Clash impact** | Each clash knocks both players back (capped at a tier-2 knockback, applied in full after the freeze) and freezes their movement for 50–100 ms by tier; orbits keep spinning, and after a freeze a player gets 250 ms before the next one, so a fight never locks you in place |
 | **Power-ups** | Speed, Spin, Magnet, Shield, +Blades — duration scales with rarity |
 | **Loot crates** | Shoot or orbit them to crack them open and dump weighted-rare loot |
 | **Glitch bushes** | Step in to vanish from other players' screens and minimaps |

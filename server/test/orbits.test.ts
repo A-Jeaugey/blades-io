@@ -1,6 +1,6 @@
 // Horloge d'orbite (tâche 1.1) : les angles des lames se déduisent des
-// champs synchronisés, restent continus quand la vitesse change et
-// s'arrêtent pendant le hitlag.
+// champs synchronisés et restent continus quand la vitesse change. Le
+// hitlag ne les arrête plus (tâche 1.6).
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { orbitSlotAngle, orbitThetaAt, ringRadius } from "@bladeio/shared";
@@ -87,23 +87,21 @@ test("ramasser une lame ne change la vitesse que d'un cran", () => {
   assert.ok(Math.abs(thetaAfter - thetaBefore) < 1e-9);
 });
 
-test("le hitlag fige l'horloge d'orbite, qui repart sans saut", () => {
+test("le hitlag ne fige plus l'horloge d'orbite", () => {
+  // Figées, les lames restaient au contact et relançaient le clash.
   const p = addPlayer(state, { x: 0, y: -20, blades: 3 });
   for (let tick = 1; tick <= 60; tick++) {
     clock.advance(DT * 1000);
     positionsAt(tick);
   }
+  const rate = p.orbitRate;
   p.hitlagUntil = clock.now + 100;
-  const frozen = positionsAt(61);
+  let prev = positionsAt(61);
   for (let tick = 62; tick <= 66; tick++) {
     clock.advance(DT * 1000);
     const pos = positionsAt(tick);
-    for (const [id, f] of frozen) assert.ok(Math.hypot(f.x - pos.get(id)!.x, f.y - pos.get(id)!.y) < 1e-9);
+    for (const [id, f] of prev) assert.ok(Math.hypot(f.x - pos.get(id)!.x, f.y - pos.get(id)!.y) > 1e-3);
+    prev = pos;
   }
-  assert.equal(p.orbitRate, 0);
-  clock.advance(200);
-  const resumed = positionsAt(67);
-  assert.ok(p.orbitRate > 0);
-  // Premier tick après le gel : l'angle part de la position figée.
-  for (const [id, f] of frozen) assert.ok(Math.hypot(f.x - resumed.get(id)!.x, f.y - resumed.get(id)!.y) < 1e-9);
+  assert.equal(p.orbitRate, rate);
 });

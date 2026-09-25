@@ -26,8 +26,8 @@ export function ringAngularVelocity(ringIndex: number, rotMult: number = 1): num
 }
 
 // Horloge d'orbite θ d'un joueur. Elle avance à orbitRate par seconde de
-// jeu (tier × nombre de lames × Spin × échelle propre au joueur, 0 pendant
-// le hitlag) et n'est recalée qu'au changement de vitesse : θ vaut
+// jeu (tier × nombre de lames × Spin × échelle propre au joueur) et n'est
+// recalée qu'au changement de vitesse : θ vaut
 // orbitPhase au tick orbitTick. Serveur et clients la calculent à partir
 // des mêmes champs synchronisés, donc au même angle pour un tick donné,
 // quel que soit le moment où le client a rejoint la partie.

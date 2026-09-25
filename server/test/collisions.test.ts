@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { BladeRarity, CRATE_HP, tierHitlagMs, tierKnockback } from "@bladeio/shared";
+import {
+  BladeRarity,
+  CRATE_HP,
+  HITLAG_COOLDOWN_MS,
+  KNOCKBACK_MAX_SPEED,
+  tierHitlagMs,
+  tierKnockback,
+} from "@bladeio/shared";
 import { ArenaState } from "../src/state/ArenaState";
 import { Blade } from "../src/state/Blade";
 import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
 import { ClashInfo, CollisionCallbacks, resolveCollisions } from "../src/systems/collisions";
 import { OrbitPositionCache } from "../src/systems/orbitPositions";
-import { FakeClock, addPlayer, ownedBlades, uid } from "./helpers";
+import { FakeClock, addPlayer, giveBlade, ownedBlades, uid } from "./helpers";
 
 let clock: FakeClock;
 let state: ArenaState;
@@ -140,6 +147,41 @@ test("un clash applique hitlag et knockback aux deux joueurs", () => {
   // A est à gauche de B : repoussé vers -x, B vers +x.
   assert.equal(a.knockbackVx, -tierKnockback(0));
   assert.equal(b.knockbackVx, tierKnockback(0));
+});
+
+test("hitlag : un seul gel à la fois, puis 250 ms de liberté", () => {
+  const { a, b } = duel(BladeRarity.Legendary, BladeRarity.Common);
+  // La Common de B casse à chaque clash : on lui en redonne une au même
+  // endroit, et on ignore le délai par paire de lames.
+  const clashAgain = () => {
+    const blade = giveBlade(state, b, BladeRarity.Common);
+    cache.set(blade.id, 2.2, 0);
+    resolveCollisions(state, cache, recorder(), new Map());
+  };
+  resolveCollisions(state, cache, recorder(), cooldowns);
+  const firstEnd = clock.now + tierHitlagMs(0);
+  assert.equal(a.hitlagUntil, firstEnd);
+  // Un clash pendant le gel ne le prolonge pas.
+  clock.advance(30);
+  clashAgain();
+  assert.equal(a.hitlagUntil, firstEnd);
+  // Pas de nouveau gel avant 250 ms de liberté...
+  clock.advance(firstEnd + HITLAG_COOLDOWN_MS - 1 - clock.now);
+  clashAgain();
+  assert.equal(a.hitlagUntil, firstEnd);
+  // ... puis de nouveau.
+  clock.advance(1);
+  clashAgain();
+  assert.equal(a.hitlagUntil, clock.now + tierHitlagMs(0));
+  assert.equal(b.hitlagUntil, clock.now + tierHitlagMs(0));
+});
+
+test("recul : les clashs s'additionnent, vitesse plafonnée", () => {
+  const { a } = duel(BladeRarity.Legendary, BladeRarity.Legendary);
+  a.knockbackVx = -20;
+  a.knockbackVy = 0;
+  resolveCollisions(state, cache, recorder(), cooldowns);
+  assert.equal(a.knockbackVx, -KNOCKBACK_MAX_SPEED);
 });
 
 test("une lame qui touche un corps tue, le propriétaire est crédité", () => {

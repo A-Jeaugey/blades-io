@@ -421,6 +421,7 @@ export class ArenaRoom extends Room<ArenaState> {
     p.spinScale = 0.75 + Math.random() * 0.5;
     p.tier = 0;
     p.hitlagUntil = 0;
+    p.hitlagReadyAt = 0;
     // Nouvelle horloge d'orbite ; la vitesse est calculée au premier tick.
     p.orbitPhase = 0;
     p.orbitTick = this.state.tick;

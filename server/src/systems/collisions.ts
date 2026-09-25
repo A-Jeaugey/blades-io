@@ -2,6 +2,8 @@ import {
   BLADE_COLLISION_COOLDOWN,
   BladeRarity,
   CRATE_HITBOX,
+  HITLAG_COOLDOWN_MS,
+  KNOCKBACK_MAX_SPEED,
   PLAYER_BODY_COLLISION,
   PLAYER_BODY_RADIUS,
   POWERUP_SHIELD_DMG_REDUC,
@@ -50,8 +52,32 @@ const BODY_RADIUS = PLAYER_BODY_RADIUS;
 const BODY_COLLISION = PLAYER_BODY_COLLISION;
 const CRATE_RADIUS = CRATE_HITBOX;
 const COOLDOWN = BLADE_COLLISION_COOLDOWN;
+const HITLAG_COOLDOWN = HITLAG_COOLDOWN_MS;
+const KNOCKBACK_MAX = KNOCKBACK_MAX_SPEED;
 const SHIELD_REDUC = POWERUP_SHIELD_DMG_REDUC;
 const DAMAGE = RARITY_DAMAGE;
+
+// Un seul gel à la fois, puis HITLAG_COOLDOWN_MS de liberté : un clash
+// pendant le gel ne le prolonge pas. Avant, chaque contact le repoussait et
+// deux joueurs au contact restaient figés sans pouvoir fuir.
+function startHitlag(p: Player, nowMs: number, lagEnd: number): void {
+  if (nowMs < p.hitlagReadyAt) return;
+  p.hitlagUntil = lagEnd;
+  p.hitlagReadyAt = lagEnd + HITLAG_COOLDOWN;
+}
+
+// Reculs additionnés (les clashs successifs s'empilent), vitesse plafonnée.
+function addKnockback(p: Player, vx: number, vy: number): void {
+  let kx = p.knockbackVx + vx;
+  let ky = p.knockbackVy + vy;
+  const speed = Math.hypot(kx, ky);
+  if (speed > KNOCKBACK_MAX) {
+    kx *= KNOCKBACK_MAX / speed;
+    ky *= KNOCKBACK_MAX / speed;
+  }
+  p.knockbackVx = kx;
+  p.knockbackVy = ky;
+}
 
 interface OrbitingEntry {
   blade: Blade;
@@ -335,12 +361,10 @@ function narrowPhaseClash(
 
       // Clash : déclenche hitlag + knockback + event broadcast pour le FX.
       // Hitlag : durée tier-aware. Plus le tier est gros, plus l'impact est
-      // "lourd" (jusqu'à 110 ms pour Tier 2). Évite que le hitlag ne soit
-      // re-bumpé en boucle si plusieurs lames clashent dans le même tick.
-      const hitlagMs = tierHitlagMs(clashTier);
-      const lagEnd = nowMs + hitlagMs;
-      if (ownerA.hitlagUntil < lagEnd) ownerA.hitlagUntil = lagEnd;
-      if (ownerB.hitlagUntil < lagEnd) ownerB.hitlagUntil = lagEnd;
+      // "lourd" (jusqu'à 100 ms pour Tier 2).
+      const lagEnd = nowMs + tierHitlagMs(clashTier);
+      startHitlag(ownerA, nowMs, lagEnd);
+      startHitlag(ownerB, nowMs, lagEnd);
 
       // Knockback : direction = vecteur reliant les deux centres joueurs
       // (et non les deux lames : on veut repousser les bonshommes, pas
@@ -354,11 +378,9 @@ function narrowPhaseClash(
         const fA = tierKnockback(B.tier);
         const fB = tierKnockback(A.tier);
         // L'addition (et non l'écrasement) permet aux clashs successifs de
-        // s'empiler proprement avant la décroissance exponentielle.
-        ownerA.knockbackVx += nx * fA;
-        ownerA.knockbackVy += ny * fA;
-        ownerB.knockbackVx -= nx * fB;
-        ownerB.knockbackVy -= ny * fB;
+        // s'empiler avant la décroissance exponentielle ; plafonnée.
+        addKnockback(ownerA, nx * fA, ny * fA);
+        addKnockback(ownerB, -nx * fB, -ny * fB);
       }
 
       // Notif : milieu des deux lames pour positionner la VFX au point

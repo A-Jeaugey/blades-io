@@ -104,21 +104,8 @@ export function updateMovement(
       p.inputBoost = false;
     }
 
-    // Knockback : amortissement exponentiel constant (e^(-dt/τ)). Calculé
-    // même en hitlag pour que la décroissance ne saute pas après dégel.
-    if (p.knockbackVx !== 0 || p.knockbackVy !== 0) {
-      const decay = Math.exp(-dt / KNOCKBACK_DECAY);
-      p.knockbackVx *= decay;
-      p.knockbackVy *= decay;
-      if (Math.hypot(p.knockbackVx, p.knockbackVy) < 0.05) {
-        p.knockbackVx = 0;
-        p.knockbackVy = 0;
-      }
-    }
-
-    // Hitlag : on fige le mouvement (input ET knockback). Les orbites
-    // s'arrêtent aussi (vitesse d'orbite nulle, cf. orbitPositions) ; le
-    // push-out entre joueurs continue de s'appliquer.
+    // Hitlag : on fige le mouvement (input ET knockback) ; les orbites
+    // tournent et le push-out entre joueurs continue de s'appliquer.
     const inHitlag = p.hitlagUntil > now;
     if (inHitlag) {
       // Reset boost pour ne pas drainer pendant la pause.
@@ -130,6 +117,20 @@ export function updateMovement(
       p.x = pushed.x;
       p.y = pushed.y;
       return;
+    }
+
+    // Knockback : amortissement exponentiel constant (e^(-dt/τ)), hors gel
+    // seulement : le recul reçu pendant le hitlag s'applique en entier à sa
+    // sortie. Avant, il décroissait sans déplacer le joueur et se perdait
+    // en partie (46 % pour un gel de 110 ms).
+    if (p.knockbackVx !== 0 || p.knockbackVy !== 0) {
+      const decay = Math.exp(-dt / KNOCKBACK_DECAY);
+      p.knockbackVx *= decay;
+      p.knockbackVy *= decay;
+      if (Math.hypot(p.knockbackVx, p.knockbackVy) < 0.05) {
+        p.knockbackVx = 0;
+        p.knockbackVy = 0;
+      }
     }
 
     let dx = p.inputDx;

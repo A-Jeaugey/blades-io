@@ -120,10 +120,21 @@ export const KNOCKBACK_TIER_MULT: readonly number[] = [1.0, 1.7, 2.6];
 // Décroissance du knockback (s) : durée pendant laquelle la velocity de
 // recul s'amortit exponentiellement avant de devenir négligeable.
 export const KNOCKBACK_DECAY = 0.18;
+// Plafond de la vitesse de recul (u/s), celle d'un clash de tier 2. Les
+// reculs s'additionnent à chaque paire de lames au contact : deux joueurs
+// de tier 2 en accumulaient 200 u/s en quelques ticks et se projetaient à
+// plus de 10 u (tâche 1.6). Recul maximal : 21 × 0,18 ≈ 3,8 u.
+export const KNOCKBACK_MAX_SPEED = 21;
 
-// Hitlag : micro-pause sur le mouvement et la rotation orbitale du joueur
-// touché, pour donner du poids à l'impact. Tier-aware.
-export const HITLAG_DURATION_MS: readonly number[] = [50, 75, 110];
+// Hitlag : micro-pause du déplacement du joueur touché, pour donner du
+// poids à l'impact. Tier-aware. Les orbites continuent de tourner : figées,
+// les lames restaient au contact et relançaient le clash (tâche 1.6).
+export const HITLAG_DURATION_MS: readonly number[] = [50, 75, 100];
+// Liberté garantie après un hitlag : aucun nouveau gel avant ce délai. En
+// combat prolongé, les clashs s'enchaînaient et figeaient les deux joueurs
+// sans issue ; au pire, un joueur passe désormais 100 / (100 + 250), soit
+// 29 % du temps figé.
+export const HITLAG_COOLDOWN_MS = 250;
 
 // Intensité de screen shake déclenchée pour le joueur local quand une de
 // ses lames clashe. Tier-aware. Plus généreux que le hit-confirm classique.

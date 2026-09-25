@@ -9,6 +9,8 @@ import {
   PLAYER_SPEED,
   SPAWN_PROTECTION_MS,
   WALL_KILL_THICKNESS,
+  outerOrbitRadius,
+  tierBladeHitbox,
 } from "@bladeio/shared";
 import * as matches from "../src/auth/matches";
 import * as wallet from "../src/auth/wallet";
@@ -318,6 +320,51 @@ test("clash : l'évènement désigne les lames et leurs propriétaires", () => {
   for (const d of r.eventsOf("bladeDestroyed")) {
     assert.equal(d.byId, d.ownerId === p1.id ? p2.id : p1.id);
   }
+});
+
+test("hitlag : pris en étau pendant 3 s, moins de 30 % du temps figé, et on s'en extrait", () => {
+  // Tâche 1.6. Les reculs venus des deux côtés s'annulent : le contact
+  // dure. Avant, les gels s'enchaînaient (40 % du temps figé, jusqu'à 50 %)
+  // et les reculs empilés projetaient les joueurs à plus de 20 u.
+  const r = new TestRoom(clock);
+  const left = r.join("left");
+  const mid = r.join("mid");
+  const right = r.join("right");
+  for (let i = 0; i < 30; i++) {
+    giveBlade(r.state, left, BladeRarity.Common);
+    giveBlade(r.state, mid, BladeRarity.Legendary);
+    giveBlade(r.state, right, BladeRarity.Common);
+  }
+  left.x = -12; mid.x = 0; right.x = 12;
+  left.y = mid.y = right.y = -40;
+  const press = (midDy: number) => {
+    r.room.handleInput(fakeClient("left"), { dx: 1, dy: 0 });
+    r.room.handleInput(fakeClient("mid"), { dx: 0, dy: midDy });
+    r.room.handleInput(fakeClient("right"), { dx: -1, dy: 0 });
+    r.tick();
+  };
+  while (r.eventsOf("clash").length === 0) press(0);
+  let frozen = 0;
+  let widest = 0;
+  for (let i = 0; i < 180; i++) {
+    press(0);
+    if (mid.hitlagUntil > clock.now) frozen++;
+    widest = Math.max(widest, mid.x - left.x, right.x - mid.x);
+  }
+  assert.ok(frozen / 180 < 0.3, `figé ${((100 * frozen) / 180).toFixed(1)} %`);
+  assert.ok(widest < 15, `écart ${widest.toFixed(1)} u`);
+  // Il fuit à la perpendiculaire, les deux autres pressent toujours.
+  const reach = (a: Player, b: Player) =>
+    outerOrbitRadius(a.bladeCount) + tierBladeHitbox(a.tier) + outerOrbitRadius(b.bladeCount) + tierBladeHitbox(b.tier);
+  let escapedAfter = -1;
+  for (let i = 0; i < 60 && escapedAfter < 0; i++) {
+    press(1);
+    const free = Math.hypot(mid.x - left.x, mid.y - left.y) > reach(mid, left) &&
+      Math.hypot(mid.x - right.x, mid.y - right.y) > reach(mid, right);
+    if (free) escapedAfter = i + 1;
+  }
+  assert.equal(mid.alive, true);
+  assert.ok(escapedAfter > 0, "toujours pris dans l'étau après 1 s");
 });
 
 test("mur : une lame désintégrée est signalée au-delà du bord de l'arène", () => {

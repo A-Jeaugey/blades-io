@@ -111,7 +111,7 @@ export interface PlayerPositionProvider {
     y: number;
     spinPhase: number;
     // Horloge d'orbite du joueur au tick de rendu (cf. orbitThetaAt) :
-    // intègre tier, nombre de lames, Spin et hitlag, comme sur le serveur.
+    // intègre tier, nombre de lames et Spin, comme sur le serveur.
     theta: number;
     // Tier 0..2 du joueur, pilote l'échelle et le glow visuels.
     tier: number;

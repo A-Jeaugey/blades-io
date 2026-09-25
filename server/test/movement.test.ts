@@ -90,6 +90,18 @@ test("le hitlag fige le déplacement", () => {
   assert.ok(p.x > 0);
 });
 
+test("hitlag : le recul reçu pendant le gel s'applique en entier à sa sortie", () => {
+  const p = addPlayer(state, { x: 0, y: -20 });
+  p.knockbackVx = 8;
+  p.hitlagUntil = clock.now + 100;
+  step(5); // 83 ms, figé
+  assert.equal(p.x, 0);
+  assert.equal(p.knockbackVx, 8);
+  step(60);
+  // Même recul total que sans gel (cf. test suivant) : rien n'est perdu.
+  assert.ok(p.x > 1.2 && p.x < 1.5, `x = ${p.x}`);
+});
+
 test("le knockback s'ajoute puis s'éteint (τ = 0,18 s)", () => {
   const p = addPlayer(state, { x: 0, y: -20 });
   p.knockbackVx = 8;
