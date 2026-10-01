@@ -337,6 +337,15 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 
 ## Gotchas connus
 
+- **Méta (phase 5)** : l'XP, ce sont les trophées gagnés en public
+  (`wallets.total_earned`, solde invité) ; courbe de niveaux dans
+  `shared/src/levels.ts`. Les défis (`shared/src/challenges.ts`) sont tirés
+  d'après la date de Paris, les mêmes pour tous ; le serveur les fait
+  avancer à chaque fin de vie publique (`advanceChallengesFor` dans
+  `ArenaRoom`, fonction SQL `advance_challenges`, migration 0008, qui
+  crédite aussi la récompense). Une nouvelle métrique de défi se compte
+  par vie sur `Player` (remise à zéro au respawn) et entre dans
+  `LifeChallengeStats`.
 - **Build et CI** : `npm run build` (shared, puis serveur, puis client)
   passe avec la version de TypeScript verrouillée (5.9.3) ; l'ancien
   plantage de `build:shared` ne se reproduit plus. La CI GitHub Actions

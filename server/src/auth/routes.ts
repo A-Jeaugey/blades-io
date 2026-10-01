@@ -3,6 +3,7 @@ import { USERNAME_RE, getShopItem } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import { getProfileStats } from "./profileStats";
+import { getChallenges } from "../challenges";
 import {
   claimGuestWallet,
   createGuestWallet,
@@ -99,6 +100,22 @@ export function buildAuthRouter(): Router {
       return;
     }
     res.json({ stats });
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/challenges  [?guest=<jeton invité>]
+  // Défis du jour et de la semaine (tâche 5.3) et leur progression : celle
+  // du compte (bearer), sinon du portefeuille invité, sinon à zéro.
+  // --------------------------------------------------------------------- //
+  router.get("/challenges", async (req: Request, res: Response) => {
+    let owner: { id: string; kind: "user" | "guest" } | null = null;
+    const user = isSupabaseConfigured() ? await verifyAccessToken(bearerToken(req)) : null;
+    if (user) owner = { id: user.id, kind: "user" };
+    else if (isGuestTokenConfigured()) {
+      const guestId = verifyGuestToken(((req.query.guest as string | undefined) ?? "").toString());
+      if (guestId) owner = { id: guestId, kind: "guest" };
+    }
+    res.json(await getChallenges(owner));
   });
 
   // --------------------------------------------------------------------- //

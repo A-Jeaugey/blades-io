@@ -31,6 +31,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Leader bounty** | The leader (best score among living players) wears a crown showing their bounty: a quarter of their score, from 10 to 150 trophées, paid to whoever kills them, and they drop all of their blades instead of 70 %. No bounty below 30 points |
 | **Underdog** | Killing a player who had at least twice your blades at the start of the fight (and at least 10 of them) pays double: +15 on top of the kill. On death, the rarest blades drop first |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
+| **Challenges** | Three daily challenges (easy, medium, hard: throw 20 blades, reach 40 blades in one life, take down the leader…) and one weekly, the same for everyone, renewed at midnight Paris time (Monday for the weekly). Every life in a public room counts, for accounts and guests with a trophy wallet; rewards are trophées (so XP). They show in PROFILE (with the count done today on its button) and a banner pops in game when one is completed |
 | **Levels** | Trophées earned in public rooms are also XP (spending them does not lower it): your level shows next to your name in other players' nametags, in the lobby, on the death card (with level-ups) and in your profile. Level 2 after a life or two, 10 after ~2 000, 50 after ~30 000; titles at levels 5, 10, 20, 30, 50, 75 and 100. Bots have no level |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
@@ -186,6 +187,7 @@ Open the **SQL editor** in your Supabase dashboard and run every file of
 - `0005_life_stats.sql` — gameplay telemetry (below)
 - `0006_life_stats_snowball.sql` — telemetry of the leader bounty and underdog kills
 - `0007_player_stats.sql` — the `player_stats` view behind the lobby's PROFILE panel (cumulated public games per account), revoked from clients
+- `0008_challenges.sql` — daily and weekly challenge progress per account or guest wallet, and the `advance_challenges` function that also credits rewards (server only)
 
 #### Gameplay telemetry
 
@@ -215,6 +217,7 @@ Restart the dev server (`npm run dev`) and:
 - After signing up, choose a username (3–16 chars).
 - Play a public game to the death — the result should appear in `matches` (Table editor in Supabase), and the life in `life_stats`.
 - The right rail of the login screen ("TOP TROPHÉES") populates from `/api/leaderboard`.
+- PROFILE also lists today's challenges from `/api/challenges` (with `?guest=<token>` for a guest).
 - PROFILE in the lobby shows your account's stats from `/api/profile/stats` (games, eliminations, best score and all-time rank, survival, last 10 games). Guests see the same stats for the public games played on their device, kept in `localStorage` (`blade.stats`).
 
 ### Guest mode

@@ -141,4 +141,8 @@ export class Player extends Schema {
   // Trophées gagnés en primes de leader et en kills « underdog » pendant la
   // vie (tâche 4.2) : ajoutés au score composite.
   bonusScore: number = 0;
+  // Défis (tâche 5.3) : éliminations d'un joueur qui avait plus de lames
+  // au début de l'échange, et du leader.
+  lifeBiggerKills: number = 0;
+  lifeLeaderKills: number = 0;
 }

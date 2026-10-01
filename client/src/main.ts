@@ -15,6 +15,7 @@ import {
   SCORE_POWERUP,
   THROW_PROJECTILE_MAX_RANGE,
   TIER_UP_SHAKE,
+  ChallengeDoneEvent,
   ChatEvent,
   InputMessage,
   TierUpEvent,
@@ -67,6 +68,7 @@ import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
 import { getBest, submitScore } from "./ui/personalBest";
 import { recordLocalLife } from "./ui/localStats";
 import { ProfilePanel } from "./ui/ProfilePanel";
+import { challengeById, challengeText } from "./ui/challenges";
 import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
 import { SettingsPanel, shakeIntensity } from "./ui/Settings";
@@ -206,6 +208,10 @@ class Game {
   private clashChecks: ClashCheck[] = [];
   private clashChecksImmediate: ClashCheck[] = [];
   private settings: SettingsPanel;
+  private profile!: ProfilePanel;
+  // Défis réussis (tâche 5.3) : bandeau l'un après l'autre.
+  private challengeToasts: string[] = [];
+  private challengeToastUntil = 0;
   private chat!: ChatPanel;
   private nametags = new NametagOverlay();
   private sound = new SoundManager();
@@ -436,7 +442,8 @@ class Game {
     });
     this.throwBtn = document.getElementById("throw-btn");
     this.onboarding = new Onboarding(() => this.input.isTouch);
-    new ProfilePanel();
+    this.profile = new ProfilePanel();
+    void this.profile.refreshBadge();
     this.haptics = new Haptics(() => this.input.isTouch);
     // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
     // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
@@ -871,6 +878,17 @@ class Game {
         this.sound.tierUp(msg.tier);
       }
     }));
+    room.onMessage("challengeDone", (msg: ChallengeDoneEvent) => {
+      for (const done of msg.challenges ?? []) {
+        const def = challengeById(done.challenge);
+        if (!def) continue;
+        this.challengeToasts.push(t("challenge.toast", { name: challengeText(def), reward: done.reward }));
+        // Récompense créditée par le serveur : solde et niveau à jour.
+        if (this.guestBalance !== null && !auth.getAccessToken()) this.guestBalance += done.reward;
+      }
+      if (auth.getAccessToken()) void wallet.refresh();
+      this.sound.challengeDone();
+    });
     room.onMessage("chat", (msg: ChatEvent) => {
       this.chat.onChatEvent(msg);
     });
@@ -1228,6 +1246,24 @@ class Game {
   // au menu) : record personnel (cf. personalBest) et statistiques locales
   // du profil (tâche 5.1). Renvoie le record d'avant et s'il est battu
   // (null : rien de versé).
+  // Bandeau « défi réussi » (tâche 5.3), 4 s chacun, dans l'ordre.
+  private updateChallengeToast(now: number): void {
+    if (now < this.challengeToastUntil) return;
+    const el = document.getElementById("challenge-toast");
+    if (!el) return;
+    const next = this.challengeToasts.shift();
+    if (next === undefined) {
+      if (this.challengeToastUntil !== 0) {
+        el.classList.add("hidden");
+        this.challengeToastUntil = 0;
+      }
+      return;
+    }
+    el.textContent = next;
+    el.classList.remove("hidden");
+    this.challengeToastUntil = now + 4000;
+  }
+
   private submitLife(me: any): { previous: number; isNew: boolean } | null {
     if (this.bestSubmitted || this.room?.state?.isPrivate) return null;
     this.bestSubmitted = true;
@@ -1337,6 +1373,7 @@ class Game {
       return;
     }
     this.login.show();
+    void this.profile.refreshBadge();
     void this.sound.playLobbyMusic();
   }
 
@@ -1890,6 +1927,7 @@ class Game {
         window.innerHeight,
       );
       this.updateHud();
+      this.updateChallengeToast(performance.now());
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
 
       // Crown UI rendering

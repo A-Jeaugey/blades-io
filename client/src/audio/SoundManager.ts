@@ -379,6 +379,13 @@ export class SoundManager {
     }
   }
 
+  // Défi réussi (tâche 5.3) : quinte et octave sur la cloche, plus posé
+  // que le carillon d'élimination.
+  challengeDone(): void {
+    if (!this.started) return;
+    this.sequence(this.chimeSynth, [79, 86, 91], 0.11, 0.18, 0.9);
+  }
+
   // Passage de palier (tâche 4.1) : arpège montant, plus long et plus aigu
   // à chaque palier, et coup sourd pour les trois derniers. À distinguer à
   // l'oreille du carillon d'élimination (sauts d'octave).

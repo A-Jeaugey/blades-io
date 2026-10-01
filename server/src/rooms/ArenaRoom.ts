@@ -81,7 +81,8 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ProjectileImpactEvent, levelForXp } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, ProjectileImpactEvent, levelForXp } from "@bladeio/shared";
+import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
@@ -462,6 +463,10 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     if (this.isPrivate) return;
     const trophies = Math.max(0, Math.floor(p.score));
     // Écritures suivies (trackWrite) : un arrêt du serveur les attend.
+    const owner: ChallengeOwner | null = p.userId
+      ? { id: p.userId, kind: "user" }
+      : p.guestId ? { id: p.guestId, kind: "guest" } : null;
+    if (owner) trackWrite(this.advanceChallengesFor(p, owner));
     if (p.userId) {
       const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
       trackWrite(recordMatch({
@@ -484,6 +489,27 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       trackWrite(creditGuestWallet(p.guestId, trophies));
       this.gainXp(p, trophies);
     }
+  }
+
+  // Défis (tâche 5.3) : la base fait avancer ceux du jour et de la semaine
+  // et crédite ceux que la vie réussit ; le joueur, s'il est encore là, le
+  // voit tout de suite (XP et notification).
+  private async advanceChallengesFor(p: Player, owner: ChallengeOwner): Promise<void> {
+    const done = await advanceChallenges(owner, {
+      throws: p.lifeThrows,
+      crates: p.cratesDestroyed,
+      kills: p.kills,
+      powerups: p.powerupsCollected,
+      survivalSeconds: Math.max(0, (Date.now() - p.spawnedAt) / 1000),
+      biggerKills: p.lifeBiggerKills,
+      leaderKills: p.lifeLeaderKills,
+      peakBlades: p.maxBladeCount,
+      wasLeader: p.lifeLeaderMs > 0 || p.id === this.leaderId,
+    });
+    if (done.length === 0 || this.state.players.get(p.id) !== p) return;
+    for (const d of done) this.gainXp(p, d.reward);
+    const ev: ChallengeDoneEvent = { challenges: done };
+    this.clients.find((c) => c.sessionId === p.id)?.send("challengeDone", ev);
   }
 
   // Trophées crédités = XP (tâche 5.2) : le niveau affiché suit sans
@@ -588,6 +614,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     p.lifeThrows = 0; p.lifeThrowHits = 0;
     p.lifeBoostMs = 0; p.lifeMaxTier = 0;
     p.lifeLeaderMs = 0; p.bonusScore = 0;
+    p.lifeBiggerKills = 0; p.lifeLeaderKills = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
@@ -995,6 +1022,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     }
     if (killer) {
       killer.kills++;
+      if (killerBlades !== null && victimBlades > killerBlades) killer.lifeBiggerKills++;
+      if (bounty > 0) killer.lifeLeaderKills++;
       killer.bonusScore += bounty + (underdog ? SCORE_UNDERDOG : 0);
       updateScore(killer);
       this.endGrace(killer);

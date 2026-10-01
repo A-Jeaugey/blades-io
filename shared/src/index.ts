@@ -9,3 +9,4 @@ export * from "./movement";
 export * from "./prediction";
 export * from "./profile";
 export * from "./levels";
+export * from "./challenges";
