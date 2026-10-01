@@ -22,8 +22,8 @@
            NametagOverlay.ts). Caché tant que le toggle Settings est off. -->
       <div id="nametag-layer" class="nametag-layer hidden" aria-hidden="true"></div>
 
-      <!-- Repères de perte de lame au bord de l'écran et « +1 » des
-           éliminations (cf. ui/CombatFeedback.ts). Sous le HUD et les menus. -->
+      <!-- Repères de perte de lame au bord de l'écran et gains flottants
+           (cf. ui/CombatFeedback.ts). Sous le HUD et les menus. -->
       <div id="combat-feedback" aria-hidden="true"></div>
 
       <div id="hud" class="hidden">
@@ -58,27 +58,32 @@
         <div id="top-right">
           <canvas id="minimap" width="170" height="170"></canvas>
           <div id="leaderboard"></div>
+          <div id="kill-feed" aria-live="polite"></div>
         </div>
-        <div id="bottom-center">
-          <div id="rank-badge"></div>
-          <div id="blade-counter">
-            <span id="blade-count">0</span>
-            <span id="blade-label">BLADES</span>
+        <!-- État du joueur, room privée, effets : colonne sous la roue des
+             réglages (cf. ui/Hud.ts). -->
+        <div id="top-left">
+          <div id="status">
+            <div class="st-main">
+              <span id="rank-badge"></span>
+              <span class="st-blades"><span id="blade-count">0</span><span id="blade-label">BLADES</span></span>
+            </div>
+            <div class="st-score"><span id="score-val">🏆 0</span><span id="best-val"></span></div>
+            <div id="boost-info"></div>
           </div>
-          <div id="boost-bar"><div id="boost-fill"></div></div>
+          <div id="room-badge" class="hidden" title="Click to copy invite link">
+            <span class="room-label">ROOM</span>
+            <span id="room-code">—</span>
+          </div>
+          <div id="effects"></div>
         </div>
         <div id="joystick" class="hidden">
           <div id="joystick-base"><div id="joystick-thumb"></div></div>
         </div>
-        <div id="boost-btn" class="hidden">BOOST</div>
+        <div id="boost-btn" class="hidden">BOOST<span class="btn-sub"></span></div>
         <div id="throw-btn" class="hidden">THROW</div>
         <div id="settings-icon">⚙</div>
         <div id="fps"></div>
-        <div id="room-badge" class="hidden" title="Click to copy invite link">
-          <span class="room-label">ROOM</span>
-          <span id="room-code">—</span>
-        </div>
-        <div id="effects"></div>
         <!-- Onboarding (cf. ui/Onboarding.ts) : carte des contrôles à la
              première partie, puis indications uniques. -->
         <div id="onboard-card" class="onboard-card hidden" aria-live="polite"></div>

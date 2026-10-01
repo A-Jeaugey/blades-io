@@ -45,11 +45,16 @@ export interface BladeDestroyedEvent extends TickStamped {
   byId?: string;
 }
 
+// Cause d'une mort : lames en orbite d'un adversaire (ou contact sans lame),
+// lancer, bordure de l'arène.
+export type KillCause = "blades" | "throw" | "wall";
+
 export interface PlayerKilledEvent extends TickStamped {
   victimId: string;
   killerId: string | null;
   victimName: string;
   killerName: string | null;
+  cause: KillCause;
 }
 
 export interface PickupEvent extends TickStamped {
@@ -68,6 +73,8 @@ export interface CrateDestroyedEvent extends TickStamped {
   crateId: string;
   x: number;
   y: number;
+  // Joueur qui l'a brisée (lame en orbite ou lancer) : il marque des points.
+  byId?: string;
 }
 
 export interface PowerUpPickupEvent extends TickStamped {

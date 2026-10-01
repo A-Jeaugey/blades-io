@@ -1,7 +1,16 @@
+import { BOOST_DRAIN_INTERVAL } from "@bladeio/shared";
+
+// Bloc d'état du joueur local (tâche 3.4) : rang, lames, score de la vie et
+// record, coût du boost. En haut à gauche : en bas au centre, il masquait la
+// zone juste sous le joueur, d'où arrivent les adversaires.
+const BOOST_PER_SECOND = 1 / BOOST_DRAIN_INTERVAL;
+
 export class Hud {
   private bladeCount: HTMLElement;
   private bladeLabel: HTMLElement;
-  private boostFill: HTMLElement;
+  private scoreVal: HTMLElement;
+  private bestVal: HTMLElement;
+  private boostInfo: HTMLElement;
   private fps: HTMLElement;
   private loginFps: HTMLElement;
   private hud: HTMLElement;
@@ -11,11 +20,15 @@ export class Hud {
   private effects: HTMLElement;
   private effectNodes: Map<string, { root: HTMLElement; bar: HTMLElement }> = new Map();
   private rankBadge: HTMLElement;
+  // Dernières valeurs écrites : le DOM n'est touché que si elles changent.
+  private shown = { blades: -1, rank: -1, score: -1, best: -1, newBest: false, boost: "", net: "" };
 
   constructor() {
     this.bladeCount = document.getElementById("blade-count")!;
     this.bladeLabel = document.getElementById("blade-label")!;
-    this.boostFill = document.getElementById("boost-fill")!;
+    this.scoreVal = document.getElementById("score-val")!;
+    this.bestVal = document.getElementById("best-val")!;
+    this.boostInfo = document.getElementById("boost-info")!;
     this.fps = document.getElementById("fps")!;
     this.loginFps = document.getElementById("login-fps")!;
     this.hud = document.getElementById("hud")!;
@@ -24,6 +37,9 @@ export class Hud {
     this.roomBadge.addEventListener("click", () => this.copyInviteLink());
     this.effects = document.getElementById("effects")!;
     this.rankBadge = document.getElementById("rank-badge")!;
+    // Tactile : le coût du boost est écrit sous le libellé du bouton.
+    const sub = document.querySelector("#boost-btn .btn-sub");
+    if (sub) sub.textContent = `−${BOOST_PER_SECOND} blades/s`;
   }
 
   // Met à jour un badge d'effet actif (SPEED, SPIN, MAGNET, SHIELD).
@@ -76,18 +92,52 @@ export class Hud {
   show(): void { this.hud.classList.remove("hidden"); }
   hide(): void { this.hud.classList.add("hidden"); }
   setBladeCount(n: number): void {
+    if (n === this.shown.blades) return;
+    this.shown.blades = n;
     this.bladeCount.textContent = String(n);
     this.bladeLabel.textContent = n === 1 ? "BLADE" : "BLADES";
   }
-  setBoost(ratio: number): void {
-    this.boostFill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
+
+  // Score de la vie en cours et record personnel ; un record battu en
+  // cours de vie s'affiche comme tel.
+  setScore(score: number, best: number): void {
+    const newBest = best > 0 && score > best;
+    if (score !== this.shown.score) {
+      this.shown.score = score;
+      this.scoreVal.textContent = `🏆 ${score}`;
+    }
+    if (best !== this.shown.best || newBest !== this.shown.newBest) {
+      this.shown.best = best;
+      this.shown.newBest = newBest;
+      this.bestVal.textContent = newBest ? "NEW BEST" : `BEST ${best}`;
+      this.bestVal.classList.toggle("new", newBest);
+    }
   }
-  setFps(fps: number): void {
-    const txt = `${fps.toFixed(0)} FPS`;
+
+  // Coût réel du boost : lames brûlées par seconde, et autonomie restante
+  // pendant qu'on boost.
+  setBoost(boosting: boolean, bladeCount: number): void {
+    const text = boosting
+      ? `BOOST −${BOOST_PER_SECOND}/s · ${(bladeCount * BOOST_DRAIN_INTERVAL).toFixed(1)} s left`
+      : `BOOST −${BOOST_PER_SECOND} blades/s`;
+    if (text === this.shown.boost) return;
+    this.shown.boost = text;
+    this.boostInfo.textContent = text;
+    this.boostInfo.classList.toggle("on", boosting);
+  }
+
+  // Images par seconde et aller-retour réseau (ms, null tant qu'inconnu).
+  setNet(fps: number, pingMs: number | null): void {
+    const txt = pingMs === null ? `${fps.toFixed(0)} FPS` : `${fps.toFixed(0)} FPS · ${Math.round(pingMs)} ms`;
+    if (txt === this.shown.net) return;
+    this.shown.net = txt;
     this.fps.textContent = txt;
-    this.loginFps.textContent = txt;
+    this.loginFps.textContent = `${fps.toFixed(0)} FPS`;
   }
+
   setRank(rank: number): void {
+    if (rank === this.shown.rank) return;
+    this.shown.rank = rank;
     this.rankBadge.textContent = `#${rank}`;
   }
 

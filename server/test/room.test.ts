@@ -15,6 +15,7 @@ import {
 import * as matches from "../src/auth/matches";
 import * as wallet from "../src/auth/wallet";
 import { Blade } from "../src/state/Blade";
+import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
 import { DT, FakeClock, giveBlade, groundBlades, ownedBlades, seedRandom } from "./helpers";
 import { TestRoom } from "./testRoom";
@@ -410,4 +411,27 @@ test("tick : l'état publie l'heure du serveur (référence des échéances côt
   const p = r.join("p1");
   // Les échéances sont dans la même horloge que serverTime.
   assert.ok(Math.abs(p.spawnedAt - r.state.serverTime) < 50);
+});
+
+test("évènements : cause de chaque mort, auteur d'une caisse brisée", () => {
+  // Le client en tire le fil des éliminations et les gains flottants
+  // (tâche 3.4), puis la cause affichée à la mort (3.5).
+  const r = new TestRoom(clock);
+  const a = armed(r, "a", 3);
+  for (const cause of ["blades", "throw", "wall"] as const) {
+    const victim = r.join(`v-${cause}`);
+    r.room.killPlayer(victim, cause === "wall" ? null : a, cause);
+  }
+  assert.deepEqual(
+    r.eventsOf("playerKilled").map((e) => [e.cause, e.killerId, e.killerName]),
+    [["blades", "a", a.name], ["throw", "a", a.name], ["wall", null, "GRID BORDER"]],
+  );
+  const crate = new Crate();
+  crate.id = "c1";
+  crate.x = 10; crate.y = 10;
+  r.state.crates.set(crate.id, crate);
+  r.room.handleCrateDestroyed(crate, a);
+  const [destroyed] = r.eventsOf("crateDestroyed");
+  assert.equal(destroyed.byId, "a");
+  assert.equal(a.cratesDestroyed, 1);
 });

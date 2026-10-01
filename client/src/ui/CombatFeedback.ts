@@ -1,12 +1,13 @@
 // Retours de combat en surimpression (tâche 1.5) : repère rouge au bord de
-// l'écran du côté d'où vient la perte d'une lame, et « +1 » flottant au
-// point d'une élimination. En DOM, comme la vignette de bordure : visibles
-// à toutes les qualités, post-FX coupés compris.
+// l'écran du côté d'où vient la perte d'une lame, et gain flottant au point
+// d'une élimination, d'une caisse brisée ou d'un power-up ramassé (« +15 🏆 »,
+// tâche 3.4). En DOM, comme la vignette de bordure : visibles à toutes les
+// qualités, post-FX coupés compris.
 
 const HIT_MS = 900;
 const POP_MS = 900;
 const MAX_HITS = 6;
-const MAX_POPS = 4;
+const MAX_POPS = 6;
 // Retrait des repères par rapport au bord de l'écran (px).
 const EDGE_INSET = 34;
 // Deux pertes à moins de ~20° d'écart ravivent le même repère.
@@ -18,12 +19,15 @@ interface HitMarker {
   until: number;
 }
 
-interface KillPop {
+interface ScorePop {
   el: HTMLDivElement;
   x: number;
   y: number;
   start: number;
 }
+
+// Taille du gain : grand pour une élimination, petit pour le reste.
+export type PopSize = "big" | "small";
 
 function angleGap(a: number, b: number): number {
   let d = (a - b) % (Math.PI * 2);
@@ -35,7 +39,7 @@ function angleGap(a: number, b: number): number {
 export class CombatFeedback {
   private root: HTMLElement;
   private hits: HitMarker[] = [];
-  private pops: KillPop[] = [];
+  private pops: ScorePop[] = [];
 
   constructor() {
     this.root = document.getElementById("combat-feedback") as HTMLElement;
@@ -59,26 +63,25 @@ export class CombatFeedback {
     marker.until = now + HIT_MS;
   }
 
-  // Élimination par le joueur local, au point de la mort (coordonnées sol).
-  killPop(x: number, y: number, now: number): void {
+  // Gain du joueur local au point de l'évènement (coordonnées sol).
+  scorePop(x: number, y: number, text: string, size: PopSize, now: number): void {
     let pop = this.pops.find((p) => now - p.start >= POP_MS);
     if (!pop && this.pops.length < MAX_POPS) {
       const el = document.createElement("div");
-      el.className = "kill-pop";
-      el.textContent = "+1";
       this.root.appendChild(el);
       pop = { el, x, y, start: 0 };
       this.pops.push(pop);
     }
     if (!pop) pop = this.pops.reduce((a, b) => (a.start < b.start ? a : b));
+    pop.el.className = size === "big" ? "kill-pop" : "kill-pop small";
+    pop.el.textContent = text;
     pop.x = x;
     pop.y = y;
     pop.start = now;
   }
 
-  // screenOf : projection d'un point du sol à l'écran (px client) ; le
-  // « +1 » reste accroché au point de l'élimination quand la caméra suit
-  // le joueur.
+  // screenOf : projection d'un point du sol à l'écran (px client) ; le gain
+  // reste accroché au point de l'évènement quand la caméra suit le joueur.
   update(now: number, screenOf: (x: number, y: number) => { x: number; y: number }): void {
     const w = window.innerWidth;
     const h = window.innerHeight;

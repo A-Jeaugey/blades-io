@@ -7,6 +7,9 @@ import {
   BOT_THINK_INTERVAL,
   BladeDestroyedEvent,
   ClashEvent,
+  CrateDestroyedEvent,
+  KillCause,
+  PlayerKilledEvent,
   DEATH_DROP_MAX_DIST,
   DEATH_DROP_MIN_DIST,
   DEATH_DROP_RATIO,
@@ -137,7 +140,11 @@ export class ArenaRoom extends Room<ArenaState> {
     });
     this.onMessage<RespawnMessage>("respawn", (client, msg) => this.handleRespawn(client, msg));
     this.onMessage<ChatMessage>("chat", (client, msg) => this.handleChat(client, msg));
-    this.onMessage("ping", (client) => client.send("pong", { t: Date.now() }));
+    // Ping affiché dans le HUD (tâche 3.4) : le numéro reçu est renvoyé tel
+    // quel, le client mesure l'aller-retour.
+    this.onMessage("ping", (client, n) => {
+      if (typeof n === "number" && Number.isFinite(n)) client.send("pong", n);
+    });
     this.onMessage<{ on?: boolean }>("debugOrbits", (client, msg) => {
       if (msg?.on) this.debugOrbitClients.add(client.sessionId);
       else this.debugOrbitClients.delete(client.sessionId);
@@ -615,7 +622,9 @@ export class ArenaRoom extends Room<ArenaState> {
       attacker.cratesDestroyed++;
       updateScore(attacker);
     }
-    this.emit("crateDestroyed", { crateId: crate.id, x: crate.x, y: crate.y });
+    const ev: CrateDestroyedEvent = { crateId: crate.id, x: crate.x, y: crate.y };
+    if (attacker) ev.byId = attacker.id;
+    this.emit("crateDestroyed", ev);
     this.crates.destroyCrate(this.state, crate);
   }
 
@@ -699,7 +708,7 @@ export class ArenaRoom extends Room<ArenaState> {
     }
   }
 
-  private killPlayer(victim: Player, killer: Player | null, reason: string): void {
+  private killPlayer(victim: Player, killer: Player | null, reason: KillCause): void {
     if (!victim.alive) return;
     victim.alive = false;
     // Persiste le match juste après le passage à mort (avant le drop, mais
@@ -763,11 +772,13 @@ export class ArenaRoom extends Room<ArenaState> {
     // disparaît et le joueur ne sait pas pourquoi il est mort.
     const killerLabel =
       killer?.name ?? (reason === "wall" ? "GRID BORDER" : null);
-    this.emit("playerKilled", {
+    const ev: PlayerKilledEvent = {
       victimId: victim.id,
       killerId: killer?.id ?? null,
       victimName: victim.name,
       killerName: killerLabel,
-    });
+      cause: reason,
+    };
+    this.emit("playerKilled", ev);
   }
 }

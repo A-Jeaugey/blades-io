@@ -2,7 +2,6 @@ export interface LeaderboardEntry {
   id: string;
   name: string;
   score: number;
-  kills: number;
   bladeCount: number;
 }
 
@@ -15,39 +14,32 @@ export class Leaderboard {
     this.root.innerHTML = `<h4>TROPHÉES</h4><div id="lb-rows"></div>`;
   }
 
+  // Classement compact (tâche 3.4) : les cinq premiers et soi, avec score et
+  // lames. Avant, dix lignes à trois colonnes occupaient près de la moitié
+  // de l'écran d'un téléphone en portrait.
   update(entries: LeaderboardEntry[], myId: string, now: number): void {
     if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
     const sorted = [...entries].sort((a, b) => b.score - a.score);
-    // Sur petit écran, on tronque à 5 entrées : la liste à 10 lignes occupait
-    // près de la moitié de la zone de jeu en portrait.
-    const maxRows = window.innerWidth <= 600 ? 5 : 10;
-    const top = sorted.slice(0, maxRows);
+    const top = sorted.slice(0, TOP_ROWS);
     const rows = document.getElementById("lb-rows")!;
     let html = "";
-    for (let i = 0; i < top.length; i++) {
-      const e = top[i];
-      const cls = e.id === myId ? "lb-row me" : "lb-row";
-      const crown = i === 0 ? " 👑" : "";
-      html += `<div class="${cls}">
-        <span class="name">${i + 1}. ${escapeHtml(e.name)}${crown}</span>
-        <div class="lb-stat"><span class="icon">🏆</span><span class="val">${e.score}</span></div>
-        <div class="lb-stat"><span class="icon">💀</span><span class="val">${e.kills}</span></div>
-        <div class="lb-stat"><span class="icon">🗡️</span><span class="val">${e.bladeCount}</span></div>
-      </div>`;
-    }
+    for (let i = 0; i < top.length; i++) html += row(top[i], i, top[i].id === myId);
     const myRank = sorted.findIndex((e) => e.id === myId);
-    if (myRank >= maxRows) {
-      const me = sorted[myRank];
-      html += `<div class="lb-row me">
-        <span class="name">${myRank + 1}. ${escapeHtml(me.name)}</span>
-        <div class="lb-stat"><span class="icon">🏆</span><span class="val">${me.score}</span></div>
-        <div class="lb-stat"><span class="icon">💀</span><span class="val">${me.kills}</span></div>
-        <div class="lb-stat"><span class="icon">🗡️</span><span class="val">${me.bladeCount}</span></div>
-      </div>`;
-    }
+    if (myRank >= TOP_ROWS) html += row(sorted[myRank], myRank, true);
     rows.innerHTML = html;
   }
+}
+
+const TOP_ROWS = 5;
+
+function row(e: LeaderboardEntry, rank: number, me: boolean): string {
+  const crown = rank === 0 ? " 👑" : "";
+  return `<div class="${me ? "lb-row me" : "lb-row"}">
+    <span class="name">${rank + 1}. ${escapeHtml(e.name)}${crown}</span>
+    <div class="lb-stat"><span class="icon">🏆</span><span class="val">${e.score}</span></div>
+    <div class="lb-stat"><span class="icon">🗡️</span><span class="val">${e.bladeCount}</span></div>
+  </div>`;
 }
 
 function escapeHtml(s: string): string {

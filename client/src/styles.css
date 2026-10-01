@@ -88,8 +88,13 @@ canvas#game {
   line-height: 1;
   color: var(--cyan);
   text-shadow: 0 0 14px rgba(var(--accent-cool-rgb), .85), 0 2px 0 rgba(0, 0, 0, .55);
+  white-space: nowrap;
   opacity: 0;
   will-change: transform, opacity;
+}
+.kill-pop.small {
+  font-size: 20px;
+  font-weight: 700;
 }
 
 /* Onboarding (cf. ui/Onboarding.ts). La carte et les indications ne
@@ -303,6 +308,9 @@ canvas#game {
 #hud {
   position: fixed;
   inset: 0;
+  /* Au-dessus des nametags (z-index 6) : un nom de joueur ne masque ni le
+     classement ni le fil des éliminations. */
+  z-index: 7;
   pointer-events: none;
   font-family: "Rajdhani", "Segoe UI", sans-serif;
 }
@@ -345,7 +353,7 @@ canvas#game {
 }
 .lb-row {
   display: grid;
-  grid-template-columns: 1fr 58px 42px 42px;
+  grid-template-columns: 1fr 58px 42px;
   gap: 6px;
   align-items: center;
   padding: 3px 0;
@@ -376,63 +384,123 @@ canvas#game {
   text-align: left;
 }
 
-#rank-badge {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--pink);
-  text-shadow: 0 0 12px var(--pink), 0 0 30px rgba(var(--accent-warm-rgb), 0.4);
-  letter-spacing: 2px;
-  min-height: 36px;
-}
-
-#bottom-center {
+/* Colonne en haut à gauche, sous la roue des réglages : état du joueur,
+   badge de room privée, effets actifs (tâche 3.4). */
+#top-left {
   position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
+  top: 64px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-#blade-counter {
-  display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
-  padding: 6px 16px;
+  pointer-events: none;
+}
+#top-left > * { pointer-events: auto; }
+#status {
+  padding: 6px 12px 7px;
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
-  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.3);
+  box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.2);
+  pointer-events: none;
+}
+.st-main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+#rank-badge {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--pink);
+  text-shadow: 0 0 10px var(--pink);
+  letter-spacing: 1px;
+}
+.st-blades {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
 #blade-count {
-  font-size: 40px;
+  font-size: 32px;
   font-weight: 700;
+  line-height: 1;
   color: var(--cyan);
   text-shadow: 0 0 10px var(--cyan);
-  letter-spacing: 2px;
+  letter-spacing: 1px;
 }
 #blade-label {
   font-size: 11px;
   color: var(--fg-muted);
-  letter-spacing: 3px;
-  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+.st-score {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--fg-bright);
+}
+#best-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  letter-spacing: 1.5px;
+}
+#best-val.new {
+  color: var(--pink);
+  text-shadow: 0 0 8px var(--pink);
+}
+#boost-info {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+#boost-info.on {
+  color: var(--pink);
+  text-shadow: 0 0 6px var(--pink);
 }
 
-#boost-bar {
-  width: 160px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.08);
+/* Fil des éliminations (cf. ui/KillFeed.ts), sous le classement. */
+#kill-feed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  max-width: 260px;
+  pointer-events: none;
+}
+.kf-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 9px;
+  background: var(--panel);
   border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  font-size: 13px;
+  color: var(--fg-bright);
+  white-space: nowrap;
+}
+.kf-name {
   overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100px;
 }
-#boost-fill {
-  height: 100%;
-  width: 100%;
-  background: linear-gradient(90deg, var(--cyan), var(--pink));
-  transition: width 0.1s linear;
+.kf-icon { color: var(--fg-muted); }
+.kf-border {
+  color: rgb(var(--danger-rgb));
+  font-size: 11px;
+  letter-spacing: 1.5px;
 }
+.kf-line.kf-killer { border-color: var(--cyan); color: var(--cyan); }
+.kf-line.kf-victim { border-color: var(--pink); color: var(--pink); }
 
 #joystick {
   position: absolute;
@@ -477,10 +545,19 @@ canvas#game {
   font-weight: 700;
   letter-spacing: 2px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   box-shadow: 0 0 20px rgba(var(--accent-warm-rgb), 0.25);
   user-select: none;
+}
+/* Coût du boost sous le libellé (tactile, tâche 3.4). */
+#boost-btn .btn-sub {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  opacity: 0.8;
 }
 #boost-btn:active {
   background: rgba(var(--accent-warm-rgb), 0.3);
@@ -724,9 +801,6 @@ button:hover {
 }
 
 #effects {
-  position: absolute;
-  left: 16px;
-  top: 100px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -762,9 +836,6 @@ button:hover {
 }
 
 #room-badge {
-  position: absolute;
-  left: 16px;
-  top: 56px;
   padding: 6px 12px;
   font-family: inherit;
   font-size: 14px;
@@ -888,27 +959,62 @@ button:hover {
 }
 
 @media (max-width: 600px) {
-  #blade-count {
-    font-size: 28px;
+  /* Bloc d'état compact, à gauche du classement centré : il tient dans les
+     ~85 px entre le bord et le classement. */
+  #top-left {
+    left: 10px;
+    top: 56px;
+    gap: 6px;
   }
-  #blade-counter {
-    padding: 4px 12px;
+  #status {
+    padding: 4px 8px 5px;
   }
-  #blade-label {
-    font-size: 10px;
-    letter-spacing: 2px;
+  .st-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
   }
   #rank-badge {
-    font-size: 22px;
-    min-height: 28px;
+    font-size: 16px;
   }
-  #boost-bar {
-    width: 130px;
+  #blade-count {
+    font-size: 24px;
   }
-  #bottom-center {
-    bottom: 14px;
+  #blade-label {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  .st-score {
+    flex-direction: column;
+    gap: 0;
+    font-size: 12px;
+  }
+  #best-val {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  /* Le coût du boost s'affiche sur le bouton BOOST. */
+  #boost-info {
+    display: none;
+  }
+  #kill-feed {
+    position: fixed;
+    top: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    align-items: center;
+    max-width: 60vw;
+  }
+  /* Sans cadre : au-dessus du joueur, le fil ne doit pas cacher le jeu. */
+  .kf-line {
+    font-size: 11px;
+    padding: 1px 4px;
     gap: 4px;
+    background: transparent;
+    border: none;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 4px rgba(0, 0, 0, 0.8);
   }
+  .kf-name { max-width: 72px; }
   #minimap {
     width: 78px;
     height: 78px;
@@ -939,7 +1045,7 @@ button:hover {
     margin-bottom: 4px;
   }
   .lb-row {
-    grid-template-columns: 1fr 36px 30px 30px;
+    grid-template-columns: 1fr 36px 30px;
     gap: 3px;
     padding: 2px 0;
   }

@@ -6,10 +6,12 @@ import {
   CLOSE_CODE_INPUT_FLOOD,
   ClashEvent,
   MAP_RADIUS,
-  MAX_BLADES_PER_PLAYER,
   LOW_BLADE_WARNING,
   SERVER_DT,
   THROW_COOLDOWN_MS,
+  SCORE_CRATE,
+  SCORE_KILL,
+  SCORE_POWERUP,
   THROW_PROJECTILE_MAX_RANGE,
   TIER_UP_SHAKE,
   ChatEvent,
@@ -57,6 +59,8 @@ import { Leaderboard } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
+import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
+import { getBest, submitScore } from "./ui/personalBest";
 import { HintId, Onboarding } from "./ui/Onboarding";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
@@ -207,6 +211,18 @@ class Game {
   private throwLatched = false;
   private aimIndicator = new AimIndicator();
   private combatFeedback = new CombatFeedback();
+  private killFeed = new KillFeed();
+  // Aller-retour réseau mesuré par ping/pong : médiane des dernières
+  // mesures (ms), null tant qu'aucune réponse n'est arrivée. La médiane
+  // écarte une mesure prise pendant un chargement ou une pause du GC.
+  private pingMs: number | null = null;
+  private pingSamples: number[] = [];
+  private pingSeq = 0;
+  private pingSentAt = new Map<number, number>();
+  private nextPingAt = 0;
+  // Score de la vie en cours déjà versé au record personnel (évite de le
+  // compter deux fois : mort puis retour au menu).
+  private bestSubmitted = false;
   private onboarding!: Onboarding;
   // Intensité de l'alerte de bordure à la dernière frame (0..1).
   private borderIntensity = 0;
@@ -310,6 +326,9 @@ class Game {
         groundAt: (x: number, y: number) => this.camera.groundAt(x, y),
         // Onboarding (tâche 3.1) : déclenche une indication.
         hint: (id: HintId) => this.onboarding.hint(id),
+        // HUD (tâche 3.4) : ligne du fil des éliminations, ping mesuré.
+        feed: (e: KillFeedEntry) => this.killFeed.push(e, performance.now()),
+        ping: () => this.pingMs,
       };
     }
     this.settings = new SettingsPanel();
@@ -469,8 +488,24 @@ class Game {
     this.orbitSegments.clear();
     this.timeline.length = 0;
     this.combatFeedback.clear();
+    this.killFeed.clear();
     this.pendingBlades.clear();
     this.renderAlive.clear();
+    this.pingMs = null;
+    this.pingSamples.length = 0;
+    this.pingSentAt.clear();
+    this.nextPingAt = 0;
+    this.bestSubmitted = false;
+    // Ping (tâche 3.4) : le serveur renvoie le numéro tel quel.
+    room.onMessage("pong", (n: number) => {
+      const sent = this.pingSentAt.get(n);
+      if (sent === undefined) return;
+      this.pingSentAt.delete(n);
+      this.pingSamples.push(performance.now() - sent);
+      if (this.pingSamples.length > 5) this.pingSamples.shift();
+      const sorted = [...this.pingSamples].sort((a, b) => a - b);
+      this.pingMs = sorted[Math.floor(sorted.length / 2)];
+    });
     $(state).listen("tick", (tick: number) => {
       this.lastPatchTick = tick;
       this.serverClock.onTick(tick, performance.now());
@@ -614,6 +649,7 @@ class Game {
     room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => this.atTick(msg.tick, () => {
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, this.theme.palette.fx.crateDestroyExplosion, 28);
       this.sound.crateBreak(this.audibleGain(msg.x, msg.y));
+      if (msg.byId === this.myId) this.scorePop(msg.x, msg.y, SCORE_CRATE, "small");
     }));
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
       // Effet visuel coloré selon le type + son de pickup satisfaisant.
@@ -624,6 +660,7 @@ class Game {
       this.sound.pickup(msg.rarity as BladeRarity, g);
       // Pour le joueur local, on retient la durée pour afficher la barre.
       if (msg.playerId === this.myId) {
+        this.scorePop(msg.x, msg.y, SCORE_POWERUP, "small");
         const durMs = POWERUP_DURATION[msg.rarity as BladeRarity] * 1000;
         const label = powerUpTypeLabel(msg.type as PowerUpType);
         this.effectDurations.set(label, Math.max(durMs, this.effectDurations.get(label) ?? 0));
@@ -633,10 +670,16 @@ class Game {
     room.onMessage("playerKilled", (msg: PlayerKilledEvent) => this.atTick(msg.tick, () => {
       const victim = this.players.get(msg.victimId);
       if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
+      this.killFeed.push({
+        killerName: msg.killerId ? msg.killerName : null,
+        victimName: msg.victimName,
+        cause: msg.cause ?? "blades",
+        mine: msg.killerId === this.myId ? "killer" : msg.victimId === this.myId ? "victim" : null,
+      }, performance.now());
       if (msg.killerId === this.myId) {
         this.camera.shake.add(0.5);
         this.sound.killConfirm();
-        if (victim) this.combatFeedback.killPop(victim.renderX, victim.renderY, performance.now());
+        if (victim) this.scorePop(victim.renderX, victim.renderY, SCORE_KILL, "big");
       }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
     }, false));
@@ -942,6 +985,7 @@ class Game {
     if (!me) return;
     const lifeMs = this.serverNow() - me.spawnedAt;
     const rank = this.computeMyRank();
+    this.submitLifeScore(me.score);
     this.sound.death();
     this.camera.shake.add(0.8);
     const earned = me.score;
@@ -974,6 +1018,21 @@ class Game {
     if (isAuthed) void wallet.refresh();
   }
 
+  // Record personnel : le score d'une vie y est versé une fois, à la mort
+  // ou au retour au menu, en room publique seulement (cf. personalBest).
+  private submitLifeScore(score: number): void {
+    if (this.bestSubmitted || this.room?.state?.isPrivate) return;
+    this.bestSubmitted = true;
+    submitScore(score);
+  }
+
+  // Gain flottant du joueur local : « +N 🏆 » en public, « +N » en room
+  // privée (points sans trophées).
+  private scorePop(x: number, y: number, points: number, size: "big" | "small"): void {
+    const text = this.room?.state?.isPrivate ? `+${points}` : `+${points} 🏆`;
+    this.combatFeedback.scorePop(x, y, text, size, performance.now());
+  }
+
   private computeMyRank(): number {
     if (!this.room?.state?.players) return 0;
     const entries: Array<{ id: string; score: number }> = [];
@@ -988,12 +1047,16 @@ class Game {
   private respawn(): void {
     this.death.hide();
     this.dead = false;
+    this.bestSubmitted = false;
     this.resetPrediction();
     this.onboarding.enterGame(performance.now());
     this.room?.send("respawn", { name: this.myName });
   }
 
   private async returnToMenu(): Promise<void> {
+    // Quitter en vie termine la vie : son score compte pour le record.
+    const meAlive = this.room?.state?.players?.get(this.myId);
+    if (meAlive?.alive && !this.dead) this.submitLifeScore(meAlive.score);
     this.death.hide();
     this.borderWarning.hide();
     this.hud.hide();
@@ -1002,6 +1065,7 @@ class Game {
     this.chat.hide();
     this.nametags.clear();
     this.combatFeedback.clear();
+    this.killFeed.clear();
     this.onboarding.leaveGame();
     this.effectDurations.clear();
     this.settings.setInGame(false);
@@ -1174,6 +1238,15 @@ class Game {
     return me.bladeCount > 0 && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
   }
 
+  // Ping toutes les 2 s ; une réponse perdue est oubliée au bout de 10 s.
+  private sendPing(now: number): void {
+    this.nextPingAt = now + 2000;
+    for (const [n, at] of this.pingSentAt) if (now - at > 10000) this.pingSentAt.delete(n);
+    const n = ++this.pingSeq;
+    this.pingSentAt.set(n, now);
+    this.room?.send("ping", n);
+  }
+
   // Indications de première partie (tâche 3.1) : chacune quand la
   // situation se présente, une seule fois (Onboarding les mémorise).
   private checkOnboardingHints(serverNowMs: number): void {
@@ -1248,7 +1321,8 @@ class Game {
     }
     this.lastBladeCountShown = me.bladeCount;
     this.hud.setBladeCount(me.bladeCount);
-    this.hud.setBoost(me.bladeCount / MAX_BLADES_PER_PLAYER);
+    this.hud.setBoost(!!me.boost, me.bladeCount);
+    this.hud.setScore(me.score, getBest());
     // Effets actifs : on relit les *Until du joueur local et on met à jour
     // les badges HUD avec leur temps restant. Durée base conservée dans
     // effectDurations pour normaliser la barre.
@@ -1282,9 +1356,9 @@ class Game {
     if (now - this.lastHudUpdate < 100) return;
     this.lastHudUpdate = now;
     const others: Array<{ id: string; x: number; y: number; isMe: boolean }> = [];
-    const entries: Array<{ id: string; name: string; score: number; kills: number; bladeCount: number }> = [];
+    const entries: Array<{ id: string; name: string; score: number; bladeCount: number }> = [];
     this.room.state.players.forEach((p: any, id: string) => {
-      entries.push({ id, name: p.name, score: p.score, kills: p.kills, bladeCount: p.bladeCount });
+      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount });
       // Joueurs dans un buisson : pas affichés sur la minimap pour les autres.
       // (Le buisson cache aussi sur la carte, comme demandé.)
       if (id !== this.myId && p.alive && !isInBush(p.x, p.y)) {
@@ -1402,7 +1476,7 @@ class Game {
       if (this.fpsAccum >= 0.5) {
         this.fps = this.fpsFrames / this.fpsAccum;
         this.fpsAccum = 0; this.fpsFrames = 0;
-        this.hud.setFps(this.fps);
+        this.hud.setNet(this.fps, this.room ? this.pingMs : null);
         this.adaptiveQuality(dt);
       }
       // Horloge d'inputs fixe : un input par SERVER_DT de temps réel, quel
@@ -1490,6 +1564,8 @@ class Game {
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
+      this.killFeed.update(now);
+      if (this.room && now >= this.nextPingAt) this.sendPing(now);
       if (now >= this.nextHintCheckAt) {
         this.nextHintCheckAt = now + 250;
         this.checkOnboardingHints(serverNowMs);
