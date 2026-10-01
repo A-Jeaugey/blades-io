@@ -11,6 +11,7 @@ import {
   THROW_COOLDOWN_MS,
   SCORE_CRATE,
   SCORE_KILL,
+  SCORE_UNDERDOG,
   SCORE_POWERUP,
   THROW_PROJECTILE_MAX_RANGE,
   TIER_UP_SHAKE,
@@ -68,7 +69,7 @@ import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
-import { NametagOverlay } from "./scene/NametagOverlay";
+import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
@@ -237,6 +238,10 @@ class Game {
   private corrections: number[] = [];
   private inputSeq = 0;
   private topPlayerId: string | null = null;
+  // Prime sur le leader, affichée sur sa couronne (tâche 4.2).
+  private leaderBounty = 0;
+  private shownBounty = -1;
+  private crownVec = new THREE.Vector3();
   // Edge-trigger throw : on stocke un appui détecté entre deux sendInput()
   // (un par SERVER_DT, pas forcément chaque frame). Sans ça, un appui dans
   // la frame de gap entre deux sends se perd.
@@ -762,12 +767,16 @@ class Game {
         victimName: msg.victimName,
         cause: msg.cause ?? "blades",
         mine: msg.killerId === this.myId ? "killer" : msg.victimId === this.myId ? "victim" : null,
+        bounty: msg.bounty ?? 0,
+        underdog: !!msg.underdog,
       }, performance.now());
       if (msg.killerId === this.myId) {
         this.camera.shake.add(0.5);
         this.sound.killConfirm();
         this.haptics.play("kill");
-        if (victim) this.scorePop(victim.renderX, victim.renderY, SCORE_KILL, "big");
+        // Le gain affiché inclut la prime et le bonus underdog (tâche 4.2).
+        const gain = SCORE_KILL + (msg.bounty ?? 0) + (msg.underdog ? SCORE_UNDERDOG : 0);
+        if (victim) this.scorePop(victim.renderX, victim.renderY, gain, "big");
       }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg);
     }, false));
@@ -1608,10 +1617,14 @@ class Game {
     if (now - this.lastHudUpdate < 100) return;
     this.lastHudUpdate = now;
     const entries = this.boardEntries();
-    this.leaderboard.update(entries, this.myId, now);
-    // Rank badge live
     const sorted = [...entries].sort((a, b) => b.score - a.score);
-    this.topPlayerId = sorted.length > 0 ? sorted[0].id : null;
+    // Couronne : le leader désigné par le serveur (meilleur score vivant),
+    // avec sa prime ; à défaut de résumé, le premier du classement.
+    const leader = this.summary?.leader;
+    this.topPlayerId = leader ? this.summary!.board[leader[0]]?.[0] ?? null : sorted.length > 0 ? sorted[0].id : null;
+    this.leaderBounty = leader ? leader[1] : 0;
+    this.leaderboard.update(entries, this.myId, this.topPlayerId, now);
+    // Rank badge live
     const myRankIdx = sorted.findIndex((e) => e.id === this.myId);
     this.hud.setRank(myRankIdx >= 0 ? myRankIdx + 1 : entries.length);
     // Minimap : joueurs et légendaires du résumé de la room (le serveur
@@ -1859,7 +1872,10 @@ class Game {
         const topView = this.players.get(this.topPlayerId);
         const topState = this.room.state.players.get(this.topPlayerId);
         if (topView && topState && topState.alive) {
-          const vec = new THREE.Vector3(topView.renderX, 3.5, topView.renderY);
+          // Ancrée comme le nametag, puis décalée au-dessus par le CSS : à
+          // une hauteur monde fixe, la couronne et sa prime chevauchaient le
+          // nametag dès que la caméra reculait.
+          const vec = this.crownVec.set(topView.renderX, NAMETAG_ANCHOR_Y, topView.renderY);
           vec.project(this.sceneStack.camera);
           if (vec.z < 1) { // devant la caméra
             const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
@@ -1872,6 +1888,11 @@ class Game {
       }
       if (showCrown) crownEl.classList.remove("hidden");
       else crownEl.classList.add("hidden");
+      if (this.leaderBounty !== this.shownBounty) {
+        this.shownBounty = this.leaderBounty;
+        const bountyEl = document.getElementById("crown-bounty");
+        if (bountyEl) bountyEl.textContent = this.leaderBounty > 0 ? `+${this.leaderBounty} 🏆` : "";
+      }
 
       requestAnimationFrame(tick);
     };

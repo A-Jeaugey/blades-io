@@ -46,16 +46,19 @@ export class Leaderboard {
   // Classement compact (tâche 3.4) : les cinq premiers et soi, avec score et
   // lames. Avant, dix lignes à trois colonnes occupaient près de la moitié
   // de l'écran d'un téléphone en portrait.
-  update(entries: LeaderboardEntry[], myId: string, now: number): void {
+  // La couronne marque le leader (meilleur score parmi les vivants, tâche
+  // 4.2), pas forcément le premier : un joueur mort garde son score tant
+  // qu'il n'est pas revenu.
+  update(entries: LeaderboardEntry[], myId: string, leaderId: string | null, now: number): void {
     if (now - this.lastUpdate < 500) return;
     this.lastUpdate = now;
     const sorted = [...entries].sort((a, b) => b.score - a.score);
     const top = sorted.slice(0, TOP_ROWS);
     const rows = document.getElementById("lb-rows")!;
     let html = "";
-    for (let i = 0; i < top.length; i++) html += row(top[i], i, top[i].id === myId);
+    for (let i = 0; i < top.length; i++) html += row(top[i], i, top[i].id === myId, top[i].id === leaderId);
     const myRank = sorted.findIndex((e) => e.id === myId);
-    if (myRank >= TOP_ROWS) html += row(sorted[myRank], myRank, true);
+    if (myRank >= TOP_ROWS) html += row(sorted[myRank], myRank, true, sorted[myRank].id === leaderId);
     rows.innerHTML = html;
   }
 }
@@ -72,8 +75,8 @@ function initiallyCollapsed(): boolean {
   return window.matchMedia(SMALL_SCREEN).matches;
 }
 
-function row(e: LeaderboardEntry, rank: number, me: boolean): string {
-  const crown = rank === 0 ? " 👑" : "";
+function row(e: LeaderboardEntry, rank: number, me: boolean, leader: boolean): string {
+  const crown = leader ? " 👑" : "";
   return `<div class="${me ? "lb-row me" : "lb-row"}">
     <span class="name">${rank + 1}. ${escapeHtml(e.name)}${crown}</span>
     <div class="lb-stat"><span class="icon">🏆</span><span class="val">${e.score}</span></div>

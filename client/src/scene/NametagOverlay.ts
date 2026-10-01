@@ -46,6 +46,9 @@ const HIDE_DISTANCE = 60;
 // Distance world en-dessous de laquelle le nametag est en pleine opacité.
 // Entre les deux, fade linéaire.
 const FULL_OPACITY_DISTANCE = 25;
+// Hauteur monde du point d'ancrage (bas du tag) : la tête est vers y=1,55.
+// La couronne du leader s'ancre au même point, au-dessus du tag.
+export const NAMETAG_ANCHOR_Y = 2.55;
 
 export class NametagOverlay {
   private container: HTMLElement;
@@ -113,9 +116,8 @@ export class NametagOverlay {
         return;
       }
 
-      // Position monde au-dessus de la tête du joueur.
-      // Player head visuel ~y=1.55, on tag à y=2.55 (juste au-dessus).
-      this.projected.set(view.renderX, 2.55, view.renderY);
+      // Position monde juste au-dessus de la tête du joueur.
+      this.projected.set(view.renderX, NAMETAG_ANCHOR_Y, view.renderY);
       // .project() transforme world → NDC (-1..1).
       this.projected.project(camera);
       // NDC z hors [-1..1] = derrière la caméra ou trop loin du clipping

@@ -525,6 +525,21 @@ export const SPATIAL_CELL_SIZE = 5;
 export const MAX_PLAYERS_PER_ROOM = 60;
 
 // --- Scoring (leaderboard composite) ---
+// Contre-mesures au snowball (tâche 4.2, cf. bounty.ts). Le leader (joueur
+// vivant au meilleur score) porte une prime dès BOUNTY_MIN_SCORE : un quart
+// de son score, entre BOUNTY_MIN et BOUNTY_MAX trophées, pour qui l'élimine,
+// et il lâche toutes ses lames (LEADER_DROP_RATIO) au lieu de 70 %.
+export const BOUNTY_MIN_SCORE = 30;
+export const BOUNTY_SHARE = 0.25;
+export const BOUNTY_MIN = 10;
+export const BOUNTY_MAX = 150;
+export const LEADER_DROP_RATIO = 1.0;
+// Éliminer un joueur qui avait au moins deux fois plus de lames double la
+// valeur du kill (SCORE_UNDERDOG en plus de SCORE_KILL).
+export const UNDERDOG_RATIO = 2;
+export const UNDERDOG_MIN_VICTIM_BLADES = 10;
+export const SCORE_UNDERDOG = 15;
+
 export const SCORE_KILL = 15;
 export const SCORE_BLADE = 1;           // par lame du record de la vie (maxBladeCount, ne baisse jamais)
 export const SCORE_SURVIVAL_PTS = 1;

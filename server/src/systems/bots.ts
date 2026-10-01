@@ -27,6 +27,14 @@ const GRACE_KEEPOUT_MARGIN = 6;
 // Distance au-delà de laquelle un bot ne prend personne en chasse.
 const CHASE_RADIUS = 80;
 
+// Chasse à la prime (tâche 4.2). Un bot ne poursuit d'ordinaire que plus
+// petit que lui : le leader, toujours le plus gros, n'était jamais contesté
+// et régnait des minutes. Il devient une cible dès que le bot a
+// BOUNTY_HUNT_RATIO de ses lames, d'autant plus attirante que la prime est
+// grosse, et plusieurs bots peuvent le viser ensemble.
+const BOUNTY_HUNT_RATIO = 0.6;
+const BOUNTY_HUNT_WEIGHT = 1.0;
+
 // Clamp un point cible dans la zone safe.
 function clampToSafe(x: number, y: number): { x: number; y: number } {
   const d = Math.hypot(x, y);
@@ -123,6 +131,9 @@ export class BotController {
   // vont pas récolter à leur contact (un clash, même accidentel, mettrait
   // fin à leur grâce).
   private graced: Array<{ x: number; y: number; reach: number }> = [];
+  // Leader et sa prime, fixés par la room à chaque tick (cf. setLeader).
+  private leaderId: string | null = null;
+  private leaderBounty = 0;
 
   spawnBot(arena: ArenaState, spawnPoint: { x: number; y: number }): Player {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
@@ -166,6 +177,11 @@ export class BotController {
     arena.players.forEach((p) => {
       if (p.isBot) fn(p);
     });
+  }
+
+  setLeader(id: string | null, bounty: number): void {
+    this.leaderId = id;
+    this.leaderBounty = bounty;
   }
 
   update(dt: number, arena: ArenaState): void {
@@ -456,7 +472,10 @@ export class BotController {
     const nowMs = Date.now();
     arena.players.forEach((other) => {
       if (other.id === bot.id || !other.alive) return;
-      if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
+      const bounty = other.id === this.leaderId ? this.leaderBounty : 0;
+      if (bounty > 0) {
+        if (bot.bladeCount < other.bladeCount * BOUNTY_HUNT_RATIO) return;
+      } else if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
       const radius = this.chaseRadiusFor(other, nowMs);
       if (radius <= 0) return;
       if (this.hiddenFrom(bot, other)) return;
@@ -474,6 +493,7 @@ export class BotController {
 
       // Bonus commitment si on poursuivait déjà cette cible.
       if (other.id === st.currentTargetId) score += COMMITMENT_BONUS;
+      score += bounty * BOUNTY_HUNT_WEIGHT;
 
       // Anti-double-aggro
       let someoneCloser = false;
@@ -483,7 +503,8 @@ export class BotController {
           someoneCloser = true;
         }
       });
-      if (someoneCloser) score -= 40;
+      // Pas pour le leader : à plusieurs, on peut le faire tomber.
+      if (someoneCloser && bounty === 0) score -= 40;
 
       if (score > bestScore) {
         bestScore = score;

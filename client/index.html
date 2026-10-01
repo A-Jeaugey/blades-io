@@ -100,7 +100,7 @@
       </div>
       <!-- Couronne du premier, placée aux coordonnées écran du canvas : hors
            du HUD, qui s'écarte des encoches (zones de sécurité). -->
-      <div id="king-crown" class="hidden" aria-hidden="true">👑</div>
+      <div id="king-crown" class="hidden" aria-hidden="true">👑<span id="crown-bounty" class="crown-bounty"></span></div>
 
       <div id="login-screen" class="bio2-screen">
         <div class="bio2-scan"></div>
@@ -347,7 +347,8 @@
                 <li>You spawn away from bigger players, near loose blades. For 10 s, bots leave you alone, then for 40 s they only go after you up close. This ends as soon as you throw or your blades hit someone.</li>
                 <li>Bushes hide you and your blades from other players.</li>
                 <li>Break crates for loot. Power-ups: Speed, Spin, Magnet, Shield, Blades.</li>
-                <li>When you die, 70 % of your blades drop, plus those you lost in the last 10 s.</li>
+                <li>When you die, 70 % of your blades drop, rarest first, plus those you lost in the last 10 s.</li>
+                <li>The leader wears a crown with a bounty: take them down for bonus trophies and all of their blades. Killing a player with at least twice your blades pays double.</li>
               </ul>
             </section>
             <section>

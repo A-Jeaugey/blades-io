@@ -94,6 +94,9 @@ test("drops : clignotent puis disparaissent, les lames ambiantes restent", () =>
   const far = r.join("far");
   victim.x = 0; victim.y = -20;
   far.x = 150; far.y = 150;
+  // far est le leader : la victime lâche 70 % de ses lames (le leader lâche
+  // tout, tâche 4.2).
+  far.kills = 5;
   r.tick(120);
   const ambient = groundBlades(r.state).map((b) => b.id);
   assert.ok(ambient.length > 0);

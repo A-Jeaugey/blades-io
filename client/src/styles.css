@@ -486,6 +486,19 @@ canvas#game {
   text-shadow: 0 0 6px var(--pink);
 }
 
+/* Prime sur le leader, sous sa couronne (tâche 4.2). */
+.crown-bounty {
+  display: block;
+  margin-top: -4px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--fg-bright);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.8);
+}
+.crown-bounty:empty { display: none; }
+
 /* Fil des éliminations (cf. ui/KillFeed.ts), sous le classement. */
 #kill-feed {
   display: flex;
@@ -518,6 +531,13 @@ canvas#game {
   color: rgb(var(--danger-rgb));
   font-size: 11px;
   letter-spacing: 1.5px;
+}
+.kf-bounty,
+.kf-underdog {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--pink);
 }
 .kf-line.kf-killer { border-color: var(--cyan); color: var(--cyan); }
 .kf-line.kf-victim { border-color: var(--pink); color: var(--pink); }
@@ -814,7 +834,9 @@ button:hover {
   position: fixed;
   font-size: 24px;
   pointer-events: none;
-  transform: translate(-50%, -100%);
+  /* Ancrée au point du nametag (cf. main.ts) : 24 px au-dessus, la hauteur
+     du tag et un petit écart. */
+  transform: translate(-50%, calc(-100% - 24px));
   text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
   transition: opacity 0.2s;
   /* Comme les nametags : sous le HUD. */

@@ -2,6 +2,7 @@ export * from "./constants";
 export * from "./types";
 export * from "./orbits";
 export * from "./tiers";
+export * from "./bounty";
 export * from "./decor";
 export * from "./shop";
 export * from "./movement";

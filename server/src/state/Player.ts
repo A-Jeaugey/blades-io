@@ -130,4 +130,9 @@ export class Player extends Schema {
   lifeThrowHits: number = 0;
   lifeBoostMs: number = 0;
   lifeMaxTier: number = 0;
+  // Temps passé leader pendant la vie (télémétrie de la tâche 4.2).
+  lifeLeaderMs: number = 0;
+  // Trophées gagnés en primes de leader et en kills « underdog » pendant la
+  // vie (tâche 4.2) : ajoutés au score composite.
+  bonusScore: number = 0;
 }

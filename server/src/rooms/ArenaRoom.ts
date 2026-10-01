@@ -16,6 +16,10 @@ import {
   DEATH_DROP_RATIO,
   DEATH_DROP_SPEED_MIN,
   DEATH_DROP_SPEED_MAX,
+  LEADER_DROP_RATIO,
+  SCORE_UNDERDOG,
+  bountyFor,
+  isUnderdogKill,
   RECENT_LOSS_BUFFER_CAP,
   RECENT_LOSS_DROP_RATIO,
   RECENT_LOSS_WINDOW_MS,
@@ -138,6 +142,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   // Zones d'intérêt des clients (tâche 2.4) et prochain résumé de la room.
   private interest = new InterestManager();
   private nextSummaryAt = 0;
+  // Leader : joueur vivant au meilleur score (couronne, prime ; tâche 4.2).
+  private leaderId: string | null = null;
   // Projectiles dont la touche est déjà comptée (télémétrie).
   private throwHitsCounted = new WeakSet<Blade>();
 
@@ -341,6 +347,17 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     unregisterRoom(this);
   }
 
+  // Leader du tick, d'après les scores à jour. Son temps de règne alimente
+  // la télémétrie.
+  private updateLeader(dt: number): void {
+    let leader: Player | null = null;
+    for (const p of this.state.players.values()) {
+      if (p.alive && (leader === null || p.score > leader.score)) leader = p;
+    }
+    this.leaderId = leader ? leader.id : null;
+    if (leader) leader.lifeLeaderMs += dt * 1000;
+  }
+
   // Fin de vie d'un humain : une ligne de télémétrie (tâche 4.8).
   private recordLifeEnd(
     p: Player,
@@ -348,6 +365,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     killer: Player | null,
     victimBlades: number,
     killerBlades: number | null,
+    bounty = 0,
+    underdog = false,
   ): void {
     if (p.isBot) return;
     const now = Date.now();
@@ -378,6 +397,10 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       inGrace: p.graceRampUntil > now,
       humans,
       bots,
+      wasLeader: p.id === this.leaderId,
+      leaderMs: p.lifeLeaderMs,
+      bounty,
+      underdog,
     });
   }
 
@@ -546,6 +569,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     p.lifeIndex++;
     p.lifeThrows = 0; p.lifeThrowHits = 0;
     p.lifeBoostMs = 0; p.lifeMaxTier = 0;
+    p.lifeLeaderMs = 0; p.bonusScore = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
@@ -579,6 +603,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     this.state.serverTime = Date.now();
     if (this.botsEnabled) {
       this.maintainBots();
+      const leader = this.leaderId ? this.state.players.get(this.leaderId) : undefined;
+      this.bots.setLeader(this.leaderId, leader?.alive ? bountyFor(leader.score) : 0);
       this.bots.update(dt, this.state);
     }
     // Recalcule le tier de chaque joueur AVANT toutes les autres systèmes
@@ -655,6 +681,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
     this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
+    this.updateLeader(dt);
     this.bots.cleanupDead(this.state);
     // Zones d'intérêt : après toute la simulation du tick, avant le patch,
     // un tick sur deux (30 Hz). En 33 ms, rien ne parcourt la marge de la
@@ -671,9 +698,10 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   // Ce que la zone d'intérêt ne donne plus : classement complet, joueurs de
   // la minimap (hors buissons), lames légendaires au sol.
   private buildSummary(): RoomSummary {
-    const summary: RoomSummary = { board: [], map: [], legendaries: [] };
+    const summary: RoomSummary = { board: [], map: [], legendaries: [], leader: null };
     this.state.players.forEach((p) => {
       if (p.alive && !isInBush(p.x, p.y)) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
+      if (p.id === this.leaderId) summary.leader = [summary.board.length, bountyFor(p.score)];
       summary.board.push([p.id, p.name, p.score, p.bladeCount]);
     });
     this.state.blades.forEach((b) => {
@@ -885,21 +913,31 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // les clashs qui précèdent.
     const victimBlades = bladesBeforeFight(victim);
     const killerBlades = killer ? bladesBeforeFight(killer) : null;
-    this.recordLifeEnd(victim, reason, killer, victimBlades, killerBlades);
+    // Contre-mesures au snowball (tâche 4.2) : prime sur le leader, bonus au
+    // tueur d'un joueur au moins deux fois plus gros.
+    const wasLeader = victim.id === this.leaderId;
+    const bounty = wasLeader && killer ? bountyFor(victim.score) : 0;
+    const underdog = killer !== null && killerBlades !== null && isUnderdogKill(killerBlades, victimBlades);
+    this.recordLifeEnd(victim, reason, killer, victimBlades, killerBlades, bounty, underdog);
     // Persiste le match juste après le passage à mort (avant le drop, mais
     // après que tous les compteurs de session ont été incrémentés au cours
     // de la vie). Pas de await : recordMatch gère ses propres erreurs et on
     // ne veut pas bloquer la game loop.
     this.persistMatchIfAuthed(victim);
-    const bladeIds = [...victim.bladeIds];
-    const dropCount = Math.floor(bladeIds.length * DEATH_DROP_RATIO);
-    const droppedRarities: BladeRarity[] = [];
-    for (let i = 0; i < bladeIds.length; i++) {
-      const id = bladeIds[i];
+    // Les lames rares tombent en premier (tâche 4.2) : avant, les plus
+    // anciennes, souvent les Common de départ, et les plus rares étaient
+    // détruites. Le leader lâche tout.
+    const owned: Blade[] = [];
+    for (const id of victim.bladeIds) {
       const b = this.state.blades.get(id);
-      if (!b) continue;
-      if (i < dropCount) droppedRarities.push(b.rarity);
-      this.state.blades.delete(id);
+      if (b) owned.push(b);
+    }
+    owned.sort((a, b) => b.rarity - a.rarity);
+    const dropCount = Math.floor(owned.length * (wasLeader ? LEADER_DROP_RATIO : DEATH_DROP_RATIO));
+    const droppedRarities: BladeRarity[] = [];
+    for (let i = 0; i < owned.length; i++) {
+      if (i < dropCount) droppedRarities.push(owned[i].rarity as BladeRarity);
+      this.state.blades.delete(owned[i].id);
     }
     victim.bladeIds = [];
     victim.bladeCount = 0;
@@ -939,6 +977,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     }
     if (killer) {
       killer.kills++;
+      killer.bonusScore += bounty + (underdog ? SCORE_UNDERDOG : 0);
       updateScore(killer);
       this.endGrace(killer);
     }
@@ -955,6 +994,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       cause: reason,
       victimBlades,
       killerBlades,
+      bounty,
+      underdog,
     };
     this.emit("playerKilled", ev);
   }

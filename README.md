@@ -27,7 +27,9 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Glitch bushes** | Step in to vanish from other players' screens, minimaps and from bots. Enforced by the server: nobody receives your position until your orbits could touch (then you see each other, so nobody fights invisible blades) |
 | **Safe spawn** | You (re)spawn within 150 u of the center, away from other players (further from bigger ones), where loose blades lie. For 10 s, bots leave you alone: they don't chase you, throw at you or farm next to you. Over the next 40 s they only go after you up close (15 u, growing back to their usual 80 u). Both end as soon as you throw or your blades hit someone (a bot hunting you doesn't count). The first 2.5 s are also invulnerable |
 | **Border** | Touching the kill zone is instant death — no clamp. Your outer blades are shredded first. The last 25 u are announced by a red vignette, an alarm and the arena edge on the minimap |
-| **Score** | kills × 15 + peak blade count of the life + 1 per 10 s alive + crates × 3 + power-ups × 2. In public rooms, it is credited as trophées at the end of each life (death or leaving) |
+| **Score** | kills × 15 + peak blade count of the life + 1 per 10 s alive + crates × 3 + power-ups × 2, plus bounties and underdog bonuses (below). In public rooms, it is credited as trophées at the end of each life (death or leaving) |
+| **Leader bounty** | The leader (best score among living players) wears a crown showing their bounty: a quarter of their score, from 10 to 150 trophées, paid to whoever kills them, and they drop all of their blades instead of 70 %. No bounty below 30 points |
+| **Underdog** | Killing a player who had at least twice your blades at the start of the fight (and at least 10 of them) pays double: +15 on top of the kill. On death, the rarest blades drop first |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
@@ -103,6 +105,7 @@ node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated secon
 BENCH_VIEWERS=60 node tools/bench-server.js 60 120   # same with 60 connected clients (per-client views)
 node tools/bench-survival.js        # newcomer survival against bots (after npm test)
 node tools/bench-survival.js first  # time before a newcomer's first death (random walker)
+node tools/bench-snowball.js        # bot rooms: leader reign length, underdog kills (after npm test)
 ```
 
 Add `?debug=hitbox` to the game URL to overlay the server-side hitboxes of nearby orbiting blades and display the measured client/server drift.
@@ -168,13 +171,14 @@ Open the **SQL editor** in your Supabase dashboard and run every file of
 - `0003_inventory.sql` — `inventory` and the atomic `purchase_item` RPC used by the shop
 - `0004_leaderboard_public_only.sql` — the leaderboard ignores private-room games
 - `0005_life_stats.sql` — gameplay telemetry (below)
+- `0006_life_stats_snowball.sql` — telemetry of the leader bounty and underdog kills
 
 #### Gameplay telemetry
 
-The game server writes one row to `life_stats` at the end of every human life (bots are not recorded): duration, how it ended (`blades`, `throw`, `wall`, or `quit`, `disconnect`, `restart` for a life that ended alive), the killer's kind and tier, the balance of power at the start of the fight, peak blades and tier, kills, throws and throws that hit, boost time, whether the spawn grace was still on, the room's population, public or private, and whether it was the player's first life of the session and first game on that device. Guests are anonymous; signed-in players are linked by `user_id`. Clients can neither read nor write the table, and the views are revoked from `anon` and `authenticated`: query them from the SQL editor. They cover the last 7 days of public games (30 days for the daily view):
+The game server writes one row to `life_stats` at the end of every human life (bots are not recorded): duration, how it ended (`blades`, `throw`, `wall`, or `quit`, `disconnect`, `restart` for a life that ended alive), the killer's kind and tier, the balance of power at the start of the fight, peak blades and tier, kills, throws and throws that hit, boost time, whether the spawn grace was still on, the room's population, public or private, whether it was the player's first life of the session and first game on that device, and for the anti-snowball rules: whether the life ended as leader, the time spent as leader, the bounty paid and whether the killer was an underdog. Guests are anonymous; signed-in players are linked by `user_id`. Clients can neither read nor write the table, and the views are revoked from `anon` and `authenticated`: query them from the SQL editor. They cover the last 7 days of public games (30 days for the daily view):
 
 ```sql
-select first_lives_under_20s_pct, top_death_cause from life_stats_summary;
+select first_lives_under_20s_pct, top_death_cause, underdog_kills_pct, median_leader_s from life_stats_summary;
 select * from life_stats_causes;   -- how lives end, median duration, deaths to bots
 select * from life_stats_daily;    -- daily trend: median life, wall deaths, throw accuracy…
 ```
@@ -325,6 +329,7 @@ client/src/
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)
 tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s, time before the first death
+tools/bench-snowball.js # snowball bench: leader reign length, underdog kills
 
 deploy.sh              # first install on a server
 auto-deploy.sh         # graceful deploys: separate build, switch, health check, rollback

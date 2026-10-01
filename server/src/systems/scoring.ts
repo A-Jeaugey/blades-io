@@ -16,6 +16,7 @@ import { Player } from "../state/Player";
  *
  * Formule : kills×15 + maxBladeCount×1 + floor(survivalSec / 10)×1
  *           + cratesDestroyed×3 + powerupsCollected×2
+ *           + bonusScore (primes de leader, kills « underdog », tâche 4.2)
  *
  * On utilise maxBladeCount (et non bladeCount courant) pour que les
  * trophées d'une partie ne baissent JAMAIS quand le joueur perd des
@@ -30,6 +31,7 @@ export function updateScore(player: Player): void {
     player.maxBladeCount * SCORE_BLADE +
     Math.floor(survivalSec / SCORE_SURVIVAL_INTERVAL) * SCORE_SURVIVAL_PTS +
     player.cratesDestroyed * SCORE_CRATE +
-    player.powerupsCollected * SCORE_POWERUP;
+    player.powerupsCollected * SCORE_POWERUP +
+    player.bonusScore;
   player.score = Math.floor(raw) >>> 0; // uint32
 }

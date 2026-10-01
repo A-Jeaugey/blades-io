@@ -60,6 +60,10 @@ export interface PlayerKilledEvent extends TickStamped {
   // souvent déjà tout perdu). L'écran de mort l'explique.
   victimBlades: number;
   killerBlades: number | null;
+  // Prime versée au tueur (la victime était le leader), 0 sinon ; kill
+  // contre un joueur au moins deux fois plus gros (tâche 4.2).
+  bounty: number;
+  underdog: boolean;
 }
 
 export interface PickupEvent extends TickStamped {
@@ -198,4 +202,7 @@ export interface RoomSummary {
   map: Array<[number, number, number]>;
   // Minimap : [x, y] des lames légendaires au sol.
   legendaries: Array<[number, number]>;
+  // Leader (couronne) : [indice dans board, prime en trophées], null s'il
+  // n'y a personne en vie.
+  leader: [number, number] | null;
 }

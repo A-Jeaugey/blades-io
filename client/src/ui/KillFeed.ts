@@ -22,6 +22,9 @@ export interface KillFeedEntry {
   cause: KillCause;
   // Rôle du joueur local dans cette élimination, s'il y en a un.
   mine: "killer" | "victim" | null;
+  // Prime du leader versée au tueur, kill contre plus gros (tâche 4.2).
+  bounty?: number;
+  underdog?: boolean;
 }
 
 interface Line {
@@ -52,6 +55,8 @@ export class KillFeed {
       el.append(span("kf-name", e.victimName), span("kf-icon", ICON.wall), span("kf-border", BORDER_LABEL));
     } else {
       el.append(span("kf-name", e.killerName), span("kf-icon", ICON[e.cause] ?? ICON.blades), span("kf-name", e.victimName));
+      if (e.bounty) el.append(span("kf-bounty", `👑 +${e.bounty}`));
+      if (e.underdog) el.append(span("kf-underdog", "UNDERDOG"));
     }
     this.root.appendChild(el);
     this.lines.push({ el, until: now + LINE_MS });

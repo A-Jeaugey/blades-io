@@ -35,6 +35,13 @@ export interface LifeRecord {
   inGrace: boolean;
   humans: number;
   bots: number;
+  // Contre-mesures au snowball (tâche 4.2) : la vie finit en leader, temps
+  // passé leader, prime versée à son tueur, tueur au moins deux fois plus
+  // petit.
+  wasLeader: boolean;
+  leaderMs: number;
+  bounty: number;
+  underdog: boolean;
 }
 
 // L'écriture part en arrière-plan, suivie pour être attendue à l'arrêt du
@@ -68,6 +75,10 @@ async function insertLife(rec: LifeRecord): Promise<void> {
       in_grace: rec.inGrace,
       humans: small(rec.humans),
       bots: small(rec.bots),
+      was_leader: rec.wasLeader,
+      leader_ms: Math.max(0, Math.round(rec.leaderMs)),
+      bounty: small(rec.bounty),
+      underdog: rec.underdog,
     });
     if (error) warn(error.message);
   } catch (e) {
