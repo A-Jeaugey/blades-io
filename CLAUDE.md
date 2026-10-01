@@ -55,7 +55,9 @@ client/src/
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks
 ├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
-│                        CombatFeedback (repères de perte, « +1 »)
+│                        CombatFeedback (repères de perte, « +1 »),
+│                        Onboarding (carte des contrôles, indications
+│                        uniques, page « How to play »)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
 

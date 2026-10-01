@@ -115,6 +115,8 @@ Every push and pull request runs the same build in GitHub Actions (`.github/work
 
 The input mode follows the last device you used: touching the screen shows the touch controls, the keyboard or mouse hides them. Movement keys take over from the mouse until you left-click again; while moving with the keyboard, moving the mouse makes the cursor your aim (WASD + mouse), so you can throw behind you while running away. Direction and aim are measured on the ground from your character: the cursor points exactly where you go or throw, despite the tilted camera. On mobile, dragging from THROW and bringing your finger back to the button cancels the throw.
 
+New players get a controls card (matching their device) when they first enter a game, then one-time contextual tips (throw when an enemy is in range, boost cost, deadly edge, bushes), remembered in `localStorage` (`blade.onboarding`). The HOW TO PLAY page in the lobby repeats the rules and can show the tips again.
+
 ### Gameplay tips
 
 - Spawn with 3 Common blades. Ring 0 caps at 16 blades; ring 1 at 24; ring 2 at 32; etc.
@@ -288,7 +290,7 @@ client/src/
   entities/            # PlayerView, BladeView, CrateView, PowerUpView, AimIndicator
   fx/                  # particles, screen shake
   input/               # keyboard, mouse (projected on the ground), touch joystick + throw button with drag aim
-  ui/                  # HUD, login, death, leaderboard, minimap, settings, chat, combat feedback
+  ui/                  # HUD, login, death, leaderboard, minimap, settings, chat, combat feedback, onboarding
   themes/              # cosmetic themes (palette, ground shader, decor, music)
   boutique/            # theme shop
   audio/SoundManager   # Tone.js procedural SFX + music player

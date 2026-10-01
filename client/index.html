@@ -79,6 +79,10 @@
           <span id="room-code">—</span>
         </div>
         <div id="effects"></div>
+        <!-- Onboarding (cf. ui/Onboarding.ts) : carte des contrôles à la
+             première partie, puis indications uniques. -->
+        <div id="onboard-card" class="onboard-card hidden" aria-live="polite"></div>
+        <div id="onboard-hint" class="onboard-hint" aria-live="polite"></div>
         <div id="king-crown" class="hidden">👑</div>
       </div>
 
@@ -258,6 +262,10 @@
               <span class="bio2-cta-secondary-icon">⌬</span>
               <span class="bio2-cta-secondary-label">BOUTIQUE</span>
             </button>
+            <button id="open-howto-btn" class="bio2-cta-secondary" type="button">
+              <span class="bio2-cta-secondary-icon">?</span>
+              <span class="bio2-cta-secondary-label">HOW TO PLAY</span>
+            </button>
           </section>
 
           <div class="bio2-marquee">
@@ -268,6 +276,73 @@
           </div>
           <div class="login-footer"><span id="login-fps"></span></div>
         </main>
+      </div>
+
+      <!-- Comment jouer (cf. ui/Onboarding.ts) : contrôles et règles, depuis le
+           lobby. Textes en anglais comme le reste du jeu (traduction : 3.7). -->
+      <div id="howto" class="howto hidden" aria-hidden="true">
+        <div class="howto-backdrop" data-close></div>
+        <div class="howto-shell" role="dialog" aria-labelledby="howto-title">
+          <header class="howto-head">
+            <span id="howto-title" class="howto-title">HOW TO PLAY</span>
+            <button class="howto-close" data-close aria-label="Close">✕</button>
+          </header>
+          <div class="howto-body">
+            <section>
+              <h3>Controls</h3>
+              <div class="howto-cols">
+                <dl>
+                  <dt>Mouse + keyboard</dt>
+                  <dd><b>Move</b> mouse, or WASD / arrows</dd>
+                  <dd><b>Aim</b> cursor (works while moving with WASD)</dd>
+                  <dd><b>Throw</b> right-click or SPACE</dd>
+                  <dd><b>Boost</b> hold left-click or SHIFT</dd>
+                </dl>
+                <dl>
+                  <dt>Touch</dt>
+                  <dd><b>Move</b> left stick</dd>
+                  <dd><b>Throw</b> tap THROW: along your movement</dd>
+                  <dd><b>Aim</b> drag from THROW, release to throw (back to the button cancels)</dd>
+                  <dd><b>Boost</b> hold BOOST</dd>
+                </dl>
+              </div>
+            </section>
+            <section>
+              <h3>Blades</h3>
+              <ul>
+                <li>Your blades orbit around you and clash with enemy blades. Each rarity deals and withstands the same amount: <b>Common</b> 1, <b>Rare</b> 2, <b>Epic</b> 4, <b>Legendary</b> 8. Equal rarities break each other; a Legendary survives 7 Common hits.</li>
+                <li>A blade touching a player's body kills. Your orbit is your shield: keep it full.</li>
+                <li>Grab loose blades to grow. At 10 and 20 blades you tier up: bigger blades, bigger reach, harder knockback.</li>
+              </ul>
+            </section>
+            <section>
+              <h3>Throw and boost</h3>
+              <ul>
+                <li>Throwing launches your outermost blade (0.5 s cooldown). It can hit 1 target, 2 if Epic, 3 if Legendary, and lands after 30 u where anyone can pick it up.</li>
+                <li>Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first.</li>
+              </ul>
+            </section>
+            <section>
+              <h3>Arena</h3>
+              <ul>
+                <li>The red edge kills instantly, outer blades first. A red glow and an alarm warn you.</li>
+                <li>Bushes hide you and your blades from other players.</li>
+                <li>Break crates for loot. Power-ups: Speed, Spin, Magnet, Shield, Blades.</li>
+                <li>When you die, 70 % of your blades drop, plus those you lost in the last 10 s.</li>
+              </ul>
+            </section>
+            <section>
+              <h3>Trophies</h3>
+              <ul>
+                <li>Earned at the end of each life in public rooms: kills × 15, your peak blade count, 1 per 10 s alive, crates × 3, power-ups × 2. Spend them in the BOUTIQUE.</li>
+              </ul>
+            </section>
+          </div>
+          <footer class="howto-foot">
+            <button type="button" id="howto-reset" class="howto-reset">SHOW IN-GAME TIPS AGAIN</button>
+            <span id="howto-reset-msg" class="howto-reset-msg"></span>
+          </footer>
+        </div>
       </div>
 
       <!-- Boutique : modal plein écran, accessible depuis le main menu (login)

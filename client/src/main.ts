@@ -10,6 +10,7 @@ import {
   LOW_BLADE_WARNING,
   SERVER_DT,
   THROW_COOLDOWN_MS,
+  THROW_PROJECTILE_MAX_RANGE,
   TIER_UP_SHAKE,
   ChatEvent,
   InputMessage,
@@ -56,6 +57,7 @@ import { Leaderboard } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
+import { HintId, Onboarding } from "./ui/Onboarding";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NametagOverlay } from "./scene/NametagOverlay";
@@ -205,6 +207,10 @@ class Game {
   private throwLatched = false;
   private aimIndicator = new AimIndicator();
   private combatFeedback = new CombatFeedback();
+  private onboarding!: Onboarding;
+  // Intensité de l'alerte de bordure à la dernière frame (0..1).
+  private borderIntensity = 0;
+  private nextHintCheckAt = 0;
   // Dernière secousse de clash du joueur local (performance.now()).
   private lastClashShakeAt = 0;
   // Dernière direction montrée par l'indicateur : gardée pendant son fondu
@@ -302,6 +308,8 @@ class Game {
         },
         resetPredictionStats: () => { this.corrections.length = 0; },
         groundAt: (x: number, y: number) => this.camera.groundAt(x, y),
+        // Onboarding (tâche 3.1) : déclenche une indication.
+        hint: (id: HintId) => this.onboarding.hint(id),
       };
     }
     this.settings = new SettingsPanel();
@@ -333,6 +341,7 @@ class Game {
       },
     });
     this.throwBtn = document.getElementById("throw-btn");
+    this.onboarding = new Onboarding(() => this.input.isTouch);
     // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
     // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
     this.input.onModeChange((touch) => {
@@ -422,6 +431,8 @@ class Game {
       }
     }
     this.setupRoom();
+    // Carte des contrôles à la toute première partie.
+    this.onboarding.enterGame(performance.now());
   }
 
   // Atténue un son selon sa distance au joueur local : 1 si <= HEAR_NEAR,
@@ -926,6 +937,7 @@ class Game {
   private handleLocalDeath(killerName: string | null): void {
     if (this.dead) return;
     this.dead = true;
+    this.onboarding.leaveGame();
     const me = this.room?.state?.players?.get(this.myId);
     if (!me) return;
     const lifeMs = this.serverNow() - me.spawnedAt;
@@ -977,6 +989,7 @@ class Game {
     this.death.hide();
     this.dead = false;
     this.resetPrediction();
+    this.onboarding.enterGame(performance.now());
     this.room?.send("respawn", { name: this.myName });
   }
 
@@ -989,6 +1002,7 @@ class Game {
     this.chat.hide();
     this.nametags.clear();
     this.combatFeedback.clear();
+    this.onboarding.leaveGame();
     this.effectDurations.clear();
     this.settings.setInGame(false);
     // Détache d'abord les listeners (élimine les callbacks fantômes), puis
@@ -1160,6 +1174,29 @@ class Game {
     return me.bladeCount > 0 && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
   }
 
+  // Indications de première partie (tâche 3.1) : chacune quand la
+  // situation se présente, une seule fois (Onboarding les mémorise).
+  private checkOnboardingHints(serverNowMs: number): void {
+    const state = this.room?.state;
+    const me = state?.players?.get(this.myId);
+    const view = this.players.get(this.myId);
+    if (!me?.alive || this.dead || !view) return;
+    if (isInBush(view.renderX, view.renderY)) this.onboarding.hint("bush");
+    if (this.borderIntensity > 0.2) this.onboarding.hint("border");
+    const move = this.input.peekDirBoost();
+    if (me.bladeCount >= 6 && Math.hypot(move.dx, move.dy) > 0.05) this.onboarding.hint("boost");
+    if (me.bladeCount >= 2 && this.throwReady(me, serverNowMs)) {
+      // Un ennemi visible à portée utile de lancer.
+      let inRange = false;
+      state.players.forEach((p: any, id: string) => {
+        if (inRange || id === this.myId || !p.alive || isInBush(p.x, p.y)) return;
+        const d = Math.hypot(p.x - view.renderX, p.y - view.renderY);
+        if (d > 8 && d < THROW_PROJECTILE_MAX_RANGE - 2) inRange = true;
+      });
+      if (inRange) this.onboarding.hint("throw");
+    }
+  }
+
   // Alerte d'approche de la bordure : vignette et bip, selon l'écart entre
   // l'orbite extérieure (les lames meurent avant le corps) et la zone
   // mortelle. Position rendue du joueur local : celle qu'il voit à l'écran.
@@ -1167,6 +1204,7 @@ class Game {
     const t = this.elapsed * 0.001;
     const me = this.room?.state?.players?.get(this.myId);
     if (!localView || !me || !me.alive) {
+      this.borderIntensity = 0;
       this.borderWarning.update(0, 0, 0, t, dt);
       return;
     }
@@ -1175,6 +1213,7 @@ class Game {
     const r = Math.hypot(x, y);
     const gap = MAP_RADIUS - WALL_KILL_THICKNESS - r - outerOrbitRadius(me.bladeCount);
     const intensity = Math.max(0, Math.min(1, 1 - gap / BORDER_WARNING_DISTANCE));
+    this.borderIntensity = intensity;
     let dirX = 0;
     let dirY = 0;
     if (intensity > 0 && r > 1e-3) {
@@ -1451,6 +1490,11 @@ class Game {
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
+      if (now >= this.nextHintCheckAt) {
+        this.nextHintCheckAt = now + 250;
+        this.checkOnboardingHints(serverNowMs);
+      }
+      this.onboarding.update(now);
       this.decor.update(this.elapsed * 0.001);
       // Wisps ambient : centrés sur le joueur local pour qu'on en voie
       // toujours autour de soi. Au lobby (pas de localView) on les laisse
