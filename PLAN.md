@@ -241,10 +241,11 @@ Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Réf�
   - Quoi : ne plus synchroniser chaque lame en orbite comme une entité ; synchroniser par joueur la liste ordonnée des raretés (par exemple un tableau d'octets). Les entités `Blade` ne concernent plus que les lames au sol et en vol. Le client reconstruit les instances d'orbite.
   - Acceptation : bench 60 bots < 20 Ko/s par client ; rendu identique.
 
-- [ ] **2.6 — Rendu client des lames et des effets** · M · `CLI-01` `GFX-03`
+- [x] **2.6 — Rendu client des lames et des effets** · M · `CLI-01` `GFX-03` · 2026-10-01 · `a5f8446`
   - Quoi : index inverse par bucket (suppression en O(1)) ; une seule lecture par propriétaire et par frame ; buckets qui grandissent au lieu d'un plafond silencieux de 800 ; particules en sprites ronds via un petit shader (taille et opacité par particule) ; traînée en ruban échantillonnée dans le temps (et non par frame), réinitialisée au spawn.
   - Fichiers : `client/src/entities/BladeView.ts`, `client/src/fx/Particles.ts`, `client/src/entities/PlayerView.ts`.
   - Acceptation : 2 000 lames à l'écran sans pic de frame lors des morts ; aucune lame invisible ; particules rondes ; traînée de même longueur à 30 et 144 FPS.
+  - Réalisé : tout le « Quoi ». Mesuré hors navigateur (BladeRenderer ne fait que des calculs de matrices ; swiftshader ne donne pas de temps GPU fiables), 2 000 lames : frame 0,96 → 0,75 ms, lectures de joueur 6 000 → 40 par frame, retrait des 70 lames d'une mort 0,26 → 0,09 ms (0,44 → 0,14 ms à 4 000) ; 1 500 lames dans un même bucket : 800 → 1 500 dessinées (capacité qui double, 256 au départ). Particules : disques additifs, éteints par le brouillard au lieu d'être teintés. Traînée : ruban effilé des 400 dernières ms, remis à zéro à l'apparition et sur un saut de plus de 6 u ; sur un même trajet, 7,28 u à 20, 30, 60, 144 et 240 FPS (avant : 17,1 u à 20 FPS, 11,4 à 30, 11,9 à 144). Vérifié au rendu réel (scène et post-FX, page d'aperçu temporaire) en qualité haute, basse et potato, puis en partie.
 
 - [ ] **2.7 — Alléger le client** · S · `CLI-03`
   - Quoi : chargement différé de Tone.js (au premier geste) et de Supabase (si configuré, à l'ouverture du panneau d'auth ou si une session existe) ; découpage du code de la boutique ; sourcemaps non publiées ; suppression des allocations et `getElementById` par frame.
