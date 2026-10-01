@@ -55,6 +55,11 @@ export interface PlayerKilledEvent extends TickStamped {
   victimName: string;
   killerName: string | null;
   cause: KillCause;
+  // Rapport de force au début de l'échange : lames en orbite, plus celles
+  // perdues en clash dans les 3 s d'avant (au coup fatal, la victime a
+  // souvent déjà tout perdu). L'écran de mort l'explique.
+  victimBlades: number;
+  killerBlades: number | null;
 }
 
 export interface PickupEvent extends TickStamped {

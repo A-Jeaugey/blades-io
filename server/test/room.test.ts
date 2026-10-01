@@ -417,15 +417,23 @@ test("évènements : cause de chaque mort, auteur d'une caisse brisée", () => {
   // Le client en tire le fil des éliminations et les gains flottants
   // (tâche 3.4), puis la cause affichée à la mort (3.5).
   const r = new TestRoom(clock);
-  const a = armed(r, "a", 3);
+  const a = armed(r, "a", 5);
   for (const cause of ["blades", "throw", "wall"] as const) {
     const victim = r.join(`v-${cause}`);
     r.room.killPlayer(victim, cause === "wall" ? null : a, cause);
   }
   assert.deepEqual(
-    r.eventsOf("playerKilled").map((e) => [e.cause, e.killerId, e.killerName]),
-    [["blades", "a", a.name], ["throw", "a", a.name], ["wall", null, "GRID BORDER"]],
+    r.eventsOf("playerKilled").map((e) => [e.cause, e.killerId, e.killerName, e.victimBlades, e.killerBlades]),
+    [["blades", "a", a.name, 3, 5], ["throw", "a", a.name, 3, 5], ["wall", null, "GRID BORDER", 3, null]],
   );
+  // Lames perdues juste avant le coup fatal : comptées dans le rapport de
+  // force (la victime en avait 3 au début de l'échange).
+  const fighter = r.join("fighter");
+  r.room.removePlayerBlades(fighter, 3);
+  fighter.recentLosses = [1, 2, 3].map(() => ({ rarity: 0, ts: clock.now - 500 }));
+  r.room.killPlayer(fighter, a, "blades");
+  const last = r.eventsOf("playerKilled").at(-1);
+  assert.equal(last.victimBlades, 3);
   const crate = new Crate();
   crate.id = "c1";
   crate.x = 10; crate.y = 10;

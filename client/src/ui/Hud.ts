@@ -98,18 +98,20 @@ export class Hud {
     this.bladeLabel.textContent = n === 1 ? "BLADE" : "BLADES";
   }
 
-  // Score de la vie en cours et record personnel ; un record battu en
-  // cours de vie s'affiche comme tel.
-  setScore(score: number, best: number): void {
-    const newBest = best > 0 && score > best;
+  // Score de la vie en cours et record personnel (null : room privée, où le
+  // record ne compte pas) ; un record battu en cours de vie s'affiche comme
+  // tel.
+  setScore(score: number, best: number | null): void {
+    const newBest = best !== null && best > 0 && score > best;
     if (score !== this.shown.score) {
       this.shown.score = score;
       this.scoreVal.textContent = `🏆 ${score}`;
     }
-    if (best !== this.shown.best || newBest !== this.shown.newBest) {
-      this.shown.best = best;
+    const bestKey = best === null ? -2 : best;
+    if (bestKey !== this.shown.best || newBest !== this.shown.newBest) {
+      this.shown.best = bestKey;
       this.shown.newBest = newBest;
-      this.bestVal.textContent = newBest ? "NEW BEST" : `BEST ${best}`;
+      this.bestVal.textContent = best === null ? "" : newBest ? "NEW BEST" : best > 0 ? `BEST ${best}` : "BEST —";
       this.bestVal.classList.toggle("new", newBest);
     }
   }

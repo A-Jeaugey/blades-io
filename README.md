@@ -30,6 +30,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Score** | kills × 15 + peak blade count of the life + 1 per 10 s alive + crates × 3 + power-ups × 2. In public rooms, it is credited as trophées at the end of each life (death or leaving) |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
+| **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
 | **Camera** | Same framing for every theme (a cosmetic never changes what you see). It pulls back smoothly as your orbit grows, and narrow screens get pulled back until they show at least ~80 % of a 16:9 screen's width (portrait phones see more depth, at a smaller scale) |
 
 ### Bots

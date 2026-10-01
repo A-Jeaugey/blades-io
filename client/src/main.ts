@@ -61,6 +61,7 @@ import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
 import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
 import { getBest, submitScore } from "./ui/personalBest";
+import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
 import { SettingsPanel } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
@@ -70,7 +71,7 @@ import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePres
 import { applyThemeCss, getActiveTheme } from "./themes";
 import { Boutique } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
-import { ensureGuestToken, getGuestToken } from "./auth/guestToken";
+import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
 
 // Buffer d'interpolation : on rend la simu serveur avec ce délai pour
@@ -83,6 +84,12 @@ const RENDER_DELAY = 80;
 // Au-delà de ce rayon, une lame détruite l'a été par le mur (orbite qui
 // dépasse la zone mortelle, projectile qui l'atteint).
 const WALL_ZAP_RADIUS = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;
+// Après la mort (tâche 3.5) : durée de la caméra sur le tueur avant la
+// carte récapitulative, pause plus courte pour une mort à la bordure, et
+// constante de temps du glissement de la caméra vers le tueur (s).
+const KILLCAM_MS = 2500;
+const WALL_DEATH_MS = 1200;
+const KILLCAM_PAN_TAU = 0.25;
 
 type OrbitInfo = { ownerId: string; ring: number; slot: number; inRing: number };
 interface ClashCheck {
@@ -223,6 +230,14 @@ class Game {
   // Score de la vie en cours déjà versé au record personnel (évite de le
   // compter deux fois : mort puis retour au menu).
   private bestSubmitted = false;
+  // Caméra sur le tueur (tâche 3.5) : après la mort, la caméra glisse vers
+  // lui, puis la carte récapitulative s'affiche (cardAt) ; la caméra le
+  // suit encore derrière la carte, jusqu'au respawn.
+  private killCam: { killerId: string | null; x: number; y: number; cardAt: number } | null = null;
+  private pendingDeath: DeathStats | null = null;
+  // Solde du portefeuille invité, lu à l'entrée en jeu : total affiché à la
+  // mort d'un invité.
+  private guestBalance: number | null = null;
   private onboarding!: Onboarding;
   // Intensité de l'alerte de bordure à la dernière frame (0..1).
   private borderIntensity = 0;
@@ -341,6 +356,17 @@ class Game {
     });
     this.login = new LoginScreen((res) => this.start(res));
     this.death = new DeathScreen(() => this.respawn(), () => this.returnToMenu());
+    // Caméra sur le tueur : un clic sur le jeu ou Espace, Entrée, Échap
+    // passent directement à la carte (Échap la ferme ensuite, cf.
+    // DeathScreen). L'écouteur de la carte, sur document, passe avant
+    // celui-ci : le premier Échap ne quitte pas la partie.
+    window.addEventListener("keydown", (e) => {
+      if (e.repeat || !this.pendingDeath) return;
+      if (e.key === " " || e.key === "Enter" || e.key === "Escape") this.showDeathCard();
+    });
+    this.canvas.addEventListener("pointerdown", () => {
+      if (this.pendingDeath) this.showDeathCard();
+    });
     this.input = new InputManager(
       this.canvas,
       document.getElementById("joystick")!,
@@ -422,6 +448,8 @@ class Game {
         joinOpts.token = token;
       } else {
         joinOpts.guestToken = await ensureGuestToken();
+        this.guestBalance = null;
+        if (joinOpts.guestToken) void fetchGuestWallet().then((w) => { this.guestBalance = w ? w.balance : null; });
       }
       this.room = await this.conn.join(res.name, joinOpts);
     } catch (e) {
@@ -681,7 +709,7 @@ class Game {
         this.sound.killConfirm();
         if (victim) this.scorePop(victim.renderX, victim.renderY, SCORE_KILL, "big");
       }
-      if (msg.victimId === this.myId) this.handleLocalDeath(msg.killerName ?? null);
+      if (msg.victimId === this.myId) this.handleLocalDeath(msg);
     }, false));
     room.onMessage("clash", (msg: ClashEvent) => {
       // Mode debug : mesure aussi l'écart qu'aurait une étincelle jouée dès
@@ -977,7 +1005,7 @@ class Game {
     return orbitThetaAt(seg.phase, seg.rate, seg.tick, tick);
   }
 
-  private handleLocalDeath(killerName: string | null): void {
+  private handleLocalDeath(msg: PlayerKilledEvent): void {
     if (this.dead) return;
     this.dead = true;
     this.onboarding.leaveGame();
@@ -985,19 +1013,27 @@ class Game {
     if (!me) return;
     const lifeMs = this.serverNow() - me.spawnedAt;
     const rank = this.computeMyRank();
-    this.submitLifeScore(me.score);
+    const best = this.submitLifeScore(me.score);
     this.sound.death();
     this.camera.shake.add(0.8);
     const earned = me.score;
     const isAuthed = auth.getAccessToken() !== null;
     // Room privée : le serveur ne crédite rien (cf. persistMatchIfAuthed).
     const isPrivate = !!this.room?.state?.isPrivate;
-    // Solde local connu à l'instant de la mort, +ce qu'on vient de gagner.
-    // Le vrai total côté serveur peut différer si plusieurs onglets
-    // jouent en parallèle ; on rafraîchit en background pour reconverger.
+    // Invité avec un jeton : le serveur crédite son portefeuille invité.
+    const guestSaved = !isAuthed && !isPrivate && getGuestToken() !== null;
+    // Solde connu à l'instant de la mort, +ce qu'on vient de gagner. Le vrai
+    // total côté serveur peut différer si plusieurs onglets jouent en
+    // parallèle ; on rafraîchit en arrière-plan pour reconverger.
     const cached = wallet.get();
-    const optimisticTotal = isAuthed && !isPrivate && cached ? cached.balance + earned : null;
-    this.death.show({
+    let total: number | null = null;
+    if (isAuthed && !isPrivate && cached) total = cached.balance + earned;
+    if (guestSaved && this.guestBalance !== null) {
+      this.guestBalance += earned;
+      total = this.guestBalance;
+    }
+    const killer = msg.killerId ? msg.killerName : null;
+    this.pendingDeath = {
       lifeSeconds: Math.max(0, lifeMs / 1000),
       maxBlades: me.maxBladeCount,
       kills: me.kills,
@@ -1005,25 +1041,100 @@ class Game {
       score: earned,
       cratesDestroyed: me.cratesDestroyed ?? 0,
       powerupsCollected: me.powerupsCollected ?? 0,
-      killerName,
+      cause: msg.cause ?? (killer ? "blades" : "wall"),
+      killerName: killer,
+      killerBlades: msg.killerBlades ?? null,
+      victimBlades: msg.victimBlades ?? 0,
+      best,
       // Le serveur persiste seulement si le joueur a fourni un token au
-      // join. Côté client, le state d'auth au moment de la mort est la
+      // join. Côté client, l'état d'auth au moment de la mort est la
       // meilleure approximation.
       scorePersisted: isAuthed && !isPrivate,
-      walletTotal: optimisticTotal,
+      guestSaved,
+      walletTotal: total,
       privateRoom: isPrivate,
-    });
+    };
+    // Caméra sur le tueur, puis la carte ; mort à la bordure : un temps
+    // pour voir les lames se désintégrer.
+    const view = this.players.get(this.myId);
+    this.killCam = {
+      killerId: msg.killerId,
+      x: view?.renderX ?? me.x,
+      y: view?.renderY ?? me.y,
+      cardAt: performance.now() + (msg.killerId ? KILLCAM_MS : WALL_DEATH_MS),
+    };
+    this.showKillCamBanner(this.pendingDeath);
     // Refresh asynchrone du solde authoritative pour le prochain affichage
     // (login screen au retour menu, prochaine mort).
     if (isAuthed) void wallet.refresh();
   }
 
+  // Bandeau de la caméra sur le tueur : qui, comment, avec combien de lames.
+  private showKillCamBanner(d: DeathStats): void {
+    const el = document.getElementById("killcam");
+    if (!el) return;
+    const label = el.querySelector(".kc-label") as HTMLElement;
+    const name = el.querySelector(".kc-name") as HTMLElement;
+    const skip = el.querySelector(".kc-skip") as HTMLElement;
+    if (d.cause === "wall" || !d.killerName) {
+      label.textContent = "OUT OF BOUNDS";
+      name.textContent = "THE RED EDGE";
+    } else {
+      label.textContent = d.cause === "throw" ? "HIT BY A THROW FROM" : "ELIMINATED BY";
+      name.textContent = d.killerName;
+    }
+    this.setKillCamBlades(d.killerBlades);
+    skip.textContent = this.input.isTouch ? "TAP TO SKIP" : "CLICK OR SPACE TO SKIP";
+    el.classList.remove("hidden");
+  }
+
+  private setKillCamBlades(n: number | null): void {
+    const el = document.querySelector("#killcam .kc-blades") as HTMLElement | null;
+    if (el) el.textContent = n === null ? "" : `${n} ${n === 1 ? "BLADE" : "BLADES"}`;
+  }
+
+  // Caméra sur le tueur : elle glisse vers lui puis le suit, tant qu'il
+  // est en vie et visible (dans un buisson, la caméra trahirait sa
+  // cachette : elle s'arrête là où elle est).
+  private updateKillCam(now: number, dt: number): void {
+    const kc = this.killCam!;
+    const killerState = kc.killerId ? this.room?.state?.players?.get(kc.killerId) : undefined;
+    const killerView = kc.killerId ? this.players.get(kc.killerId) : undefined;
+    if (killerState?.alive && killerView && !isInBush(killerView.renderX, killerView.renderY)) {
+      const k = 1 - Math.exp(-dt / KILLCAM_PAN_TAU);
+      kc.x += (killerView.renderX - kc.x) * k;
+      kc.y += (killerView.renderY - kc.y) * k;
+    }
+    this.camera.setTarget(kc.x, kc.y);
+    this.camera.setOrbitRadius(killerState?.alive ? outerOrbitRadius(killerState.bladeCount) : 0);
+    if (this.pendingDeath) {
+      // Nombre de lames du tueur en direct : il ramasse le butin.
+      if (killerState?.alive) this.setKillCamBlades(killerState.bladeCount);
+      if (now >= kc.cardAt) this.showDeathCard();
+    }
+  }
+
+  // Fin de la caméra sur le tueur (délai écoulé ou passée par le joueur).
+  private showDeathCard(): void {
+    if (!this.pendingDeath) return;
+    document.getElementById("killcam")?.classList.add("hidden");
+    this.death.show(this.pendingDeath);
+    this.pendingDeath = null;
+  }
+
+  private endKillCam(): void {
+    this.killCam = null;
+    this.pendingDeath = null;
+    document.getElementById("killcam")?.classList.add("hidden");
+  }
+
   // Record personnel : le score d'une vie y est versé une fois, à la mort
   // ou au retour au menu, en room publique seulement (cf. personalBest).
-  private submitLifeScore(score: number): void {
-    if (this.bestSubmitted || this.room?.state?.isPrivate) return;
+  // Renvoie le record d'avant et s'il est battu (null : rien de versé).
+  private submitLifeScore(score: number): { previous: number; isNew: boolean } | null {
+    if (this.bestSubmitted || this.room?.state?.isPrivate) return null;
     this.bestSubmitted = true;
-    submitScore(score);
+    return submitScore(score);
   }
 
   // Gain flottant du joueur local : « +N 🏆 » en public, « +N » en room
@@ -1046,6 +1157,7 @@ class Game {
 
   private respawn(): void {
     this.death.hide();
+    this.endKillCam();
     this.dead = false;
     this.bestSubmitted = false;
     this.resetPrediction();
@@ -1058,6 +1170,7 @@ class Game {
     const meAlive = this.room?.state?.players?.get(this.myId);
     if (meAlive?.alive && !this.dead) this.submitLifeScore(meAlive.score);
     this.death.hide();
+    this.endKillCam();
     this.borderWarning.hide();
     this.hud.hide();
     this.hud.setRoomCode("");
@@ -1322,7 +1435,7 @@ class Game {
     this.lastBladeCountShown = me.bladeCount;
     this.hud.setBladeCount(me.bladeCount);
     this.hud.setBoost(!!me.boost, me.bladeCount);
-    this.hud.setScore(me.score, getBest());
+    this.hud.setScore(me.score, this.room.state.isPrivate ? null : getBest());
     // Effets actifs : on relit les *Until du joueur local et on met à jour
     // les badges HUD avec leur temps restant. Durée base conservée dans
     // effectDurations pour normaliser la barre.
@@ -1554,10 +1667,14 @@ class Game {
       this.powerups.update(dt, this.elapsed * 0.001);
       this.emitProjectileTrails(dt);
       this.particles.update(dt);
-      if (localView) this.camera.setTarget(localView.renderX, localView.renderY);
-      // Recul selon l'orbite du joueur local (vivant et en partie).
-      const meCam = this.room?.state?.players?.get(this.myId);
-      this.camera.setOrbitRadius(meCam?.alive && !this.dead ? outerOrbitRadius(meCam.bladeCount) : 0);
+      if (this.killCam) {
+        this.updateKillCam(now, dt);
+      } else {
+        if (localView) this.camera.setTarget(localView.renderX, localView.renderY);
+        // Recul selon l'orbite du joueur local (vivant et en partie).
+        const meCam = this.room?.state?.players?.get(this.myId);
+        this.camera.setOrbitRadius(meCam?.alive && !this.dead ? outerOrbitRadius(meCam.bladeCount) : 0);
+      }
       this.camera.update(dt);
       this.ground.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);

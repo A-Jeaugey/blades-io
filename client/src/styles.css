@@ -877,11 +877,14 @@ button:hover {
   margin: 0 0 16px;
   text-shadow: 0 0 14px var(--pink);
 }
+.death-card {
+  max-width: min(460px, 92vw);
+}
 #death-stats {
   text-align: left;
   font-size: 14px;
   margin: 10px 0 16px;
-  color: #d5eefb;
+  color: var(--fg-bright);
 }
 #death-stats .row {
   display: flex;
@@ -940,6 +943,76 @@ button:hover {
   color: var(--fg-muted);
   font-size: 12px;
   letter-spacing: 1px;
+}
+/* Cause de la mort, record, conseil (tâche 3.5). */
+#death-stats .row {
+  gap: 12px;
+}
+#death-stats .row span:last-child {
+  text-align: right;
+}
+#death-stats .death-cause b {
+  color: var(--pink);
+}
+#death-stats .death-best.new span:last-child {
+  color: var(--pink);
+  font-weight: 700;
+  text-shadow: 0 0 8px var(--pink);
+}
+#death-stats .death-tip {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--cyan);
+  background: rgba(var(--accent-cool-rgb), 0.08);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-bright);
+}
+
+/* Caméra sur le tueur : bandeau sous le centre de l'écran (le tueur est au
+   centre), au-dessus des contrôles tactiles. */
+.killcam {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 92vw;
+  padding: 8px 18px 7px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid rgba(var(--accent-warm-rgb), 0.55);
+  border-radius: 4px;
+  box-shadow: 0 0 24px rgba(var(--accent-warm-rgb), 0.25);
+  pointer-events: none;
+  animation: onboard-in 0.3s ease-out;
+}
+.killcam.hidden { display: none; }
+.kc-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+  letter-spacing: 3px;
+}
+.kc-name {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--pink);
+  text-shadow: 0 0 10px var(--pink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kc-blades {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 2px;
+}
+.kc-skip {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--fg-muted);
+  letter-spacing: 2px;
 }
 
 .settings-card {

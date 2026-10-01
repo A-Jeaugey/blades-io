@@ -87,6 +87,16 @@ function sanitizeName(raw: string): string {
   return cleaned;
 }
 
+// Lames d'un joueur au début d'un échange : en orbite, plus celles perdues
+// en clash dans les FIGHT_WINDOW_MS précédentes.
+const FIGHT_WINDOW_MS = 3000;
+function bladesBeforeFight(p: Player): number {
+  const since = Date.now() - FIGHT_WINDOW_MS;
+  let lost = 0;
+  for (const l of p.recentLosses) if (l.ts >= since) lost++;
+  return p.bladeCount + lost;
+}
+
 export class ArenaRoom extends Room<ArenaState> {
   maxClients = MAX_PLAYERS_PER_ROOM;
   private pickup = new PickupSystem();
@@ -711,6 +721,11 @@ export class ArenaRoom extends Room<ArenaState> {
   private killPlayer(victim: Player, killer: Player | null, reason: KillCause): void {
     if (!victim.alive) return;
     victim.alive = false;
+    // Rapport de force au début de l'échange, pour l'écran de mort : au
+    // moment du coup fatal, la victime a souvent déjà perdu ses lames dans
+    // les clashs qui précèdent.
+    const victimBlades = bladesBeforeFight(victim);
+    const killerBlades = killer ? bladesBeforeFight(killer) : null;
     // Persiste le match juste après le passage à mort (avant le drop, mais
     // après que tous les compteurs de session ont été incrémentés au cours
     // de la vie). Pas de await : recordMatch gère ses propres erreurs et on
@@ -778,6 +793,8 @@ export class ArenaRoom extends Room<ArenaState> {
       victimName: victim.name,
       killerName: killerLabel,
       cause: reason,
+      victimBlades,
+      killerBlades,
     };
     this.emit("playerKilled", ev);
   }
