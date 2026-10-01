@@ -399,8 +399,9 @@ Objectif : donner des raisons de revenir le lendemain.
 
 Objectif : vendre (en trophées) des cosmétiques que les autres voient, sans jamais toucher à la lisibilité ni à l'équité.
 
-- [ ] **6.1 — Loadout cosmétique géré par le serveur** · L · `ECO-03`
+- [x] **6.1 — Loadout cosmétique géré par le serveur** · L · `ECO-03` · 2026-10-01 · `d05254e`
   - Quoi : champs `skin`, `bladeSkin`, `trail`, `killFx` synchronisés sur `Player` ; au join, le serveur charge les items équipés depuis l'inventaire (possession vérifiée) ; valeurs par défaut pour les invités ; rendu par joueur dans `PlayerView` et `BladeRenderer` (en gardant l'instancing).
+  - Réalisé : catalogue partagé (`shared/src/cosmetics.ts`) : l'emplacement de chaque item, débloqué au niveau de compte (5.2) ou vendu (`SHOP_ITEMS`, sortes étendues aux quatre emplacements). Le client propose l'équipement choisi sur l'appareil en entrant en partie ; le serveur lit l'inventaire du compte à l'authentification, ne garde que ce qui appartient au joueur (`validateLoadout`), sinon l'apparence de base, et synchronise `skin`, `bladeSkin`, `trail` et `killFx` sur `Player`. Pas de table ni de route en plus ; un invité porte les items de son niveau (il n'achète rien). L'effet d'élimination du tueur part dans `playerKilled` (le tueur peut être hors de vue). Rendu par joueur : `PlayerView` change couleurs, forme de tête et accessoire (absent en potato) ; traînée équipée visible pour tous ; lames : attribut d'instance `aStyle` à côté de `aFlash`, instancing gardé, motif qui module la luminosité sans toucher à la teinte de rareté ; effet d'élimination en salve de particules propre. L'anneau au sol et le halo de protection ne changent jamais. Premier lot pour valider la chaîne : skins recrue et robot, lames pulse, traînée comète, confettis. Vérifié avec un serveur de test (XP et achat simulés) : l'équipement d'un vétéran vu par un autre joueur, celui d'un joueur niveau 1 refusé, élimination avec l'effet ; page d'aperçu en gros plan en qualité haute, basse et potato. Banc 60 bots : tick 3,07 ms (p99 7,4 ms), inchangé. 2 tests.
 
 - [ ] **6.2 — Premiers cosmétiques** · L · `ECO-03`
   - Quoi : 6 à 10 skins de personnage, 4 à 6 skins de lames, 4 traînées, 3 effets d'élimination, tous procéduraux ; onglets « Skins » et « Épées » de la boutique fonctionnels.
@@ -488,7 +489,7 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | mesurable après la migration 0005 et la fusion | < 15 % | `life_stats_summary` (4.8) |
 | JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 175 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 177 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
