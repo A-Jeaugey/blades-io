@@ -313,6 +313,23 @@ export class SoundManager {
     }
   }
 
+  // Passage de palier (tâche 4.1) : arpège montant, plus long et plus aigu
+  // à chaque palier, et coup sourd pour les trois derniers. À distinguer à
+  // l'oreille du carillon d'élimination (sauts d'octave).
+  tierUp(tier: number): void {
+    if (!this.started) return;
+    const scale = ["C5", "D5", "E5", "G5", "A5", "C6", "D6", "E6", "G6", "A6"];
+    const first = Math.min(tier, 4);
+    const count = Math.min(tier + 2, 6);
+    let t = this.nextTime(this.chimeSynth);
+    for (let i = 0; i < count; i++) {
+      this.chimeSynth.triggerAttackRelease(scale[first + i], 0.1, t);
+      this.lastTriggerTime.set(this.chimeSynth, t);
+      t += 0.07;
+    }
+    if (tier >= 3) this.killSynth.triggerAttackRelease("C2", 0.3, this.nextTime(this.killSynth), 0.7);
+  }
+
   // Caisse brisée : craquement et coup sourd plus aigu que celui d'une
   // élimination.
   crateBreak(gain = 1): void {

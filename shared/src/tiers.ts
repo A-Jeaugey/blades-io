@@ -13,8 +13,8 @@ import {
   TIER_VISUAL_SCALE,
 } from "./constants";
 
-// Index de tier 0-based (0, 1 ou 2). bladeCount=0 → tier 0 (pas de "tier -1",
-// simplifie tous les sites d'appel).
+// Index de tier 0-based (0 à TIER_COUNT - 1). bladeCount=0 → tier 0 (pas de
+// "tier -1", simplifie tous les sites d'appel).
 export function tierFromBladeCount(bladeCount: number): number {
   let t = 0;
   for (let i = TIER_THRESHOLDS.length - 1; i >= 0; i--) {

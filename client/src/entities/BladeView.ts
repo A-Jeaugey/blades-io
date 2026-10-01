@@ -2,107 +2,14 @@ import * as THREE from "three";
 import {
   BladeRarity,
   RARITY_SCALE,
+  TIER_COUNT,
   orbitSlotAngle,
   ringRadius,
   tierVisualScale,
 } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
 import { FLASH_COLOR } from "../themes/Theme";
-
-// Géométrie d'épée : lame longue et fine en bipyramide losange (pointe
-// en +x, section losange au milieu pour un reflet en arête), garde
-// perpendiculaire (cross-guard) visible en +/-z, petit pommeau à la base.
-// Un seul BufferGeometry instancié -> quasi gratuit même à 800 instances.
-function createBladeGeometry(): THREE.BufferGeometry {
-  const tipX = 0.95; // pointe de lame
-  const midX = 0.05; // section la plus large de la lame
-  const baseX = -0.2; // base de la lame (accolée au crossguard)
-  const bladeHalfW = 0.07; // demi-largeur (axe z)
-  const bladeHalfT = 0.03; // demi-épaisseur (axe y), lame plate
-
-  const guardX = -0.25; // centre du crossguard
-  const guardHalfX = 0.06;
-  const guardHalfZ = 0.26;
-  const guardHalfY = 0.06;
-
-  const handleX = -0.35;
-  const handleHalfX = 0.08;
-  const handleHalfZ = 0.05;
-  const handleHalfY = 0.05;
-
-  const pommelX = -0.48;
-
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const pushV = (x: number, y: number, z: number): number => {
-    const i = positions.length / 3;
-    positions.push(x, y, z);
-    return i;
-  };
-
-  const tip = pushV(tipX, 0, 0);
-  const midT = pushV(midX, bladeHalfT, 0);
-  const midB = pushV(midX, -bladeHalfT, 0);
-  const midF = pushV(midX, 0, bladeHalfW);
-  const midK = pushV(midX, 0, -bladeHalfW);
-  indices.push(tip, midT, midF, tip, midF, midB, tip, midB, midK, tip, midK, midT);
-  const bHalfW = bladeHalfW * 0.6;
-  const bHalfT = bladeHalfT * 0.8;
-  const baseT = pushV(baseX, bHalfT, 0);
-  const baseB = pushV(baseX, -bHalfT, 0);
-  const baseF = pushV(baseX, 0, bHalfW);
-  const baseK = pushV(baseX, 0, -bHalfW);
-  indices.push(
-    midT, baseT, baseF, midT, baseF, midF,
-    midF, baseF, baseB, midF, baseB, midB,
-    midB, baseB, baseK, midB, baseK, midK,
-    midK, baseK, baseT, midK, baseT, midT,
-  );
-  indices.push(baseT, baseF, baseB, baseT, baseB, baseK);
-
-  const pushBox = (
-    cx: number, cy: number, cz: number,
-    hx: number, hy: number, hz: number,
-  ) => {
-    const v000 = pushV(cx - hx, cy - hy, cz - hz);
-    const v100 = pushV(cx + hx, cy - hy, cz - hz);
-    const v010 = pushV(cx - hx, cy + hy, cz - hz);
-    const v110 = pushV(cx + hx, cy + hy, cz - hz);
-    const v001 = pushV(cx - hx, cy - hy, cz + hz);
-    const v101 = pushV(cx + hx, cy - hy, cz + hz);
-    const v011 = pushV(cx - hx, cy + hy, cz + hz);
-    const v111 = pushV(cx + hx, cy + hy, cz + hz);
-    indices.push(v000, v100, v101, v000, v101, v001);
-    indices.push(v010, v011, v111, v010, v111, v110);
-    indices.push(v000, v010, v110, v000, v110, v100);
-    indices.push(v001, v101, v111, v001, v111, v011);
-    indices.push(v000, v001, v011, v000, v011, v010);
-    indices.push(v100, v110, v111, v100, v111, v101);
-  };
-
-  pushBox(guardX, 0, 0, guardHalfX, guardHalfY, guardHalfZ);
-  pushBox(handleX, 0, 0, handleHalfX, handleHalfY, handleHalfZ);
-
-  const pr = 0.065;
-  const pmT = pushV(pommelX, pr, 0);
-  const pmB = pushV(pommelX, -pr, 0);
-  const pmF = pushV(pommelX + pr, 0, 0);
-  const pmK = pushV(pommelX - pr, 0, 0);
-  const pmP = pushV(pommelX, 0, pr);
-  const pmN = pushV(pommelX, 0, -pr);
-  indices.push(
-    pmT, pmF, pmP,  pmT, pmP, pmK,
-    pmT, pmK, pmN,  pmT, pmN, pmF,
-    pmB, pmP, pmF,  pmB, pmK, pmP,
-    pmB, pmN, pmK,  pmB, pmF, pmN,
-  );
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geo.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
-  geo.computeVertexNormals();
-  return geo;
-}
+import { createTierGeometry } from "./bladeGeometries";
 
 export interface PlayerPositionProvider {
   getRenderPosition(
@@ -114,7 +21,7 @@ export interface PlayerPositionProvider {
     // Horloge d'orbite du joueur au tick de rendu (cf. orbitThetaAt) :
     // intègre tier, nombre de lames et Spin, comme sur le serveur.
     theta: number;
-    // Tier 0..2 du joueur, pilote l'échelle et le glow visuels.
+    // Tier du joueur (0 à TIER_COUNT - 1) : forme, échelle et glow.
     tier: number;
     // Nombre total de lames du joueur, utilisé pour le rotMult dynamique.
     bladeCount: number;
@@ -145,15 +52,16 @@ interface BladeEntry {
 }
 
 const MAX_INSTANCES_PER_BUCKET = 800;
-const TIER_BUCKETS = 3;
+const TIER_BUCKETS = TIER_COUNT;
 // Émissif par tier. Avec un matériau par bucket, on peut pousser franchement
-// sans craindre le washout du matériau partagé d'avant. T1/T2 doivent rester
-// brillants pour bien lire le tier-up en cours, juste un cran sous T0 pour
-// que la sommation visuelle reste contrôlée.
-const TIER_EMISSIVE: readonly number[] = [0.90, 0.75, 0.60];
+// sans craindre le washout du matériau partagé d'avant. Les hauts tiers ont
+// des formes plus grandes (disque de scie, halo) et des orbites plus
+// pleines : leur glow baisse d'un cran par tier pour que la somme sous bloom
+// reste lisible.
+const TIER_EMISSIVE: readonly number[] = [0.90, 0.75, 0.60, 0.52, 0.46, 0.42];
 // Couleur "body" légèrement atténuée à haut tier pour limiter la sommation
-// sous bloom additif, mais sans assombrir (T2 garde ~85 % de la teinte).
-const TIER_COLOR_MULT: readonly number[] = [1.0, 0.92, 0.85];
+// sous bloom additif, mais sans assombrir.
+const TIER_COLOR_MULT: readonly number[] = [1.0, 0.92, 0.85, 0.82, 0.8, 0.78];
 // Compensation de luminance par rareté : voir palette.ts (calculée
 // dynamiquement à partir des couleurs courantes). Permet à toutes les raretés
 // de franchir le threshold UnrealBloom de manière équilibrée — sinon les
@@ -182,7 +90,7 @@ function addInstanceFlash(material: THREE.Material): void {
 }
 
 export class BladeRenderer {
-  // 4 raretés × 3 tiers = 12 InstancedMesh, indexés à plat par bucketKey().
+  // 4 raretés × TIER_COUNT tiers InstancedMesh, indexés à plat par bucketKey().
   // Chaque bucket a son propre matériau avec emissiveIntensity tier-aware,
   // ce qui permet de baisser le glow uniquement aux tiers où la sommation
   // washoutait l'écran.
@@ -194,8 +102,9 @@ export class BladeRenderer {
   // fin de son flash : entre deux raretés égales (PV = dégâts), les deux
   // lames cassent et on ne voyait jamais le flash. Sa dernière pose reste
   // affichée en blanc jusqu'à la fin du flash.
-  private ghosts: THREE.InstancedMesh;
-  private ghostList: Array<{ matrix: THREE.Matrix4; until: number }> = [];
+  // Un InstancedMesh de fantômes par tier : la forme suit le palier.
+  private ghosts: THREE.InstancedMesh[] = [];
+  private ghostList: Array<{ matrix: THREE.Matrix4; until: number; tier: number }> = [];
   private counts: number[] = new Array(4 * TIER_BUCKETS).fill(0);
   private idToIndex = new Map<string, { rarity: BladeRarity; tier: number; index: number }>();
   private entries = new Map<string, BladeEntry>();
@@ -209,7 +118,7 @@ export class BladeRenderer {
   public root = new THREE.Group();
 
   constructor(simpleMaterials = false) {
-    const geo = createBladeGeometry();
+    const geos = Array.from({ length: TIER_BUCKETS }, (_, t) => createTierGeometry(t, simpleMaterials));
     const theme = getActiveTheme();
     const rarities: BladeRarity[] = [
       BladeRarity.Common, BladeRarity.Rare, BladeRarity.Epic, BladeRarity.Legendary,
@@ -236,7 +145,7 @@ export class BladeRenderer {
               specular: theme.blades.specularColor,
             });
         addInstanceFlash(mat);
-        const bucketGeo = geo.clone();
+        const bucketGeo = geos[t].clone();
         const flash = new THREE.InstancedBufferAttribute(new Float32Array(MAX_INSTANCES_PER_BUCKET), 1);
         flash.setUsage(THREE.DynamicDrawUsage);
         bucketGeo.setAttribute("aFlash", flash);
@@ -249,11 +158,15 @@ export class BladeRenderer {
         this.root.add(mesh);
       }
     }
-    this.ghosts = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: FLASH_COLOR }), MAX_GHOSTS);
-    this.ghosts.count = 0;
-    this.ghosts.frustumCulled = false;
-    this.ghosts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.root.add(this.ghosts);
+    const ghostMat = new THREE.MeshBasicMaterial({ color: FLASH_COLOR });
+    for (let t = 0; t < TIER_BUCKETS; t++) {
+      const ghosts = new THREE.InstancedMesh(geos[t], ghostMat, MAX_GHOSTS);
+      ghosts.count = 0;
+      ghosts.frustumCulled = false;
+      ghosts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      this.ghosts.push(ghosts);
+      this.root.add(ghosts);
+    }
   }
 
   upsert(
@@ -301,7 +214,7 @@ export class BladeRenderer {
     if (ref && e.flashUntil > performance.now() && this.ghostList.length < MAX_GHOSTS) {
       const matrix = new THREE.Matrix4();
       this.meshes[bucketKey(ref.rarity, ref.tier)].getMatrixAt(ref.index, matrix);
-      this.ghostList.push({ matrix, until: e.flashUntil });
+      this.ghostList.push({ matrix, until: e.flashUntil, tier: ref.tier });
     }
     this.incOwnerRing(e.ownerId, e.ringIndex, -1);
     this.entries.delete(id);
@@ -317,7 +230,7 @@ export class BladeRenderer {
     this.idToIndex.clear();
     this.perOwnerRingCount.clear();
     this.ghostList.length = 0;
-    this.ghosts.count = 0;
+    for (const g of this.ghosts) g.count = 0;
     for (let i = 0; i < this.meshes.length; i++) {
       this.counts[i] = 0;
       const m = this.meshes[i];
@@ -471,10 +384,8 @@ export class BladeRenderer {
         yRender = 0.4 + Math.sin(phase * 0.6) * 0.08;
       }
 
-      // L'échelle finale combine la rareté (couleur+stat) et le tier (palier
-      // de progression). Tier 1 = 1.3×, Tier 2 = 1.7× — assez pour "lire" la
-      // le tier-up sans cramer l'écran (bloom + multi-instances émissives ont
-      // tendance à se sommer en blanc pur sur les hauts tiers).
+      // L'échelle finale combine la rareté (couleur+stat) et le tier (cf.
+      // TIER_VISUAL_SCALE) ; la forme du tier vient de sa géométrie.
       // Drop sur le point d'expirer : clignotement à ~4 Hz (réduit, pas
       // masqué, pour qu'on voie encore où il est).
       const blink = !e.ownerId && !e.isProjectile && e.expiring && Math.floor(elapsedSec * 8) % 2 === 1
@@ -488,11 +399,9 @@ export class BladeRenderer {
         const owner = players.getRenderPosition(e.ownerId);
         const tier = owner?.tier ?? 0;
         const ts = tierVisualScale(tier);
-        sx *= ts;          // longueur (extension de la lame vers l'extérieur)
-        sy *= ts;          // épaisseur
-        // Stretch transversal léger pour suggérer "lame large" sans toucher
-        // la géométrie. +15 %/tier (au lieu de +25 % qui washout l'écran).
-        sz *= ts * (tier > 0 ? 1.0 + tier * 0.15 : 1.0);
+        sx *= ts;
+        sy *= ts;
+        sz *= ts;
       }
       this.tmpPos.set(x, yRender, y);
       this.tmpEuler.set(0, -angle, 0);
@@ -520,11 +429,14 @@ export class BladeRenderer {
       this.flashes[key].needsUpdate = true;
     });
 
-    if (this.ghostList.length > 0 || this.ghosts.count > 0) {
+    if (this.ghostList.length > 0 || this.ghosts.some((g) => g.count > 0)) {
       this.ghostList = this.ghostList.filter((g) => g.until > now);
-      for (let i = 0; i < this.ghostList.length; i++) this.ghosts.setMatrixAt(i, this.ghostList[i].matrix);
-      this.ghosts.count = this.ghostList.length;
-      this.ghosts.instanceMatrix.needsUpdate = true;
+      for (const g of this.ghosts) g.count = 0;
+      for (const ghost of this.ghostList) {
+        const mesh = this.ghosts[ghost.tier];
+        mesh.setMatrixAt(mesh.count++, ghost.matrix);
+      }
+      for (const g of this.ghosts) g.instanceMatrix.needsUpdate = true;
     }
   }
 }

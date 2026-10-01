@@ -89,35 +89,57 @@ export const BLADE_HITBOX = 0.7;
 export const BLADE_COLLISION_COOLDOWN = 0.2; // s, par paire de lames
 
 // --- Tiers (paliers de progression) ---
-// Le tier d'un joueur est dérivé de bladeCount via tierFromBladeCount().
-// Tier 0 (1-9 lames)  : petites flèches, vitesse standard, hitbox standard
-// Tier 1 (10-19)      : épées larges, +rotation, hitbox x2
-// Tier 2 (20+)        : faux/scies géantes, ++rotation, hitbox x3
-export const TIER_THRESHOLDS = [1, 10, 20] as const;
-export const TIER_COUNT = 3;
+// Le tier d'un joueur est dérivé de bladeCount via tierFromBladeCount(), et
+// chaque palier a sa forme de lame (client/src/entities/bladeGeometries.ts).
+// Tâche 4.1 : six paliers au lieu de trois. Seuils choisis sur la
+// distribution mesurée dans une room publique de bots (4 graines, 15 min) :
+// médiane 9 lames ; record d'une vie ≥ 20 dans 27 % des vies, ≥ 40 dans
+// 3,6 %, ≥ 50 dans 1,3 %, ≥ 80 dans 0,4 %, jamais 100. Les trois premiers
+// seuils ne changent pas (l'équilibrage en place non plus) ; au-dessus,
+// trois paliers de plus en plus rares, à viser.
+// Tier 0 (1-9 lames) : dague
+// Tier 1 (10-19)     : épée
+// Tier 2 (20-34)     : faux
+// Tier 3 (35-54)     : scie
+// Tier 4 (55-79)     : lame runique
+// Tier 5 (80+)       : lame à aura
+export const TIER_THRESHOLDS = [1, 10, 20, 35, 55, 80] as const;
+export const TIER_COUNT = 6;
 
 // Multiplicateur sur BLADE_HITBOX pour la collision : élargit la hitbox des
 // joueurs montés en tier pour qu'ils touchent VRAIMENT. Tier 0 est aussi
 // boosté (×1.5) pour résoudre le problème des combats à peu de lames :
 // avec 3 lames à 120° d'écart, la hitbox angulaire passe d'environ 23° à
 // 33° → contacts garantis dans la fenêtre de croisement de 100ms.
-export const TIER_HITBOX_MULT: readonly number[] = [1.5, 2.2, 3.0];
+// Plafonné au tier 2 : les paliers 3 à 5 changent la forme et la taille
+// des lames, pas leur portée (ni leur vitesse, cf. TIER_ROT_MULT). Mesuré
+// (tâche 4.1) : avec une hitbox et une rotation encore en hausse au-delà
+// (3,3 à 3,6 ; ×1,34 à ×1,4), les morts d'un débutant avant 30 s doublaient
+// au banc de survie (9 → 19 sur ~100 sessions, 16 graines) : les gros bots
+// devenaient plus meurtriers, à rebours de la lutte contre le snowball
+// (tâche 4.2).
+export const TIER_HITBOX_MULT: readonly number[] = [1.5, 2.2, 3.0, 3.0, 3.0, 3.0];
 
 // Multiplicateur sur RING_BASE_ROT_SPEED. Progression resserrée : la base
 // 5.5 rad/s donne déjà du peps à T0, et le saut T1→T2 précédent était
 // trop violent (8.25 rad/s = illisible). Ici T0 5.5, T1 6.3, T2 7.2.
-export const TIER_ROT_MULT: readonly number[] = [1.0, 1.15, 1.3];
+// Plafonné au tier 2, comme la hitbox.
+export const TIER_ROT_MULT: readonly number[] = [1.0, 1.15, 1.3, 1.3, 1.3, 1.3];
 
 // Multiplicateur sur l'échelle visuelle des lames (en plus de RARITY_SCALE).
 // Volontairement modéré : à Tier 2, RARITY_SCALE Legendary (1.7) × 1.55 ×
 // 20 instances émissives + bloom = washout blanc sinon. La progression
 // reste lisible (T1 +25 %, T2 +55 %) sans nécessiter de géométrie dédiée.
-export const TIER_VISUAL_SCALE: readonly number[] = [1.0, 1.25, 1.55];
+// Hauts paliers (4.1) : leur forme suffit à les distinguer, la taille ne
+// grandit plus que doucement (bloom). Purement visuel : les collisions
+// utilisent TIER_HITBOX_MULT.
+export const TIER_VISUAL_SCALE: readonly number[] = [1.0, 1.25, 1.55, 1.65, 1.75, 1.85];
 
 // Intensité du knockback (force initiale en u/s) appliquée à chaque clash,
 // multipliée par le tier de la lame qui frappe.
 export const KNOCKBACK_BASE = 8.0;
-export const KNOCKBACK_TIER_MULT: readonly number[] = [1.0, 1.7, 2.6];
+// Plafonné dès le tier 2 : 8 × 2,6 ≈ KNOCKBACK_MAX_SPEED.
+export const KNOCKBACK_TIER_MULT: readonly number[] = [1.0, 1.7, 2.6, 2.6, 2.6, 2.6];
 // Décroissance du knockback (s) : durée pendant laquelle la velocity de
 // recul s'amortit exponentiellement avant de devenir négligeable.
 export const KNOCKBACK_DECAY = 0.18;
@@ -130,7 +152,9 @@ export const KNOCKBACK_MAX_SPEED = 21;
 // Hitlag : micro-pause du déplacement du joueur touché, pour donner du
 // poids à l'impact. Tier-aware. Les orbites continuent de tourner : figées,
 // les lames restaient au contact et relançaient le clash (tâche 1.6).
-export const HITLAG_DURATION_MS: readonly number[] = [50, 75, 100];
+// Plafonné à 100 ms au-delà du tier 2 : plus long, la cible d'un gros joueur
+// passerait plus d'un tiers du temps figée.
+export const HITLAG_DURATION_MS: readonly number[] = [50, 75, 100, 100, 100, 100];
 // Liberté garantie après un hitlag : aucun nouveau gel avant ce délai. En
 // combat prolongé, les clashs s'enchaînaient et figeaient les deux joueurs
 // sans issue ; au pire, un joueur passe désormais 100 / (100 + 250), soit
@@ -139,10 +163,10 @@ export const HITLAG_COOLDOWN_MS = 250;
 
 // Intensité de screen shake déclenchée pour le joueur local quand une de
 // ses lames clashe. Tier-aware. Plus généreux que le hit-confirm classique.
-export const CLASH_SHAKE_INTENSITY: readonly number[] = [0.18, 0.32, 0.55];
+export const CLASH_SHAKE_INTENSITY: readonly number[] = [0.18, 0.32, 0.55, 0.55, 0.55, 0.55];
 
 // Intensité de shake quand le joueur local change de tier.
-export const TIER_UP_SHAKE: readonly number[] = [0.0, 0.35, 0.55];
+export const TIER_UP_SHAKE: readonly number[] = [0.0, 0.35, 0.55, 0.6, 0.65, 0.75];
 
 // --- Caméra (cadrage) ---
 // Constante de gameplay, pas de thème : ce qu'on voit (menaces, lames au

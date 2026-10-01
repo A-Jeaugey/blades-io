@@ -846,7 +846,7 @@ class Game {
       if (msg.playerId === this.myId) {
         const intensity = TIER_UP_SHAKE[Math.min(msg.tier, TIER_UP_SHAKE.length - 1)] ?? 0.3;
         this.camera.shake.add(intensity);
-        this.sound.pickup(msg.tier >= 2 ? BladeRarity.Legendary : BladeRarity.Epic);
+        this.sound.tierUp(msg.tier);
       }
     }));
     room.onMessage("chat", (msg: ChatEvent) => {

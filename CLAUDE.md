@@ -43,8 +43,9 @@ client/src/
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
 │   └── palette.ts       Façade rétrocompat sur le thème actif
 ├── entities/
-│   ├── BladeView.ts     InstancedMesh×12 (4 raretés × 3 tiers), flash
+│   ├── BladeView.ts     InstancedMesh×24 (4 raretés × 6 tiers), flash
 │   │                    blanc par instance (attribut aFlash)
+│   ├── bladeGeometries.ts Une forme par palier (dague → lame à aura)
 │   ├── PlayerView.ts    Capsule corps + tête + ring + halo + trail
 │   ├── CrateView.ts     Boîte émissive + edges
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
