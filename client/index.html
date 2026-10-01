@@ -266,6 +266,13 @@
               </div>
             </div>
 
+            <!-- Mode de jeu (tâche 7.3) : boutons écrits par LoginScreen.ts,
+                 champ caché tant qu'il n'y a qu'un mode à proposer. -->
+            <div class="bio2-field hidden" id="game-mode-field">
+              <label class="bio2-field-label" id="game-mode-label" data-i18n="lobby.gameMode">GAME MODE</label>
+              <div id="game-mode-row" class="bio2-gamemodes" role="radiogroup" aria-labelledby="game-mode-label"></div>
+            </div>
+
             <div id="mode-public" class="mode-panel active">
               <p id="join-invite" class="bio2-invite hidden" role="status" data-i18n="lobby.joinInvite">A friend invited you into their arena: enter to join them.</p>
             </div>

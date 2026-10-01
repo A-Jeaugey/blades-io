@@ -195,6 +195,7 @@ Open the **SQL editor** in your Supabase dashboard and run every file of
 - `0008_challenges.sql` — daily and weekly challenge progress per account or guest wallet, and the `advance_challenges` function that also credits rewards (server only)
 - `0009_seasons.sql` — leaderboards of a period (`leaderboard_since`, `player_rank_since`) and `close_season`, which rewards the top 10 of a finished season once (`seasons_closed`, `season_results`); server only
 - `0010_reports.sql` — player reports from the chat (`/report`), with the reported player's last messages, and the `reports_by_target` view (most reported players over 30 days); server only, read them from the SQL editor: `select * from reports_by_target;`
+- `0011_game_modes.sql` — the game mode of each recorded game and life (`game_mode`, `'ffa'` for the endless arena), the `match_end` cause (a life cut short by the end of a match) and the `life_stats_by_mode` view to compare modes; until it is applied, the endless arena keeps recording its games
 
 #### Gameplay telemetry
 
@@ -330,12 +331,14 @@ shared/src/
   decor.ts             # static decor colliders
   shop.ts              # shop catalogue and daily featured items — the only source of item prices
   cosmetics.ts         # cosmetics: slots, level unlocks, loadout validation
+  modes.ts             # game modes: registry, quick play and private room offers, match phases
 
 server/src/
   index.ts             # Express + Colyseus bootstrap, /api/stats, static client
   shutdown.ts          # graceful restart: notice to players, pending writes
   telemetry.ts         # one life_stats row per human life (Supabase)
-  rooms/ArenaRoom.ts   # tick loop, message handling, drop logic
+  rooms/ArenaRoom.ts   # tick loop, message handling, drop logic, match lifecycle
+  modes/               # game mode rules as hooks: spawn, respawn, standings, end of match
   state/               # Colyseus schemas (Player, Blade, Crate, PowerUp)
   systems/             # movement, collisions, throws, pickup, bots, …
   auth/                # Supabase, wallets, guest tokens, /api routes

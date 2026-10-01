@@ -409,6 +409,25 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   (`seasons_closed` sert de verrou). Changer `SEASON_WEEKS` ou
   `SEASON_ONE_START` renumérote les saisons passées : à ne faire qu'avant
   la première clôture.
+- **Modes de jeu (tâche 7.3)** : registre partagé dans `shared/src/modes.ts`
+  (`GameModeId`, `GAME_MODES` : proposé en partie rapide et/ou en salon
+  privé), règles côté serveur dans `server/src/modes/` : l'interface
+  `GameMode` est une série de hooks appelés par `ArenaRoom` (`onJoin`,
+  `spawnPoint`, `canRespawn`, `onKill`, `standingScore`, `tick`,
+  `onMatchStart`) ; le combat, le butin et les lancers restent communs. Un
+  mode qui a une fin appelle `host.endMatch(entracte)` : classement figé
+  (évènement `matchEnd`), vies en cours enregistrées (cause `match_end`),
+  simulation à l'arrêt (`state.phase`, `MatchPhase.Over`, inputs acquittés
+  sans pas), puis `restartMatch` (arène vidée, tout le monde réapparaît).
+  Matchmaking : `filterBy(["code", "mode"])`, une file publique par mode ;
+  rejoindre un code n'envoie pas de mode ; une room créée sans mode
+  (client d'avant 7.3) s'inscrit en `ffa` (`listing.mode`). Ajouter un
+  mode : son id dans `GameModeId` et `GAME_MODES`, sa fabrique dans
+  `server/src/modes/index.ts` et `mode.<id>.name` / `mode.<id>.hint` dans
+  `en.ts` et `fr.ts` (le compilateur exige les trois) ; le sélecteur du
+  lobby apparaît dès qu'il y a deux modes à proposer. Colonne `game_mode`
+  (migration 0011) écrite seulement hors `ffa`, pour que l'arène
+  s'enregistre aussi sans la migration.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client
@@ -470,8 +489,9 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
 - **Télémétrie** (`server/src/telemetry.ts`) : chaque fin de vie humaine
   écrit une ligne `life_stats` (Supabase, migration 0005). Une nouvelle
   façon de finir une vie s'ajoute au type `LifeEnd` **et** à la contrainte
-  `check` de la colonne `cause`, par une nouvelle migration : sinon
-  l'insertion échoue (un avertissement par minute dans les logs).
+  `check` de la colonne `cause`, par une nouvelle migration (dernière en
+  date : `match_end`, migration 0011) : sinon l'insertion échoue (un
+  avertissement par minute dans les logs).
 - **Arrêt du serveur** : sur SIGINT/SIGTERM, le serveur annonce le
   redémarrage, refuse les entrées et attend le départ des joueurs
   (`server/src/shutdown.ts`, préavis `RESTART_NOTICE_MS` : 60 s en

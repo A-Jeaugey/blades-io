@@ -121,9 +121,11 @@ const gameServer = new Server({
   }),
 });
 
-// filterBy["code"] fait que joinOrCreate("arena", { code }) regroupe par
-// valeur de code. Public = code vide, private = code à 5 chars.
-gameServer.define("arena", ArenaRoom).filterBy(["code"]);
+// filterBy fait que joinOrCreate("arena", { code, mode }) regroupe par code
+// (public = code vide, privé = code à 5 caractères) et par mode de jeu
+// (tâche 7.3) : une file publique par mode. Rejoindre un salon par son code
+// n'envoie pas de mode, le salon garde le sien.
+gameServer.define("arena", ArenaRoom).filterBy(["code", "mode"]);
 
 // Arrêt en douceur sur SIGTERM / SIGINT (déploiement) : préavis aux
 // joueurs, puis attente des enregistrements de fin de partie (shutdown.ts).

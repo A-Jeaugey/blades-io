@@ -1,4 +1,4 @@
-import type { CosmeticId, CosmeticSlot } from "@bladeio/shared";
+import type { CosmeticId, CosmeticSlot, GameModeId } from "@bladeio/shared";
 import { en } from "./en";
 import { fr } from "./fr";
 
@@ -87,6 +87,15 @@ export function cosmeticName(slot: CosmeticSlot, id: string): string {
 }
 export function cosmeticDesc(slot: CosmeticSlot, id: string): string {
   return t(`cos.${id || `base.${slot}`}.desc` as `${CosmeticKey}.desc`);
+}
+
+// Nom et accroche d'un mode de jeu (tâche 7.3) : le compilateur exige les
+// deux clés pour chaque mode du registre partagé.
+export function gameModeName(id: GameModeId): string {
+  return t(`mode.${id}.name` as `mode.${GameModeId}.name`);
+}
+export function gameModeHint(id: GameModeId): string {
+  return t(`mode.${id}.hint` as `mode.${GameModeId}.hint`);
 }
 
 export function applyI18n(root: ParentNode = document): void {

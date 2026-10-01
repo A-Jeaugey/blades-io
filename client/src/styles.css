@@ -1769,6 +1769,9 @@ button:hover {
 .bio2-input-wrap { position: relative; }
 
 .bio2-modes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+/* Modes de jeu (tâche 7.3) : mêmes boutons que l'entrée, autant de colonnes
+   que de modes proposés. */
+.bio2-gamemodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 .bio2-mode {
   display:flex; flex-direction: column; align-items: flex-start; gap: 4px;
   padding: 10px 12px;
@@ -3333,6 +3336,7 @@ button:hover {
   /* Onglets de mode empilés : côte à côte, le troisième sortait de l'écran
      (« JOIN CO… »). */
   #mode-tabs { flex-direction: column; gap: 6px; }
+  .bio2-gamemodes { grid-template-columns: 1fr; gap: 6px; }
   .bio2-mode { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; }
   .bio2-mode-hint { margin-left: auto; text-align: right; }
   /* Icône au-dessus du libellé : « BOUTIQUE » ne passe pas à côté dans un

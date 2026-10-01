@@ -4,16 +4,18 @@
 // chiffres : durée des premières vies, causes de mort, poids du boost, des
 // lancers… Rien d'identifiant pour les invités ; l'id de compte pour les
 // joueurs connectés. Sans Supabase, rien n'est écrit.
-import type { KillCause } from "@bladeio/shared";
+import type { GameModeId, KillCause } from "@bladeio/shared";
 import { getAdminClient } from "./auth/supabase";
 import { trackWrite } from "./shutdown";
 
 // Fin de vie : mort (lames en orbite, lancer, bordure), départ en vie
-// (retour au menu), connexion perdue sans retour, redémarrage du serveur.
-export type LifeEnd = KillCause | "quit" | "disconnect" | "restart";
+// (retour au menu), connexion perdue sans retour, redémarrage du serveur,
+// fin de la partie d'un mode qui en a une (tâche 7.3, migration 0011).
+export type LifeEnd = KillCause | "quit" | "disconnect" | "restart" | "match_end";
 
 export interface LifeRecord {
   roomPrivate: boolean;
+  gameMode: GameModeId;
   userId: string | null;
   lifeIndex: number;
   newcomer: boolean;
@@ -56,6 +58,9 @@ async function insertLife(rec: LifeRecord): Promise<void> {
   try {
     const { error } = await admin.from("life_stats").insert({
       room_private: rec.roomPrivate,
+      // Colonne de la migration 0011, 'ffa' par défaut : écrite pour les
+      // autres modes seulement, l'arène s'enregistre aussi sans la migration.
+      ...(rec.gameMode !== "ffa" ? { game_mode: rec.gameMode } : {}),
       user_id: rec.userId,
       life_index: small(rec.lifeIndex),
       newcomer: rec.newcomer,

@@ -1,5 +1,5 @@
 import { Client, Room } from "colyseus.js";
-import { Loadout } from "@bladeio/shared";
+import { GameModeId, Loadout } from "@bladeio/shared";
 
 export type RoomState = any;
 
@@ -35,6 +35,9 @@ export interface JoinOptions {
   newcomer?: boolean;
   // Cosmétiques demandés (tâche 6.1), validés par le serveur.
   loadout?: Loadout;
+  // Mode de jeu (tâche 7.3) : une file d'attente par mode. Absent pour
+  // rejoindre un salon par son code, qui garde le sien.
+  mode?: GameModeId;
 }
 
 export class Connection {
@@ -116,6 +119,7 @@ export class Connection {
     else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
     if (opts.newcomer) joinOpts.newcomer = true;
     if (opts.loadout) joinOpts.loadout = opts.loadout;
+    if (opts.mode) joinOpts.mode = opts.mode;
     return joinOpts;
   }
 

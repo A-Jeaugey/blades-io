@@ -1,9 +1,9 @@
-import { NAME_MAX_LENGTH, NAME_MIN_LENGTH, USERNAME_RE, nameProblem } from "@bladeio/shared";
+import { GAME_MODES, GameModeId, NAME_MAX_LENGTH, NAME_MIN_LENGTH, USERNAME_RE, gameModeOf, nameProblem } from "@bladeio/shared";
 import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
 import { fetchGuestWallet } from "../auth/guestToken";
-import { I18nKey, onLangChange, t } from "../i18n";
+import { I18nKey, gameModeHint, gameModeName, onLangChange, t } from "../i18n";
 import { levelText } from "./level";
 import { LeaderboardView } from "./LeaderboardView";
 import { joinIdFromUrl } from "./share";
@@ -19,7 +19,12 @@ export interface LoginResult {
   bots?: boolean;
   // Arène publique d'un ami (lien « rejoins-moi », tâche 5.5).
   roomId?: string;
+  // Mode de jeu (tâche 7.3) : partie rapide et salon créé seulement ; un
+  // code rejoint le salon dans son mode.
+  gameMode?: GameModeId;
 }
+
+const GAME_MODE_KEY = "blade.gameMode";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function randomCode(n: number): string {
@@ -74,6 +79,8 @@ export class LoginScreen {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private statsInterval: ReturnType<typeof setInterval> | null = null;
   private mode: LoginMode = "public";
+  // Dernier mode de jeu choisi sur l'appareil (tâche 7.3).
+  private gameMode: GameModeId = gameModeOf(localStorage.getItem(GAME_MODE_KEY));
   private walletBadge: HTMLElement | null = null;
   private walletValue: HTMLElement | null = null;
   // XP du niveau affiché (tâche 5.2), gardée pour la bascule de langue.
@@ -202,6 +209,8 @@ export class LoginScreen {
       if (name.length > NAME_MAX_LENGTH) name = name.slice(0, NAME_MAX_LENGTH);
       if (!lockedName) localStorage.setItem("blade.name", name);
       const res: LoginResult = { name, mode: this.mode };
+      const gameMode = this.selectedGameMode();
+      if (gameMode) res.gameMode = gameMode;
       if (this.mode === "public" && this.inviteRoomId) res.roomId = this.inviteRoomId;
       if (this.mode === "create") {
         res.code = randomCode(5);
@@ -232,7 +241,9 @@ export class LoginScreen {
     this.board = boardRoot ? new LeaderboardView(boardRoot) : null;
     void this.board?.load();
     this.refreshWallet();
+    this.renderGameModes();
     onLangChange(() => {
+      this.renderGameModes();
       if (this.taglineEl) this.taglineEl.textContent = t("lobby.tagline");
       this.renderNameLabel();
       this.board?.render();
@@ -530,6 +541,53 @@ export class LoginScreen {
       panel.classList.toggle("active", key === m);
     });
     if (m === "join") setTimeout(() => this.codeInput.focus(), 0);
+    this.renderGameModes();
+  }
+
+  // Modes proposés pour l'entrée choisie (tâche 7.3) : files publiques de
+  // la partie rapide, ou modes d'un salon à créer. Un code rejoint le salon
+  // dans son mode : rien à choisir.
+  private offeredGameModes(): GameModeId[] {
+    if (this.mode === "join") return [];
+    const quick = this.mode === "public";
+    return GAME_MODES.filter((m) => (quick ? m.quickPlay : m.privateRoom)).map((m) => m.id);
+  }
+
+  // Le choix de l'appareil s'il est proposé ici, sinon le premier proposé.
+  private selectedGameMode(): GameModeId | undefined {
+    const offered = this.offeredGameModes();
+    return offered.includes(this.gameMode) ? this.gameMode : offered[0];
+  }
+
+  // Sélecteur caché tant qu'il n'y a qu'un mode à proposer.
+  private renderGameModes(): void {
+    const field = document.getElementById("game-mode-field");
+    const row = document.getElementById("game-mode-row");
+    if (!field || !row) return;
+    const offered = this.offeredGameModes();
+    field.classList.toggle("hidden", offered.length < 2);
+    const selected = this.selectedGameMode();
+    row.replaceChildren(...offered.map((id) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      const on = id === selected;
+      b.className = on ? "bio2-mode bio2-mode-on" : "bio2-mode";
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(on));
+      const label = document.createElement("span");
+      label.className = "bio2-mode-label";
+      label.textContent = gameModeName(id);
+      const hint = document.createElement("span");
+      hint.className = "bio2-mode-hint";
+      hint.textContent = gameModeHint(id);
+      b.append(label, hint);
+      b.addEventListener("click", () => {
+        this.gameMode = id;
+        try { localStorage.setItem(GAME_MODE_KEY, id); } catch { /* navigation privée */ }
+        this.renderGameModes();
+      });
+      return b;
+    }));
   }
 
   // L'invitation ne sert qu'une fois : ensuite, matchmaking habituel.

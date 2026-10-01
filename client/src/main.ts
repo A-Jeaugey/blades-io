@@ -520,6 +520,8 @@ class Game {
         // avoir rejoint quelqu'un.
         joinOpts.mustExist = true;
       }
+      // Mode de jeu (tâche 7.3) : sa file publique, ou le mode du salon créé.
+      if (res.gameMode) joinOpts.mode = res.gameMode;
       // Joueurs authentifiés → JWT passé au join, le serveur valide via
       // onAuth puis stocke userId sur le Player → score + wallet persistés.
       // Mode invité → token guest signé HMAC, le serveur credite

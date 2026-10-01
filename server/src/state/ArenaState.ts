@@ -21,4 +21,10 @@ export class ArenaState extends Schema {
   @type("string") code: string = "";
   @type("boolean") isPrivate: boolean = false;
   @type("boolean") botsEnabled: boolean = true;
+  // Mode de jeu (tâche 7.3, shared/src/modes.ts) et phase de la partie : en
+  // jeu, ou entracte d'un mode à fin (MatchPhase) ; phaseEndsAt est la fin
+  // de la phase en heure du serveur (0 : sans échéance).
+  @type("string") mode: string = "ffa";
+  @type("uint8") phase: number = 0;
+  @type("float64") phaseEndsAt: number = 0;
 }

@@ -1,4 +1,4 @@
-import { countsAsGame } from "@bladeio/shared";
+import { GameModeId, countsAsGame } from "@bladeio/shared";
 import { getAdminClient } from "./supabase";
 
 export interface MatchRecord {
@@ -10,6 +10,7 @@ export interface MatchRecord {
   cratesDestroyed: number;
   powerupsCollected: number;
   roomCode?: string;
+  gameMode: GameModeId;
 }
 
 // Persist a finished match for an authenticated user. No-op if Supabase
@@ -31,6 +32,9 @@ export async function recordMatch(rec: MatchRecord): Promise<void> {
       crates_destroyed: Math.floor(rec.cratesDestroyed),
       powerups_collected: Math.floor(rec.powerupsCollected),
       room_code: rec.roomCode || null,
+      // Colonne de la migration 0011, 'ffa' par défaut : écrite pour les
+      // autres modes seulement, l'arène s'enregistre aussi sans la migration.
+      ...(rec.gameMode !== "ffa" ? { game_mode: rec.gameMode } : {}),
     });
     if (error) {
       console.warn("[blade.io] recordMatch failed", error.message);

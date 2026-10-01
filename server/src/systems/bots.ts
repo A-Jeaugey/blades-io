@@ -210,7 +210,9 @@ export class BotController {
   // fois (tâche 4.6).
   private chasers = new Map<string, string>();
 
-  spawnBot(arena: ArenaState, spawnPoint: { x: number; y: number }): Player {
+  // place : le point d'apparition, ou la règle du mode qui le choisit
+  // (cf. modes/), appelée avant l'entrée du bot dans l'arène.
+  spawnBot(arena: ArenaState, place: { x: number; y: number } | ((bot: Player) => { x: number; y: number })): Player {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
     const p = new Player();
     p.id = id;
@@ -226,13 +228,14 @@ export class BotController {
       // Fallback au cas où il y a plus de bots que de noms disponibles
       p.name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + " II";
     }
-    p.x = spawnPoint.x;
-    p.y = spawnPoint.y;
+    p.isBot = true;
+    const spawn = typeof place === "function" ? place(p) : place;
+    p.x = spawn.x;
+    p.y = spawn.y;
     p.alive = true;
     p.spawnedAt = Date.now();
     p.spinPhase = Math.random() * Math.PI * 2;
     p.spinScale = 0.75 + Math.random() * 0.5;
-    p.isBot = true;
     arena.players.set(id, p);
     return p;
   }
