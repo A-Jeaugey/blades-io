@@ -1,3 +1,4 @@
+import { countsAsGame } from "@bladeio/shared";
 import { getAdminClient } from "./supabase";
 
 export interface MatchRecord {
@@ -17,8 +18,9 @@ export interface MatchRecord {
 export async function recordMatch(rec: MatchRecord): Promise<void> {
   const admin = getAdminClient();
   if (!admin) return;
-  // Don't pollute the table with single-second griefer rows.
-  if (rec.score <= 0 && rec.kills === 0 && rec.maxBlades <= 3) return;
+  // Don't pollute the table with single-second griefer rows (même règle
+  // pour les statistiques locales des invités, cf. countsAsGame).
+  if (!countsAsGame(rec.score, rec.kills, rec.maxBlades)) return;
   try {
     const { error } = await admin.from("matches").insert({
       user_id: rec.userId,

@@ -131,10 +131,10 @@
             <span class="bio2-rail-title" data-i18n="lobby.patchNotes">PATCH NOTES</span>
           </div>
           <ul class="bio2-rail-list">
-            <li data-i18n-html="lobby.patch1"><b>NEW</b> colorblind palette · adjustable shake and flashes</li>
-            <li data-i18n-html="lobby.patch2"><b>NEW</b> French and English</li>
-            <li data-i18n-html="lobby.patch3"><b>NEW</b> bots: easy, normal, hard</li>
-            <li data-i18n-html="lobby.patch4"><b>NEW</b> leader bounty · underdog kills pay double</li>
+            <li data-i18n-html="lobby.patch1"><b>NEW</b> profile · your stats and last games</li>
+            <li data-i18n-html="lobby.patch2"><b>NEW</b> colorblind palette · adjustable shake and flashes</li>
+            <li data-i18n-html="lobby.patch3"><b>NEW</b> French and English</li>
+            <li data-i18n-html="lobby.patch4"><b>NEW</b> bots: easy, normal, hard</li>
           </ul>
           <div class="bio2-rail-foot">
             <span class="bio2-tb-key" data-i18n="lobby.build">BUILD</span>
@@ -283,6 +283,10 @@
                 <span class="bio2-cta-secondary-icon">?</span>
                 <span class="bio2-cta-secondary-label" data-i18n="lobby.howToPlay">HOW TO PLAY</span>
               </button>
+              <button id="open-profile-btn" class="bio2-cta-secondary" type="button">
+                <span class="bio2-cta-secondary-icon">◉</span>
+                <span class="bio2-cta-secondary-label" data-i18n="lobby.profile">PROFILE</span>
+              </button>
             </div>
           </section>
 
@@ -363,6 +367,25 @@
             <button type="button" id="howto-reset" class="howto-reset" data-i18n="howto.resetTips">SHOW IN-GAME TIPS AGAIN</button>
             <span id="howto-reset-msg" class="howto-reset-msg"></span>
           </footer>
+        </div>
+      </div>
+
+      <!-- Profil joueur (cf. ui/ProfilePanel.ts) : statistiques du compte, ou
+           de l'appareil pour un invité. -->
+      <div id="profile" class="howto hidden" aria-hidden="true">
+        <div class="howto-backdrop" data-close></div>
+        <div class="howto-shell" role="dialog" aria-labelledby="profile-title">
+          <header class="howto-head">
+            <span id="profile-title" class="howto-title" data-i18n="profile.title">PROFILE</span>
+            <button class="howto-close" data-close aria-label="Close" data-i18n-attr="aria-label:common.close">✕</button>
+          </header>
+          <div class="howto-body">
+            <p id="profile-who" class="profile-who"></p>
+            <div id="profile-grid" class="profile-grid"></div>
+            <h3 data-i18n="profile.recent">Recent games</h3>
+            <div id="profile-recent"></div>
+            <p id="profile-note" class="profile-note" role="status"></p>
+          </div>
         </div>
       </div>
 

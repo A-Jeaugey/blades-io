@@ -65,6 +65,8 @@ import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
 import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
 import { getBest, submitScore } from "./ui/personalBest";
+import { recordLocalLife } from "./ui/localStats";
+import { ProfilePanel } from "./ui/ProfilePanel";
 import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
 import { SettingsPanel, shakeIntensity } from "./ui/Settings";
@@ -434,6 +436,7 @@ class Game {
     });
     this.throwBtn = document.getElementById("throw-btn");
     this.onboarding = new Onboarding(() => this.input.isTouch);
+    new ProfilePanel();
     this.haptics = new Haptics(() => this.input.isTouch);
     // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
     // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
@@ -1096,7 +1099,7 @@ class Game {
     if (!me) return;
     const lifeMs = this.serverNow() - me.spawnedAt;
     const rank = this.computeMyRank();
-    const best = this.submitLifeScore(me.score);
+    const best = this.submitLife(me);
     this.sound.death();
     this.haptics.play("death");
     this.camera.shake.add(0.8);
@@ -1213,13 +1216,22 @@ class Game {
     document.getElementById("killcam")?.classList.add("hidden");
   }
 
-  // Record personnel : le score d'une vie y est versé une fois, à la mort
-  // ou au retour au menu, en room publique seulement (cf. personalBest).
-  // Renvoie le record d'avant et s'il est battu (null : rien de versé).
-  private submitLifeScore(score: number): { previous: number; isNew: boolean } | null {
+  // Fin d'une vie en room publique, versée une fois (à la mort ou au retour
+  // au menu) : record personnel (cf. personalBest) et statistiques locales
+  // du profil (tâche 5.1). Renvoie le record d'avant et s'il est battu
+  // (null : rien de versé).
+  private submitLife(me: any): { previous: number; isNew: boolean } | null {
     if (this.bestSubmitted || this.room?.state?.isPrivate) return null;
     this.bestSubmitted = true;
-    return submitScore(score);
+    recordLocalLife({
+      score: me.score,
+      kills: me.kills,
+      maxBlades: me.maxBladeCount,
+      survivalSeconds: Math.max(0, (this.serverNow() - me.spawnedAt) / 1000),
+      crates: me.cratesDestroyed ?? 0,
+      powerups: me.powerupsCollected ?? 0,
+    });
+    return submitScore(me.score);
   }
 
   // Gain flottant du joueur local : « +N 🏆 » en public, « +N » en room
@@ -1271,7 +1283,7 @@ class Game {
   private async returnToMenu(): Promise<void> {
     // Quitter en vie termine la vie : son score compte pour le record.
     const meAlive = this.room?.state?.players?.get(this.myId);
-    if (meAlive?.alive && !this.dead) this.submitLifeScore(meAlive.score);
+    if (meAlive?.alive && !this.dead) this.submitLife(meAlive);
     this.death.hide();
     this.endKillCam();
     this.restartAt = 0;

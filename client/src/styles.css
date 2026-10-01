@@ -288,8 +288,78 @@ canvas#game {
 }
 .howto-reset:hover { color: var(--cyan); border-color: var(--cyan); }
 .howto-reset-msg { color: var(--fg-muted); font-size: 13px; }
+
+/* Profil joueur (tâche 5.1), dans la coque de « How to play ». */
+.profile-who {
+  margin: 12px 0 14px;
+  color: var(--cyan);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.profile-tile {
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--accent-cool-rgb), .22);
+  border-radius: 3px;
+  background: rgba(var(--accent-cool-rgb), .04);
+}
+.profile-tile-label {
+  display: block;
+  color: var(--fg-muted);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.profile-tile-value {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-bright);
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.profile-tile-sub {
+  display: block;
+  color: var(--cyan);
+  font-size: 12px;
+}
+.profile-recent {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.profile-recent th {
+  padding: 4px 6px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-align: right;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(var(--accent-cool-rgb), .2);
+}
+.profile-recent td {
+  padding: 4px 6px;
+  text-align: right;
+  border-bottom: 1px solid rgba(var(--accent-cool-rgb), .08);
+}
+.profile-recent th:first-child,
+.profile-recent td:first-child { text-align: left; }
+.profile-empty,
+.profile-note { color: var(--fg-muted); font-size: 13px; }
+.profile-note { margin: 12px 0 4px; }
 @media (max-width: 560px) {
   .howto-cols { grid-template-columns: 1fr; }
+  .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .profile-tile-value { font-size: 18px; }
+  /* Cinq colonnes dans 300 px : en-têtes serrés. */
+  .profile-recent { font-size: 13px; }
+  .profile-recent th { letter-spacing: 0; padding: 4px 3px; }
+  .profile-recent td { padding: 4px 3px; }
   .howto-body { padding: 4px 14px 10px; }
   .onboard-hint { bottom: 210px; }
 }
@@ -2830,7 +2900,10 @@ button:hover {
   font-weight: 400;
 }
 .bio2-tb-settings:hover { color: var(--cyan); box-shadow: none; background: transparent; }
-.bio2-cta-row { display: grid; grid-template-columns: 1fr; }
+/* BOUTIQUE, COMMENT JOUER et PROFIL (tâche 5.1) côte à côte : empilés, le
+   troisième sortait de la console. */
+.bio2-cta-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.bio2-cta-row .bio2-cta-secondary { letter-spacing: 2px; gap: 6px; padding: 10px 6px; }
 
 /* ---- Lobby étroit (téléphone en portrait) ---- */
 @media (max-width: 480px) {
@@ -2855,8 +2928,9 @@ button:hover {
   #mode-tabs { flex-direction: column; gap: 6px; }
   .bio2-mode { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; }
   .bio2-mode-hint { margin-left: auto; text-align: right; }
-  .bio2-cta-row { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .bio2-cta-secondary { letter-spacing: 1.5px; gap: 6px; }
+  /* Icône au-dessus du libellé : « BOUTIQUE » ne passe pas à côté dans un
+     tiers de 360 px. */
+  .bio2-cta-row .bio2-cta-secondary { flex-direction: column; gap: 2px; letter-spacing: 1px; padding: 6px 4px; }
   .bio2-cta { letter-spacing: 3px; padding: 12px 10px; }
 
   /* Boutique : la croix de fermeture sortait du cadre, « ÉPÉES » était
@@ -2890,7 +2964,6 @@ button:hover {
   .bio2-mode { flex-direction: row; align-items: center; gap: 8px; min-height: 44px; padding: 8px 10px; }
   .mode-panel { min-height: 0; }
   .bio2-cta { margin-top: 10px; padding: 10px 18px; }
-  .bio2-cta-row { grid-template-columns: 1fr 1fr; gap: 8px; }
 
   /* HUD : la minimap (172 px) prenait la moitié de la hauteur, et le
      classement, empilé dessous, recouvrait THROW et BOOST. */

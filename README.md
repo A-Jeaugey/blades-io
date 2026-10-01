@@ -184,6 +184,7 @@ Open the **SQL editor** in your Supabase dashboard and run every file of
 - `0004_leaderboard_public_only.sql` — the leaderboard ignores private-room games
 - `0005_life_stats.sql` — gameplay telemetry (below)
 - `0006_life_stats_snowball.sql` — telemetry of the leader bounty and underdog kills
+- `0007_player_stats.sql` — the `player_stats` view behind the lobby's PROFILE panel (cumulated public games per account), revoked from clients
 
 #### Gameplay telemetry
 
@@ -213,6 +214,7 @@ Restart the dev server (`npm run dev`) and:
 - After signing up, choose a username (3–16 chars).
 - Play a public game to the death — the result should appear in `matches` (Table editor in Supabase), and the life in `life_stats`.
 - The right rail of the login screen ("TOP TROPHÉES") populates from `/api/leaderboard`.
+- PROFILE in the lobby shows your account's stats from `/api/profile/stats` (games, eliminations, best score and all-time rank, survival, last 10 games). Guests see the same stats for the public games played on their device, kept in `localStorage` (`blade.stats`).
 
 ### Guest mode
 

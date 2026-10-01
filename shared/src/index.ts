@@ -7,3 +7,4 @@ export * from "./decor";
 export * from "./shop";
 export * from "./movement";
 export * from "./prediction";
+export * from "./profile";

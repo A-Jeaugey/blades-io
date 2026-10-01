@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { USERNAME_RE, getShopItem } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
+import { getProfileStats } from "./profileStats";
 import {
   claimGuestWallet,
   createGuestWallet,
@@ -74,6 +75,30 @@ export function buildAuthRouter(): Router {
       return;
     }
     res.json({ user: { ...user, username } });
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/profile/stats
+  // Statistiques cumulées du compte (tâche 5.1) : parties publiques, comme
+  // le classement. Auth obligatoire ; les invités ont des statistiques
+  // locales côté client.
+  // --------------------------------------------------------------------- //
+  router.get("/profile/stats", async (req: Request, res: Response) => {
+    if (!isSupabaseConfigured()) {
+      res.status(503).json({ error: "auth_unavailable" });
+      return;
+    }
+    const user = await verifyAccessToken(bearerToken(req));
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const stats = await getProfileStats(user.id);
+    if (!stats) {
+      res.status(500).json({ error: "profile_stats_failed" });
+      return;
+    }
+    res.json({ stats });
   });
 
   // --------------------------------------------------------------------- //

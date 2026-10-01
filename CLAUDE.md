@@ -62,7 +62,9 @@ client/src/
 │                        CombatFeedback (repères de perte, gains « +N 🏆 »),
 │                        KillFeed (fil des éliminations), personalBest
 │                        (record local), Onboarding (carte des contrôles,
-│                        indications uniques, page « How to play »)
+│                        indications uniques, page « How to play »),
+│                        ProfilePanel + localStats (profil : stats du
+│                        compte ou de l'appareil)
 ├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
