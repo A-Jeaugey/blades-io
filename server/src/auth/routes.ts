@@ -1,9 +1,10 @@
 import { Router, Request, Response } from "express";
-import { USERNAME_RE, getShopItem } from "@bladeio/shared";
+import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, getShopItem, seasonAt } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import { getProfileStats } from "./profileStats";
 import { getChallenges } from "../challenges";
+import { getLeaderboard } from "../seasons";
 import {
   claimGuestWallet,
   createGuestWallet,
@@ -119,34 +120,29 @@ export function buildAuthRouter(): Router {
   });
 
   // --------------------------------------------------------------------- //
-  // GET /api/leaderboard  ?limit=100
-  // All-time top scores, joined with profile usernames. Uses the public
-  // leaderboard_top view.
+  // GET /api/leaderboard  ?period=day|week|season|all&limit=100
+  // Meilleurs scores de la période, parties publiques (tâche 5.4 ; « all »
+  // lit la vue leaderboard_top), la saison en cours, et le rang du joueur
+  // connecté (bearer facultatif).
   // --------------------------------------------------------------------- //
   router.get("/leaderboard", async (req: Request, res: Response) => {
-    if (!isSupabaseConfigured()) {
-      res.json({ entries: [] });
-      return;
-    }
-    const admin = getAdminClient();
-    if (!admin) {
-      res.json({ entries: [] });
-      return;
-    }
+    const asked = (req.query.period as string | undefined) ?? "all";
+    const period: LeaderboardPeriod = (LEADERBOARD_PERIODS as readonly string[]).includes(asked) ? (asked as LeaderboardPeriod) : "all";
     const limit = Math.min(
       Math.max(parseInt((req.query.limit as string) ?? "100", 10) || 100, 1),
       200,
     );
-    const { data, error } = await admin
-      .from("leaderboard_top")
-      .select("user_id, username, score, kills, max_blades, survival_seconds, games_played")
-      .limit(limit);
-    if (error) {
-      console.warn("[blade.io] leaderboard fetch failed", error.message);
-      res.status(500).json({ error: "leaderboard_failed" });
+    if (!isSupabaseConfigured()) {
+      const season = seasonAt(new Date());
+      res.json({ period, entries: [], season: { number: season.number, endsAt: season.endsAt.toISOString() }, me: null });
       return;
     }
-    res.json({ entries: data ?? [] });
+    const user = await verifyAccessToken(bearerToken(req));
+    try {
+      res.json(await getLeaderboard(period, limit, user?.id ?? null));
+    } catch {
+      res.status(500).json({ error: "leaderboard_failed" });
+    }
   });
 
   // --------------------------------------------------------------------- //

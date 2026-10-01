@@ -7,6 +7,7 @@ import { fetchGuestWallet } from "../auth/guestToken";
 import { wallet } from "../auth/wallet";
 import { ChallengesResponse, ChallengeState } from "@bladeio/shared";
 import { challengeText, fetchChallenges, formatCountdown } from "./challenges";
+import { LeaderboardView } from "./LeaderboardView";
 
 // Profil joueur (tâche 5.1), depuis le lobby. Compte : statistiques du
 // serveur (GET /api/profile/stats). Invité, ou serveur injoignable :
@@ -70,9 +71,12 @@ export class ProfilePanel {
   private loading = false;
   private request = 0;
   private challenges: ChallengesResponse | null = null;
+  // Classements (tâche 5.4) : le rail du lobby est masqué sur téléphone.
+  private board: LeaderboardView;
 
   constructor() {
     this.root = document.getElementById("profile") as HTMLElement;
+    this.board = new LeaderboardView(this.root.querySelector("#profile-board") as HTMLElement);
     document.getElementById("open-profile-btn")?.addEventListener("click", () => this.open());
     this.root.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", () => this.close()));
     document.addEventListener("keydown", (e) => {
@@ -82,6 +86,7 @@ export class ProfilePanel {
       if (this.root.classList.contains("hidden")) return;
       this.render();
       this.renderChallenges();
+      this.board.render();
     });
   }
 
@@ -90,6 +95,7 @@ export class ProfilePanel {
     this.root.setAttribute("aria-hidden", "false");
     void this.load();
     void this.loadChallenges();
+    void this.board.load();
   }
 
   // Défis réussis du jour sur le bouton PROFIL (« 1/3 »), relu à chaque

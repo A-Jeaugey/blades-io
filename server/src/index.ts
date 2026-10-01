@@ -11,6 +11,7 @@ import { initSupabase } from "./auth/supabase";
 import { buildAuthRouter } from "./auth/routes";
 import { rateLimit } from "./http/rateLimit";
 import { afterShutdown, beforeShutdown, restartDeadline } from "./shutdown";
+import { scheduleSeasonClosing } from "./seasons";
 
 initSupabase();
 
@@ -118,4 +119,6 @@ gameServer.onShutdown(afterShutdown);
 
 gameServer.listen(PORT).then(() => {
   console.log(`[blade.io] server listening on :${PORT}`);
+  // Fin de saison : récompenses des dix premiers (tâche 5.4).
+  scheduleSeasonClosing();
 });

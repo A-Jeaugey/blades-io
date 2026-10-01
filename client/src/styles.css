@@ -1484,7 +1484,7 @@ button:hover {
 .bio2-rail-l { grid-column: 1; border-right: 1px solid rgba(var(--accent-cool-rgb),.12); }
 .bio2-rail-r { grid-column: 3; border-left: 1px solid rgba(var(--accent-cool-rgb),.12); }
 .bio2-rail-head { display:flex; align-items:baseline; gap:10px; padding-bottom: 10px; border-bottom: 1px dashed rgba(var(--accent-cool-rgb),.2); }
-.bio2-rail-tag { color: var(--cyan); font-weight:700; letter-spacing: 2px; font-size: 11px; transition: transform .25s cubic-bezier(.2,.7,.2,1), color .2s; }
+.bio2-rail-tag { color: var(--cyan); font-weight:700; letter-spacing: 2px; font-size: 11px; white-space: nowrap; transition: transform .25s cubic-bezier(.2,.7,.2,1), color .2s; }
 .bio2-rail:hover .bio2-rail-tag { transform: translateX(3px); color: var(--pink); }
 .bio2-rail-title { font-size: 16px; font-weight: 700; letter-spacing: 3px; }
 .bio2-rail-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px; color: var(--fg-muted); line-height: 1.4; }
@@ -1493,6 +1493,28 @@ button:hover {
 .bio2-rail-foot { margin-top: auto; display:flex; justify-content: space-between; gap: 10px; padding-top: 12px; border-top: 1px dashed rgba(var(--accent-cool-rgb),.2); font-size: 11px; letter-spacing: 1.5px; }
 
 .bio2-lb { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+/* Onglets des classements (tâche 5.4). */
+.lb-tabs { display: flex; gap: 4px; }
+.lb-tabs button {
+  flex: 1 1 auto;
+  padding: 5px 4px;
+  background: transparent;
+  border: 1px solid rgba(var(--accent-cool-rgb), .25);
+  border-radius: 2px;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  cursor: pointer;
+}
+.lb-tabs button.active { border-color: var(--cyan); color: var(--cyan); background: rgba(var(--accent-cool-rgb), .08); }
+.lb-me { margin: 0; color: var(--cyan); font-size: 12px; letter-spacing: 1px; }
+.profile-board .lb-tabs { margin: 6px 0 8px; }
+/* Le profil porte le classement sur téléphone : cibles au doigt (44 px). */
+.profile-board .lb-tabs button { font-size: 12px; padding: 8px 2px; min-height: 44px; }
+.profile-board .bio2-lb { padding-left: 0; gap: 2px; }
+.profile-board .bio2-lb-row { margin: 0; }
 .bio2-lb-row { display:grid; grid-template-columns: 26px 1fr auto; align-items:center; gap:8px; padding: 6px 8px; border-left: 2px solid transparent; transition: transform .25s cubic-bezier(.2,.7,.2,1), background .25s; font-variant-numeric: tabular-nums; position: relative; overflow: hidden; }
 .bio2-lb-row::after {
   content: ""; position: absolute; left: 0; bottom: 0; height: 1px; width: 100%;
@@ -1500,10 +1522,16 @@ button:hover {
   transform: scaleX(0); transform-origin: left;
   transition: transform .35s cubic-bezier(.2,.7,.2,1);
 }
-.bio2-lb-row:hover { border-left-color: var(--cyan); background: rgba(var(--accent-cool-rgb),.06); transform: translateX(4px); }
-.bio2-lb-row:hover::after { transform: scaleX(1); }
+/* Survol à la souris seulement : au doigt, il restait collé à la ligne touchée. */
+@media (hover: hover) {
+  .bio2-lb-row:hover { border-left-color: var(--cyan); background: rgba(var(--accent-cool-rgb),.06); transform: translateX(4px); }
+  .bio2-lb-row:hover::after { transform: scaleX(1); }
+}
 .bio2-lb-rank { color: var(--fg-muted); font-size: 11px; letter-spacing: 1.5px; }
-.bio2-lb-name { font-weight: 600; }
+.bio2-lb-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-msg .bio2-lb-name { white-space: normal; }
+/* Ligne du joueur connecté : bordure et fond, pas la couleur seule. */
+.bio2-lb-row.lb-self { border-left-color: var(--cyan); background: rgba(var(--accent-cool-rgb), .1); }
 .bio2-lb-score { color: var(--cyan); font-weight: 700; font-size: 13px; }
 .bio2-tier-lg .bio2-lb-name { color: var(--pink); text-shadow: 0 0 8px rgba(var(--accent-warm-rgb),.4); }
 .bio2-tier-ep .bio2-lb-name { color: var(--purple); }
@@ -1833,6 +1861,8 @@ button:hover {
 .bio2-lb-row:nth-child(3) { animation-delay: .49s; }
 .bio2-lb-row:nth-child(4) { animation-delay: .56s; }
 .bio2-lb-row:nth-child(5) { animation-delay: .63s; }
+.bio2-lb.lb-settled .bio2-lb-row { animation: lb-fade .2s ease-out both; }
+@keyframes lb-fade { from { opacity: 0; } }
 .bio2-rail-list li { animation: bio2-slide-l .5s cubic-bezier(.2,.7,.2,1) both; }
 .bio2-rail-list li:nth-child(1) { animation-delay: .35s; }
 .bio2-rail-list li:nth-child(2) { animation-delay: .42s; }

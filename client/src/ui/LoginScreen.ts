@@ -5,6 +5,7 @@ import { wallet } from "../auth/wallet";
 import { fetchGuestWallet } from "../auth/guestToken";
 import { I18nKey, onLangChange, t } from "../i18n";
 import { levelText } from "./level";
+import { LeaderboardView } from "./LeaderboardView";
 
 // Identifiant de build (date + commit) injecté par Vite (cf. vite.config.ts).
 declare const __BUILD_ID__: string;
@@ -74,6 +75,8 @@ export class LoginScreen {
   private walletValue: HTMLElement | null = null;
   // XP du niveau affiché (tâche 5.2), gardée pour la bascule de langue.
   private shownXp: number | null = null;
+  // Classements à onglets du rail droit (tâche 5.4).
+  private board: LeaderboardView | null = null;
   private renameActions: HTMLElement | null = null;
   private renameBtn: HTMLButtonElement | null = null;
   private renameSaveBtn: HTMLButtonElement | null = null;
@@ -203,12 +206,14 @@ export class LoginScreen {
     this.startReadouts();
     if (this.taglineEl) runGlitchReveal(this.taglineEl, t("lobby.tagline"));
     this.applyAuthState();
-    this.refreshTopOps();
+    const boardRoot = document.getElementById("lobby-board");
+    this.board = boardRoot ? new LeaderboardView(boardRoot) : null;
+    void this.board?.load();
     this.refreshWallet();
     onLangChange(() => {
       if (this.taglineEl) this.taglineEl.textContent = t("lobby.tagline");
       this.renderNameLabel();
-      this.refreshTopOps();
+      this.board?.render();
       if (this.shownXp !== null) this.setLevel(this.shownXp);
     });
   }
@@ -258,50 +263,8 @@ export class LoginScreen {
     el.classList.remove("hidden");
   }
 
-  // Fetch /api/leaderboard et remplit le panneau de droite "TOP OPS". On
-  // fait ça en best-effort : si l'API n'est pas dispo (Supabase pas
-  // configuré, route 503), on garde le placeholder html et on log juste.
-  private async refreshTopOps(): Promise<void> {
-    const list = this.root.querySelector<HTMLOListElement>(".bio2-rail-r .bio2-lb");
-    if (!list) return;
-    try {
-      const r = await fetch("/api/leaderboard?limit=10");
-      if (!r.ok) {
-        this.setTopOpsMessage(list, t("lobby.leaderboardOffline"));
-        return;
-      }
-      const j = await r.json();
-      const entries: Array<{ user_id: string; username: string; score: number }> = j.entries ?? [];
-      if (entries.length === 0) {
-        this.setTopOpsMessage(list, t("lobby.noScores"));
-        return;
-      }
-      list.innerHTML = entries
-        .map((e, i) => {
-          const tier = i === 0 ? "lg" : i < 3 ? "ep" : i < 5 ? "ra" : "co";
-          const rank = String(i + 1).padStart(2, "0");
-          return `<li class="bio2-lb-row bio2-tier-${tier}">
-            <span class="bio2-lb-rank">${rank}</span>
-            <span class="bio2-lb-name">${escapeHtml(e.username ?? "?")}</span>
-            <span class="bio2-lb-score">${formatScore(e.score)}</span>
-          </li>`;
-        })
-        .join("");
-    } catch (e) {
-      console.warn("[blade.io] top ops fetch failed", e);
-      this.setTopOpsMessage(list, t("lobby.leaderboardOffline"));
-    }
-  }
-
   private renderNameLabel(): void {
     if (this.nameLabel) this.nameLabel.textContent = t(this.nameLabelKey);
-  }
-
-  // Ligne unique du panneau classement (chargement, API indisponible).
-  // Remplace l'ancien classement fictif (Razor, Vyper…) qui restait affiché
-  // quand l'API ne répondait pas.
-  private setTopOpsMessage(list: HTMLOListElement, text: string): void {
-    list.innerHTML = `<li class="bio2-lb-row"><span class="bio2-lb-rank">--</span><span class="bio2-lb-name">${escapeHtml(text)}</span><span class="bio2-lb-score"></span></li>`;
   }
 
   // Verrouille / déverrouille le champ CALLSIGN selon l'état d'auth.
@@ -548,27 +511,11 @@ export class LoginScreen {
     if (this.tickInterval === null) this.startReadouts();
     // Re-fetch à chaque retour au menu : le joueur vient de finir une partie,
     // son score peut être dans le top maintenant et son wallet a augmenté.
-    this.refreshTopOps();
+    void this.board?.load();
     this.refreshWallet();
   }
   hide(): void {
     this.root.classList.add("hidden");
     this.stopReadouts();
   }
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatScore(n: number): string {
-  // Right-aligns the number to the same visual width as the maquette
-  // ("12450", " 9304"). Up to 5 digits, padded with non-breaking spaces.
-  const s = String(Math.max(0, Math.floor(n)));
-  if (s.length >= 5) return s;
-  return " ".repeat(5 - s.length) + s;
 }

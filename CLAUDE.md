@@ -64,7 +64,8 @@ client/src/
 │                        (record local), Onboarding (carte des contrôles,
 │                        indications uniques, page « How to play »),
 │                        ProfilePanel + localStats (profil : stats du
-│                        compte ou de l'appareil)
+│                        compte ou de l'appareil), LeaderboardView
+│                        (classements à onglets : lobby et profil)
 ├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
@@ -345,7 +346,14 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   `ArenaRoom`, fonction SQL `advance_challenges`, migration 0008, qui
   crédite aussi la récompense). Une nouvelle métrique de défi se compte
   par vie sur `Player` (remise à zéro au respawn) et entre dans
-  `LifeChallengeStats`.
+  `LifeChallengeStats`. Saisons et classements de période :
+  `shared/src/seasons.ts` calcule les bornes (heure de Paris), la base
+  ne fait que filtrer (`leaderboard_since`, migration 0009). Le serveur
+  clôt les saisons finies au démarrage puis toutes les heures
+  (`scheduleSeasonClosing`) ; `close_season` récompense une seule fois
+  (`seasons_closed` sert de verrou). Changer `SEASON_WEEKS` ou
+  `SEASON_ONE_START` renumérote les saisons passées : à ne faire qu'avant
+  la première clôture.
 - **Build et CI** : `npm run build` (shared, puis serveur, puis client)
   passe avec la version de TypeScript verrouillée (5.9.3) ; l'ancien
   plantage de `build:shared` ne se reproduit plus. La CI GitHub Actions

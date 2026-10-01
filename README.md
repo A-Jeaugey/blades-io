@@ -32,6 +32,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Underdog** | Killing a player who had at least twice your blades at the start of the fight (and at least 10 of them) pays double: +15 on top of the kill. On death, the rarest blades drop first |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
 | **Challenges** | Three daily challenges (easy, medium, hard: throw 20 blades, reach 40 blades in one life, take down the leader…) and one weekly, the same for everyone, renewed at midnight Paris time (Monday for the weekly). Every life in a public room counts, for accounts and guests with a trophy wallet; rewards are trophées (so XP). They show in PROFILE (with the count done today on its button) and a banner pops in game when one is completed |
+| **Leaderboards & seasons** | Best score per account over the day, the week, the season and all time (public rooms only), in the lobby's right rail and in PROFILE (the rail is hidden on phones), with your own rank when signed in. A season lasts six weeks, from Monday midnight Paris time (season 1 starts on 28 September 2026); when it ends, the top 10 earn trophées, so XP: 1,000, 750, 500, then 250 |
 | **Levels** | Trophées earned in public rooms are also XP (spending them does not lower it): your level shows next to your name in other players' nametags, in the lobby, on the death card (with level-ups) and in your profile. Level 2 after a life or two, 10 after ~2 000, 50 after ~30 000; titles at levels 5, 10, 20, 30, 50, 75 and 100. Bots have no level |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
@@ -102,7 +103,7 @@ This starts:
 Open several tabs to test multiplayer.
 
 > **Without Supabase configured**, the game runs in guest-only mode: anyone
-> can play, but scores aren't saved and the all-time leaderboard stays empty.
+> can play, but scores aren't saved and the leaderboards stay empty.
 > See **[Accounts & leaderboard (Supabase setup)](#accounts--leaderboard-supabase-setup)** below.
 
 ### Useful scripts
@@ -155,8 +156,8 @@ New players get a controls card (matching their device) when they first enter a 
 
 ## Accounts & leaderboard (Supabase setup)
 
-The game can persist scores per-user and surface an all-time top-100
-leaderboard (public rooms only). It uses [Supabase](https://supabase.com) for auth (email +
+The game can persist scores per-user and surface leaderboards of the day,
+the week, the season and all time (public rooms only). It uses [Supabase](https://supabase.com) for auth (email +
 Discord + Google OAuth) and Postgres. Without it, the game falls back to
 guest-only mode.
 
@@ -188,6 +189,7 @@ Open the **SQL editor** in your Supabase dashboard and run every file of
 - `0006_life_stats_snowball.sql` — telemetry of the leader bounty and underdog kills
 - `0007_player_stats.sql` — the `player_stats` view behind the lobby's PROFILE panel (cumulated public games per account), revoked from clients
 - `0008_challenges.sql` — daily and weekly challenge progress per account or guest wallet, and the `advance_challenges` function that also credits rewards (server only)
+- `0009_seasons.sql` — leaderboards of a period (`leaderboard_since`, `player_rank_since`) and `close_season`, which rewards the top 10 of a finished season once (`seasons_closed`, `season_results`); server only
 
 #### Gameplay telemetry
 
@@ -216,7 +218,7 @@ Restart the dev server (`npm run dev`) and:
 - The login screen shows an `// AUTH` panel with sign-in / sign-up tabs.
 - After signing up, choose a username (3–16 chars).
 - Play a public game to the death — the result should appear in `matches` (Table editor in Supabase), and the life in `life_stats`.
-- The right rail of the login screen ("TOP TROPHÉES") populates from `/api/leaderboard`.
+- The right rail of the login screen ("TOP TROPHÉES") populates from `/api/leaderboard?period=day|week|season|all` (with your rank when signed in). The game server closes finished seasons by itself, on start and every hour: `select * from seasons_closed;` lists them, `season_results` their top 10.
 - PROFILE also lists today's challenges from `/api/challenges` (with `?guest=<token>` for a guest).
 - PROFILE in the lobby shows your account's stats from `/api/profile/stats` (games, eliminations, best score and all-time rank, survival, last 10 games). Guests see the same stats for the public games played on their device, kept in `localStorage` (`blade.stats`).
 
@@ -225,7 +227,7 @@ Restart the dev server (`npm run dev`) and:
 Players can keep playing without an account. The server hands each guest a
 signed token (stored in the browser) and credits their trophées to a guest
 wallet; signing in later moves that balance to the account. Guest games
-don't appear on the leaderboard, which lists accounts only. Authentication
+don't appear on the leaderboards, which list accounts only. Authentication
 is purely opt-in.
 
 ---
