@@ -256,10 +256,11 @@ Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Réf�
 
 Objectif : un nouveau joueur comprend le jeu, survit à sa première minute et sait ce qui se passe à l'écran.
 
-- [ ] **3.1 — Onboarding** · M · `UX-02`
+- [x] **3.1 — Onboarding** · M · `UX-02` · 2026-10-01 · `3dad77d`
   - Quoi : au premier lancement, écran des contrôles adapté à l'appareil (clavier et souris ou tactile) et trois règles essentielles ; pendant la première partie, indications contextuelles uniques (lancer quand un ennemi est à portée, boost et son coût, bordure mortelle, bushes) ; page « Comment jouer » depuis le lobby.
   - Fichiers : nouveau `client/src/ui/Onboarding.ts`, `client/index.html`, `client/src/styles.css`, `client/src/main.ts`.
   - Acceptation : les contrôles sont visibles moins de 3 s après la première entrée en jeu ; chaque indication n'apparaît qu'une fois (mémorisée localement).
+  - Réalisé : carte non bloquante (fermée par GOT IT ou seule après 15 s) ; indications en file, une à la fois, celle de la bordure prioritaire (une indication coupée avant 2 s revient) ; page « How to play » dont les chiffres sont relus dans `shared/`, avec remise à zéro des indications. Mesuré au navigateur : carte visible 1,4 s après ENTER (bureau) et 1,1 s (mobile, textes tactiles) ; les quatre indications déclenchées en jeu, aucune répétée à la partie suivante. Textes en anglais regroupés dans `Onboarding.ts` et `index.html`, à reprendre en 3.7.
 
 - [ ] **3.2 — Spawn sûr et période de grâce** · M · `GAME-03`
   - Quoi : spawn dans un rayon d'environ 150 u (loin de la bordure), à une distance des autres joueurs qui croît avec leur nombre de lames, en privilégiant les zones avec des lames au sol (meilleur de 30 candidats). Les bots ignorent un joueur apparu depuis moins de 10 s, sauf s'il les attaque. La protection s'arrête dès que le joueur lance ou touche quelqu'un.
