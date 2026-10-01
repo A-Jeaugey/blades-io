@@ -12,6 +12,7 @@ Il découle de l'audit du 2026-09-24 : [`docs/AUDIT-2026-09.md`](docs/AUDIT-2026
 
 - [ ] **Appliquer la migration `supabase/migrations/0004_leaderboard_public_only.sql`** dans l'éditeur SQL Supabase (tâche 0.2). Sans elle, le serveur ne crédite déjà plus rien en room privée, mais les parties privées enregistrées avant restent au classement.
 - [ ] **Vérifier que le proxy de production transmet l'IP du joueur** avant de déployer la phase 0 (tâche 0.3). Le serveur en ligne répond `server: nginx`, alors que le repo contient un `Caddyfile` : le proxy doit envoyer `X-Forwarded-For` (sous nginx : `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`). Sinon, tous les joueurs partagent un seul compteur de limitation de débit : le lobby affiche « — » et les nouveaux invités n'ont plus de wallet dès qu'il y a du monde. Si nginx et Caddy sont chaînés, régler `TRUST_PROXY` (et `trusted_proxies` côté Caddy) pour que le serveur voie l'IP du joueur.
+- [ ] **Appliquer la migration `supabase/migrations/0005_life_stats.sql`** dans l'éditeur SQL Supabase avant la fusion (tâche 4.8). Sans elle, le jeu marche mais la télémétrie ne s'écrit pas (un avertissement par minute dans les logs du serveur). Ensuite : `select * from life_stats_summary;`.
 - [ ] **Fusionner `claude/great-shannon-itw2b2` dans `main`** une fois les deux points ci-dessus faits. La fusion déclenche le déploiement : l'ancien timer (toutes les 30 s) lance une dernière fois l'ancien script, puis le nouveau `auto-deploy.sh` migre tout seul vers les releases (`~/bladeio-releases`, lien `~/bladeio-current`). Ces deux redémarrages-là coupent les parties sans préavis, les suivants sont annoncés. Vérifier ensuite `~/bladeio-releases/deploy.log` et `pm2 ls`.
 - [ ] **Installer le nouveau timer de déploiement** juste après la fusion (tâche T.3) : copier `systemd/bladeio-autodeploy.service` et `systemd/bladeio-autodeploy.timer` dans `/etc/systemd/system/` (remplacer `YOURUSER`), puis `sudo systemctl daemon-reload && sudo systemctl restart bladeio-autodeploy.timer`. Tant que l'ancien timer reste en place, chaque push sur `main` est déployé dans la minute (avec préavis désormais) au lieu de 5 h du matin. Déploiement immédiat : `sudo systemctl start bladeio-autodeploy.service`. Le `.env` reste dans `~/bladeio/.env`. L'ancien dossier de build sur place (`~/bladeio/node_modules`, `server/dist`, `client/dist`) ne sert plus : supprimable.
 - [ ] **Playtest de la phase 1** (non bloquant, impossible sans jouer vraiment) : distinguer à l'oreille les six sons de combat (1.5) ; poids des impacts et recul en combat prolongé (1.6) ; taille des personnages en portrait sur un vrai téléphone, réglable par `CAMERA_MIN_VIEW_WIDTH` (1.7) ; sensation de la prédiction avec un vrai ping (1.2).
@@ -315,9 +316,10 @@ Objectif : un nouveau joueur comprend le jeu, survit à sa première minute et s
 
 Objectif : une progression qui ne plafonne pas, un snowball maîtrisé, une carte qui vit. Chaque réglage s'appuie sur la télémétrie (4.8).
 
-- [ ] **4.8 — Télémétrie de gameplay** · M · `OPS-04` · À faire en premier dans la phase
+- [x] **4.8 — Télémétrie de gameplay** · M · `OPS-04` · À faire en premier dans la phase · 2026-10-01 · `44096f4`
   - Quoi : à chaque fin de vie, le serveur enregistre durée, cause de la mort (bordure, lame, lancer, corps), tier du tueur, lames maximum, tier atteint, lancers et touches, temps de boost, public ou privé. Stockage dans une table Supabase (`life_stats`, sans donnée personnelle pour les invités) et quelques vues d'agrégation pour équilibrer.
   - Acceptation : on peut répondre en une requête à « quelle part des premières vies dure moins de 20 s ? » et « quelle est la première cause de mort ? ».
+  - Réalisé : `server/src/telemetry.ts`, une ligne par fin de vie humaine, bots exclus. Causes : `blades`, `throw` et `wall` ; un coup au corps passe par une lame, donc `blades` ou `throw`. Une vie qui finit en vie est aussi notée : `quit`, `disconnect`, `restart`. En plus de la liste prévue : rapport de force au début de l'échange, kills, grâce encore active, population de la room, rang de la vie dans la session, première partie sur l'appareil (drapeau envoyé par le client). Une touche de lancer = un lancer qui atteint au moins un adversaire. Migration `0005_life_stats.sql` : RLS sans policy, vues `life_stats_summary` (les deux réponses en une requête : `select first_lives_under_20s_pct, top_death_cause from life_stats_summary`), `life_stats_causes` et `life_stats_daily`, inaccessibles aux clients. Vérifiée sur un PostgreSQL 16 local avec les rôles Supabase : les cinq migrations s'appliquent, un jeu d'essai donne les réponses attendues, accès anon refusé, colonnes identiques à celles qu'écrit le serveur. 4 tests.
 
 - [ ] **4.1 — Paliers étendus et formes distinctes** · L · `GAME-01`
   - Quoi : 5 à 6 paliers (ordre de grandeur : 1, 10, 25, 50, 100, 200 lames) avec une géométrie procédurale propre à chacun (dague ou flèche, épée, faux, scie, lame runique, aura légendaire), un son et un effet de passage de palier ; croissance de la hitbox plafonnée (voir 4.2) ; échelles calibrées pour éviter la saturation du bloom.
@@ -466,10 +468,10 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 | Données reçues par client, 60 joueurs | 93 Ko/s | 19 Ko/s (24 Ko/s avec 60 clients connectés), depuis 2.4 | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem (`BENCH_VIEWERS=60` pour la room pleine) |
 | Écart angulaire rendu / serveur des lames | arbitraire | ≤ 1e-7 rad | < 0,1 rad | mode debug de 1.1 |
 | Temps médian avant la première mort (session scriptée) | ~10 s | 62 s (16 s juste avant 3.2) | > 45 s | `tools/bench-survival.js first` |
-| Premières vies de moins de 20 s (joueurs réels) | inconnu | inconnu | < 15 % | télémétrie 4.8 |
+| Premières vies de moins de 20 s (joueurs réels) | inconnu | mesurable après la migration 0005 et la fusion | < 15 % | `life_stats_summary` (4.8) |
 | JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 125 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 129 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
