@@ -379,13 +379,16 @@ export const POWERUP_COLOR: Record<PowerUpType, number> = {
   [PowerUpType.Blades]: 0x22ff88, // vert
 };
 
-// Durée des effets selon la rareté du power-up (en secondes). La dernière
-// entrée = rareté 3 ~= "quasi permanent" pour une partie normale.
+// Durée des effets selon la rareté du power-up (en secondes). Tâche 4.3 :
+// jusqu'à 90 s avant, un Spin ou un Shield légendaire décidait seul des
+// combats pendant une minute et demie. Un second ramassage du même type
+// prolonge jusqu'à la plus lointaine des deux échéances, sans cumul : aucun
+// effet ne dépasse 25 s.
 export const POWERUP_DURATION: Record<BladeRarity, number> = {
-  [BladeRarity.Common]: 12,
-  [BladeRarity.Rare]: 25,
-  [BladeRarity.Epic]: 45,
-  [BladeRarity.Legendary]: 90,
+  [BladeRarity.Common]: 8,
+  [BladeRarity.Rare]: 12,
+  [BladeRarity.Epic]: 18,
+  [BladeRarity.Legendary]: 25,
 };
 
 // Multiplicateurs d'effets (constants, ne dépendent pas de la rareté).
@@ -394,12 +397,15 @@ export const POWERUP_SPIN_MULT = 1.6;       // +60 % vitesse de rotation
 export const POWERUP_MAGNET_MULT = 2.0;     // x2 rayon d'aimant
 export const POWERUP_SHIELD_DMG_REDUC = 0.5; // dégâts reçus par les lames divisés par 2
 
-// BLADES : combien de lames Common instantanément selon rareté du power-up.
+// BLADES : lames de la rareté du power-up, ajoutées d'un coup (tâche 4.3).
+// Avant : jusqu'à 12 lames Common, qui faisaient monter de palier sans
+// renforcer l'orbite. Valeur en points de vie : 3, 6, 8, 16 (contre 2, 4,
+// 7, 12).
 export const POWERUP_BLADES_COUNT: Record<BladeRarity, number> = {
-  [BladeRarity.Common]: 2,
-  [BladeRarity.Rare]: 4,
-  [BladeRarity.Epic]: 7,
-  [BladeRarity.Legendary]: 12,
+  [BladeRarity.Common]: 3,
+  [BladeRarity.Rare]: 3,
+  [BladeRarity.Epic]: 2,
+  [BladeRarity.Legendary]: 2,
 };
 
 // Spawn : plusieurs power-ups toujours sur la map, bien visibles (pilier
@@ -410,7 +416,7 @@ export const POWERUP_BLADES_COUNT: Record<BladeRarity, number> = {
 // gameplay-friendly à 60 joueurs où on bouge vite et où rater un
 // power-up ramassé par l'ennemi à 0.3u près était frustrant.
 export const POWERUP_HITBOX = 2.8;            // rayon de ramassage (très généreux)
-export const POWERUP_SCALE = 1.3;             // taille visuelle (octaèdre)
+export const POWERUP_SCALE = 1.3;             // taille visuelle (forme du type)
 export const POWERUP_SPAWN_INTERVAL = 2.0;    // s
 export const POWERUP_MAX_TOTAL = 12;
 export const POWERUP_MIN_FLOOR = 6;

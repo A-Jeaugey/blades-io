@@ -167,13 +167,13 @@ export class PowerUpSystem {
         });
         break;
       case PowerUpType.Blades: {
-        // Instant : attache N lames Common supplémentaires.
+        // Instant : attache N lames de la rareté du power-up.
         const n = POWERUP_BLADES_COUNT[rarity];
         for (let i = 0; i < n; i++) {
           const b = new Blade();
           b.id = randomId();
-          b.rarity = BladeRarity.Common;
-          b.hp = RARITY_HP[BladeRarity.Common];
+          b.rarity = rarity;
+          b.hp = RARITY_HP[rarity];
           state.blades.set(b.id, b);
           attachBladeToPlayer(state, p, b);
         }
