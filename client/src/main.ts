@@ -1887,7 +1887,10 @@ class Game {
           // nametag dès que la caméra reculait.
           const vec = this.crownVec.set(topView.renderX, NAMETAG_ANCHOR_Y, topView.renderY);
           vec.project(this.sceneStack.camera);
-          if (vec.z < 1) { // devant la caméra
+          // Devant la caméra et dans l'écran : le leader peut être synchronisé
+          // (zone d'intérêt) sans être visible, la couronne restait alors
+          // affichée hors de l'écran.
+          if (vec.z < 1 && Math.abs(vec.x) <= 1 && Math.abs(vec.y) <= 1) {
             const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
             const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
             crownEl.style.left = `${x}px`;
