@@ -51,8 +51,13 @@ interface BladeEntry {
   flashUntil: number;
 }
 
-const MAX_INSTANCES_PER_BUCKET = 800;
+// Capacité de départ d'un bucket ; elle double quand il est plein. Avant,
+// un plafond fixe de 800 rendait invisibles, sans avertissement, les lames
+// suivantes (atteignable dans une room pleine de joueurs de tier 2 en lames
+// communes).
+const INITIAL_BUCKET_CAPACITY = 256;
 const TIER_BUCKETS = TIER_COUNT;
+const BUCKETS = 4 * TIER_BUCKETS;
 // Émissif par tier. Avec un matériau par bucket, on peut pousser franchement
 // sans craindre le washout du matériau partagé d'avant. Les hauts tiers ont
 // des formes plus grandes (disque de scie, halo) et des orbites plus
@@ -89,15 +94,25 @@ function addInstanceFlash(material: THREE.Material): void {
   };
 }
 
+type OwnerPose = NonNullable<ReturnType<PlayerPositionProvider["getRenderPosition"]>>;
+
 export class BladeRenderer {
   // 4 raretés × TIER_COUNT tiers InstancedMesh, indexés à plat par bucketKey().
   // Chaque bucket a son propre matériau avec emissiveIntensity tier-aware,
   // ce qui permet de baisser le glow uniquement aux tiers où la sommation
   // washoutait l'écran.
-  private meshes: THREE.InstancedMesh[] = new Array(4 * TIER_BUCKETS);
+  private meshes: THREE.InstancedMesh[] = new Array(BUCKETS);
+  private materials: THREE.Material[] = new Array(BUCKETS);
+  private tierGeos: THREE.BufferGeometry[];
+  private capacity: number[] = new Array(BUCKETS).fill(INITIAL_BUCKET_CAPACITY);
   // Flash par instance, un attribut par bucket (d'où une géométrie par
   // bucket : l'attribut vit sur la géométrie).
-  private flashes: THREE.InstancedBufferAttribute[] = new Array(4 * TIER_BUCKETS);
+  private flashes: THREE.InstancedBufferAttribute[] = new Array(BUCKETS);
+  // Index inverse : id de la lame dessinée à chaque instance d'un bucket.
+  // Retirer une instance y déplace la dernière : on sait laquelle sans
+  // parcourir tout l'index (O(1) au lieu de O(n) par lame, d'où des pics
+  // de frame aux morts et aux ramassages en masse).
+  private slots: string[][] = Array.from({ length: BUCKETS }, () => []);
   // Une lame brisée dans un clash disparaît au tick du clash, donc avant la
   // fin de son flash : entre deux raretés égales (PV = dégâts), les deux
   // lames cassent et on ne voyait jamais le flash. Sa dernière pose reste
@@ -105,7 +120,7 @@ export class BladeRenderer {
   // Un InstancedMesh de fantômes par tier : la forme suit le palier.
   private ghosts: THREE.InstancedMesh[] = [];
   private ghostList: Array<{ matrix: THREE.Matrix4; until: number; tier: number }> = [];
-  private counts: number[] = new Array(4 * TIER_BUCKETS).fill(0);
+  private counts: number[] = new Array(BUCKETS).fill(0);
   private idToIndex = new Map<string, { rarity: BladeRarity; tier: number; index: number }>();
   private entries = new Map<string, BladeEntry>();
   private perOwnerRingCount = new Map<string, Map<number, number>>();
@@ -115,10 +130,16 @@ export class BladeRenderer {
   private tmpEuler = new THREE.Euler();
   private tmpScale = new THREE.Vector3();
   private tmpPos = new THREE.Vector3();
+  // Réutilisés d'une frame à l'autre.
+  private ownerPoses = new Map<string, OwnerPose | null>();
+  private migrations: Array<{ id: string; newTier: number }> = [];
+  private dirtyMatrices: boolean[] = new Array(BUCKETS).fill(false);
+  private dirtyFlashes: boolean[] = new Array(BUCKETS).fill(false);
   public root = new THREE.Group();
 
   constructor(simpleMaterials = false) {
     const geos = Array.from({ length: TIER_BUCKETS }, (_, t) => createTierGeometry(t, simpleMaterials));
+    this.tierGeos = geos;
     const theme = getActiveTheme();
     const rarities: BladeRarity[] = [
       BladeRarity.Common, BladeRarity.Rare, BladeRarity.Epic, BladeRarity.Legendary,
@@ -145,17 +166,9 @@ export class BladeRenderer {
               specular: theme.blades.specularColor,
             });
         addInstanceFlash(mat);
-        const bucketGeo = geos[t].clone();
-        const flash = new THREE.InstancedBufferAttribute(new Float32Array(MAX_INSTANCES_PER_BUCKET), 1);
-        flash.setUsage(THREE.DynamicDrawUsage);
-        bucketGeo.setAttribute("aFlash", flash);
-        const mesh = new THREE.InstancedMesh(bucketGeo, mat, MAX_INSTANCES_PER_BUCKET);
-        mesh.count = 0;
-        mesh.frustumCulled = false;
-        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.meshes[bucketKey(r, t)] = mesh;
-        this.flashes[bucketKey(r, t)] = flash;
-        this.root.add(mesh);
+        const key = bucketKey(r, t);
+        this.materials[key] = mat;
+        this.setBucketMesh(key, this.createBucketMesh(key, INITIAL_BUCKET_CAPACITY));
       }
     }
     const ghostMat = new THREE.MeshBasicMaterial({ color: FLASH_COLOR });
@@ -233,6 +246,7 @@ export class BladeRenderer {
     for (const g of this.ghosts) g.count = 0;
     for (let i = 0; i < this.meshes.length; i++) {
       this.counts[i] = 0;
+      this.slots[i].length = 0;
       const m = this.meshes[i];
       m.count = 0;
       m.instanceMatrix.needsUpdate = true;
@@ -249,15 +263,50 @@ export class BladeRenderer {
     if (rings.size === 0) this.perOwnerRingCount.delete(ownerId);
   }
 
+  private createBucketMesh(key: number, capacity: number): THREE.InstancedMesh {
+    const geo = this.tierGeos[key % TIER_BUCKETS].clone();
+    const flash = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+    flash.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("aFlash", flash);
+    const mesh = new THREE.InstancedMesh(geo, this.materials[key], capacity);
+    mesh.count = 0;
+    mesh.frustumCulled = false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    return mesh;
+  }
+
+  private setBucketMesh(key: number, mesh: THREE.InstancedMesh): void {
+    this.meshes[key] = mesh;
+    this.flashes[key] = mesh.geometry.getAttribute("aFlash") as THREE.InstancedBufferAttribute;
+    this.root.add(mesh);
+  }
+
+  // Bucket plein : un maillage deux fois plus grand le remplace, instances
+  // et flashs recopiés. Rare (la capacité double à chaque fois) ; le
+  // matériau, partagé, ne se recompile pas.
+  private grow(key: number): void {
+    const old = this.meshes[key];
+    const count = this.counts[key];
+    this.capacity[key] *= 2;
+    const mesh = this.createBucketMesh(key, this.capacity[key]);
+    (mesh.instanceMatrix.array as Float32Array).set((old.instanceMatrix.array as Float32Array).subarray(0, count * 16));
+    const flash = mesh.geometry.getAttribute("aFlash") as THREE.InstancedBufferAttribute;
+    (flash.array as Float32Array).set((this.flashes[key].array as Float32Array).subarray(0, count));
+    mesh.count = count;
+    this.root.remove(old);
+    old.geometry.dispose();
+    old.dispose();
+    this.setBucketMesh(key, mesh);
+  }
+
   private allocate(id: string, rarity: BladeRarity, tier: number): void {
     const t = Math.max(0, Math.min(TIER_BUCKETS - 1, tier));
     const key = bucketKey(rarity, t);
-    const mesh = this.meshes[key];
-    const count = this.counts[key];
-    if (count >= MAX_INSTANCES_PER_BUCKET) return;
-    this.counts[key] = count + 1;
-    mesh.count = count + 1;
-    this.idToIndex.set(id, { rarity, tier: t, index: count });
+    if (this.counts[key] >= this.capacity[key]) this.grow(key);
+    const index = this.counts[key]++;
+    this.meshes[key].count = this.counts[key];
+    this.slots[key][index] = id;
+    this.idToIndex.set(id, { rarity, tier: t, index });
   }
 
   private removeInstance(id: string): void {
@@ -265,19 +314,20 @@ export class BladeRenderer {
     if (!ref) return;
     const key = bucketKey(ref.rarity, ref.tier);
     const mesh = this.meshes[key];
-    const count = this.counts[key];
-    const last = count - 1;
+    const last = this.counts[key] - 1;
+    // La dernière instance prend la place libérée.
+    const movedId = this.slots[key].pop()!;
     if (ref.index !== last) {
       mesh.getMatrixAt(last, this.tmpMat);
       mesh.setMatrixAt(ref.index, this.tmpMat);
-      for (const [, otherRef] of this.idToIndex) {
-        if (otherRef.rarity === ref.rarity && otherRef.tier === ref.tier && otherRef.index === last) {
-          otherRef.index = ref.index; break;
-        }
-      }
+      const flash = this.flashes[key].array as Float32Array;
+      flash[ref.index] = flash[last];
+      this.slots[key][ref.index] = movedId;
+      const movedRef = this.idToIndex.get(movedId);
+      if (movedRef) movedRef.index = ref.index;
     }
-    this.counts[key] = Math.max(0, count - 1);
-    mesh.count = Math.max(0, count - 1);
+    this.counts[key] = last;
+    mesh.count = last;
     mesh.instanceMatrix.needsUpdate = true;
     this.idToIndex.delete(id);
   }
@@ -320,24 +370,36 @@ export class BladeRenderer {
     return n;
   }
 
+  // Pose d'un joueur à cette frame : une seule lecture par propriétaire et
+  // par frame (avant, jusqu'à trois par lame : tier, position, échelle).
+  private ownerPose(players: PlayerPositionProvider, id: string): OwnerPose | null {
+    let pose = this.ownerPoses.get(id);
+    if (pose === undefined) {
+      pose = players.getRenderPosition(id) ?? null;
+      this.ownerPoses.set(id, pose);
+    }
+    return pose;
+  }
+
   update(
     now: number, renderDelay: number, elapsedSec: number,
     players: PlayerPositionProvider,
   ): void {
     const renderTime = now - renderDelay;
-    const dirtyBuckets = new Set<number>();
-    const dirtyFlashes = new Set<number>();
+    this.ownerPoses.clear();
+    const dirtyMatrices = this.dirtyMatrices;
+    const dirtyFlashes = this.dirtyFlashes;
 
     // Pass 1 (rapide) : détection des changements de tier. On collecte les
     // ids à migrer puis on applique en dehors du forEach pour ne pas muter
     // idToIndex pendant l'itération principale.
-    const migrations: Array<{ id: string; newTier: number }> = [];
+    const migrations = this.migrations;
+    migrations.length = 0;
     this.entries.forEach((e, id) => {
       if (!e.ownerId) return;
       const ref = this.idToIndex.get(id);
       if (!ref) return;
-      const owner = players.getRenderPosition(e.ownerId);
-      const ownerTier = owner?.tier ?? 0;
+      const ownerTier = this.ownerPose(players, e.ownerId)?.tier ?? 0;
       if (ref.tier !== ownerTier) migrations.push({ id, newTier: ownerTier });
     });
     for (const m of migrations) this.migrateTier(m.id, m.newTier);
@@ -345,11 +407,12 @@ export class BladeRenderer {
     this.entries.forEach((e, id) => {
       const ref = this.idToIndex.get(id);
       if (!ref) return;
-      const mesh = this.meshes[bucketKey(ref.rarity, ref.tier)];
+      const key = bucketKey(ref.rarity, ref.tier);
+      const mesh = this.meshes[key];
       let x: number; let y: number; let yRender: number; let angle: number;
+      const owner = e.ownerId ? this.ownerPose(players, e.ownerId) : null;
 
       if (e.ownerId) {
-        const owner = players.getRenderPosition(e.ownerId);
         if (!owner) return;
         const rings = this.perOwnerRingCount.get(e.ownerId);
         const nInRing = rings?.get(e.ringIndex) ?? 1;
@@ -395,10 +458,8 @@ export class BladeRenderer {
       let sx = baseS;
       let sy = baseS;
       let sz = baseS;
-      if (e.ownerId) {
-        const owner = players.getRenderPosition(e.ownerId);
-        const tier = owner?.tier ?? 0;
-        const ts = tierVisualScale(tier);
+      if (owner) {
+        const ts = tierVisualScale(owner.tier);
         sx *= ts;
         sy *= ts;
         sz *= ts;
@@ -409,8 +470,7 @@ export class BladeRenderer {
       this.tmpScale.set(sx, sy, sz);
       this.tmpMat.compose(this.tmpPos, this.tmpQuat, this.tmpScale);
       mesh.setMatrixAt(ref.index, this.tmpMat);
-      const key = bucketKey(ref.rarity, ref.tier);
-      dirtyBuckets.add(key);
+      dirtyMatrices[key] = true;
       // Réécrit à chaque frame : un index d'instance change de lame quand
       // une autre est retirée du bucket.
       const k = (e.flashUntil - now) / FLASH_MS;
@@ -418,16 +478,16 @@ export class BladeRenderer {
       const flashArr = this.flashes[key].array as Float32Array;
       if (flashArr[ref.index] !== flash) {
         flashArr[ref.index] = flash;
-        dirtyFlashes.add(key);
+        dirtyFlashes[key] = true;
       }
     });
 
-    dirtyBuckets.forEach((key) => {
-      this.meshes[key].instanceMatrix.needsUpdate = true;
-    });
-    dirtyFlashes.forEach((key) => {
-      this.flashes[key].needsUpdate = true;
-    });
+    for (let key = 0; key < BUCKETS; key++) {
+      if (dirtyMatrices[key]) this.meshes[key].instanceMatrix.needsUpdate = true;
+      if (dirtyFlashes[key]) this.flashes[key].needsUpdate = true;
+      dirtyMatrices[key] = false;
+      dirtyFlashes[key] = false;
+    }
 
     if (this.ghostList.length > 0 || this.ghosts.some((g) => g.count > 0)) {
       this.ghostList = this.ghostList.filter((g) => g.until > now);

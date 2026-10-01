@@ -72,7 +72,7 @@ Each client only receives what is near it (interest management with Colyseus `St
 
 - **Spatial hash** (5-unit cells) for pickup and broad-phase collisions
 - **Owner-bucket broad phase** for blade-vs-blade — pairs of players are tested by center distance before touching individual blades
-- **InstancedMesh** rendering — one mesh per (rarity × tier), up to 800 instances each
+- **InstancedMesh** rendering — one mesh per (rarity × tier), growing as needed (no cap), O(1) removal; round additive particles (point-sprite shader) and a time-sampled ribbon trail
 - **Quality presets** (high/medium/low/ultra, auto-detected; `ultra` is the lightest) — bloom, particles and decor density adapt. An FPS monitor lowers the resolution first, then the preset; a lower preset picked mid-match applies back at the menu, never during a game
 - **Anti-cheat** — server clamps `|dx|, |dy| ≤ 1`, ignores inputs above 80/s and disconnects a client that stays above that cap for 3 consecutive seconds
 

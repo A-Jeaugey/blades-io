@@ -632,8 +632,10 @@ class Game {
           aliveSeen = !!p.alive;
           const alive = aliveSeen;
           // Mort au tick du kill ; mon propre respawn tout de suite.
-          if (isLocal && alive) this.renderAlive.set(key, true);
-          else this.atTick(this.lastPatchTick, () => this.renderAlive.set(key, alive), false);
+          if (isLocal && alive) {
+            this.renderAlive.set(key, true);
+            view.resetTrail();
+          } else this.atTick(this.lastPatchTick, () => this.renderAlive.set(key, alive), false);
         }
         if (isLocal) this.needReconcile = true;
       });

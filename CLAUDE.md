@@ -44,14 +44,17 @@ client/src/
 │   └── palette.ts       Façade rétrocompat sur le thème actif
 ├── entities/
 │   ├── BladeView.ts     InstancedMesh×24 (4 raretés × 6 tiers), flash
-│   │                    blanc par instance (attribut aFlash)
+│   │                    blanc par instance (attribut aFlash) ; capacité
+│   │                    qui double au besoin, retrait en O(1)
 │   ├── bladeGeometries.ts Une forme par palier (dague → lame à aura)
-│   ├── PlayerView.ts    Capsule corps + tête + ring + halo + trail
+│   ├── PlayerView.ts    Capsule corps + tête + ring + halo + traînée
+│   │                    (ruban échantillonné dans le temps, joueur local)
 │   ├── CrateView.ts     Boîte émissive + edges
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
 │   └── AimIndicator.ts  Trajectoire du prochain lancer au sol (visée)
 ├── fx/
-│   ├── Particles.ts     Pool de Points pour bursts (sparks/explosions)
+│   ├── Particles.ts     Pool de Points pour bursts (sparks/explosions),
+│   │                    disques additifs (shader : taille, opacité)
 │   └── ScreenShake.ts
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks

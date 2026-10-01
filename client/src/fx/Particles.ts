@@ -1,5 +1,46 @@
 import * as THREE from "three";
 
+// Particules rondes (tâche 2.6) : PointsMaterial dessinait des carrés et
+// ignorait l'attribut de taille. Disque doux, taille et opacité par
+// particule, taille en unités monde (réduite avec la distance, comme
+// sizeAttenuation).
+const VERTEX = `
+attribute float aSize;
+attribute float aAlpha;
+attribute vec3 aColor;
+uniform float uScale;
+varying vec3 vColor;
+varying float vAlpha;
+#include <fog_pars_vertex>
+void main() {
+  vColor = aColor;
+  vAlpha = aAlpha;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = aSize * uScale / -mvPosition.z;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}
+`;
+
+// Cœur plein et bord en fondu (aussi lumineuse qu'un carré de même taille,
+// sans les coins). En mélange additif, le brouillard éteint la particule au
+// lieu de la teinter (mélanger vers la couleur du brouillard l'ajouterait à
+// l'image).
+const FRAGMENT = `
+varying vec3 vColor;
+varying float vAlpha;
+#include <fog_pars_fragment>
+void main() {
+  float d = length(gl_PointCoord - 0.5) * 2.0;
+  if (d > 1.0) discard;
+  float a = vAlpha * smoothstep(1.0, 0.35, d);
+  #ifdef USE_FOG
+    a *= 1.0 - smoothstep(fogNear, fogFar, vFogDepth);
+  #endif
+  gl_FragColor = vec4(vColor, a);
+}
+`;
+
 interface Particle {
   px: number; py: number; pz: number;
   vx: number; vy: number; vz: number;
@@ -17,8 +58,10 @@ interface Particle {
 //  - allocations 0 par spawn (on réutilise une pool d'objets pré-allouée).
 export class ParticlePool {
   private geometry: THREE.BufferGeometry;
-  private material: THREE.PointsMaterial;
+  private material: THREE.ShaderMaterial;
   private points: THREE.Points;
+  private alphas: Float32Array;
+  private bufferSize = new THREE.Vector2();
   private particles: Particle[] = [];
   private pool: Particle[] = [];
   private maxParticles: number;
@@ -33,23 +76,33 @@ export class ParticlePool {
     this.positions = new Float32Array(maxParticles * 3);
     this.colors = new Float32Array(maxParticles * 3);
     this.sizes = new Float32Array(maxParticles);
+    this.alphas = new Float32Array(maxParticles);
 
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute("color", new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute("size", new THREE.BufferAttribute(this.sizes, 1).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute("aColor", new THREE.BufferAttribute(this.colors, 3).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute("aSize", new THREE.BufferAttribute(this.sizes, 1).setUsage(THREE.DynamicDrawUsage));
+    this.geometry.setAttribute("aAlpha", new THREE.BufferAttribute(this.alphas, 1).setUsage(THREE.DynamicDrawUsage));
 
-    this.material = new THREE.PointsMaterial({
-      size: 0.25,
-      vertexColors: true,
-      sizeAttenuation: true,
+    this.material = new THREE.ShaderMaterial({
+      vertexShader: VERTEX,
+      fragmentShader: FRAGMENT,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 1 } }]),
+      fog: true,
       transparent: true,
-      opacity: 0.95,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      precision: "mediump",
     });
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.frustumCulled = false;
+    // Taille en pixels de la cible de rendu courante (post-FX et résolution
+    // dynamique compris), comme le fait PointsMaterial.
+    this.points.onBeforeRender = (renderer) => {
+      const target = renderer.getRenderTarget();
+      const height = target ? target.height : renderer.getDrawingBufferSize(this.bufferSize).y;
+      this.material.uniforms.uScale.value = height * 0.5;
+    };
 
     // Pré-alloue la pool d'objets pour éviter `new` par spawn.
     for (let i = 0; i < maxParticles; i++) {
@@ -92,7 +145,7 @@ export class ParticlePool {
       p.life = 0.4 + Math.random() * 0.2;
       p.maxLife = 0.6;
       p.cr = cr; p.cg = cg; p.cb = cb;
-      p.size = 0.2 + Math.random() * 0.15;
+      p.size = 0.35 + Math.random() * 0.25;
       this.particles.push(p);
     }
   }
@@ -133,14 +186,17 @@ export class ParticlePool {
       this.positions[i * 3 + 1] = p.py;
       this.positions[i * 3 + 2] = p.pz;
       const lf = p.life > 0 ? p.life / p.maxLife : 0;
-      this.colors[i * 3] = p.cr * lf;
-      this.colors[i * 3 + 1] = p.cg * lf;
-      this.colors[i * 3 + 2] = p.cb * lf;
-      this.sizes[i] = p.size * lf;
+      this.colors[i * 3] = p.cr;
+      this.colors[i * 3 + 1] = p.cg;
+      this.colors[i * 3 + 2] = p.cb;
+      // Rétrécit et s'éteint en fin de vie.
+      this.sizes[i] = p.size * (0.5 + 0.5 * lf);
+      this.alphas[i] = lf;
     }
     this.geometry.setDrawRange(0, n);
     (this.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
-    (this.geometry.getAttribute("color") as THREE.BufferAttribute).needsUpdate = true;
-    (this.geometry.getAttribute("size") as THREE.BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute("aColor") as THREE.BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute("aSize") as THREE.BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute("aAlpha") as THREE.BufferAttribute).needsUpdate = true;
   }
 }

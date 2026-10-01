@@ -2,6 +2,20 @@ import * as THREE from "three";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 
+// Traînée du joueur local (tâche 2.6) : ruban au sol qui couvre toujours
+// les TRAIL_MS dernières millisecondes de déplacement, échantillonné dans
+// le temps et non à chaque frame. Avant, une ligne de 1 px de N points pris
+// toutes les ~30 ms de frames : plus longue quand le FPS tombait.
+const TRAIL_MS = 400;
+const TRAIL_SAMPLE_MS = 16;
+const TRAIL_SAMPLES = Math.ceil(TRAIL_MS / TRAIL_SAMPLE_MS) + 2;
+const TRAIL_HALF_WIDTH = 0.32;
+const TRAIL_ALPHA = 0.7;
+const TRAIL_Y = 0.05;
+// Saut d'une frame à l'autre au-delà duquel la traînée repart de zéro
+// (apparition, recalage) : sinon un long trait relierait les deux points.
+const TRAIL_JUMP = 6;
+
 export class PlayerView {
   root: THREE.Group;
   body: THREE.Mesh;
@@ -10,7 +24,7 @@ export class PlayerView {
   protHalo!: THREE.Mesh | null;
   private protPhase = 0;
   private protected_ = false;
-  trail: THREE.Line | THREE.Group;
+  trail: THREE.Mesh | THREE.Group;
   // Sous-ensembles pour l'animation. Null si playerDetail = "minimal".
   private leftLeg: THREE.Mesh | null = null;
   private rightLeg: THREE.Mesh | null = null;
@@ -19,9 +33,18 @@ export class PlayerView {
 
   private disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
   private walkPhase = 0;
-  private trailPoints: { x: number; y: number; z: number }[] = [];
-  private trailAccum = 0;
-  private readonly trailInterval = 0.03;
+  // Échantillons de la traînée, du plus récent au plus ancien (horloge
+  // propre en ms, avancée par dt).
+  private trailX = new Float64Array(TRAIL_SAMPLES);
+  private trailZ = new Float64Array(TRAIL_SAMPLES);
+  private trailT = new Float64Array(TRAIL_SAMPLES);
+  private trailCount = 0;
+  private trailClock = 0;
+  private trailHeadX = 0;
+  private trailHeadZ = 0;
+  private trailColor = new THREE.Color();
+  // Points du ruban de la frame : x, z, âge (ms).
+  private trailPts = new Float64Array((TRAIL_SAMPLES + 2) * 3);
   private prevRenderX = 0;
   private prevRenderY = 0;
   public renderX = 0;
@@ -146,17 +169,30 @@ export class PlayerView {
     // changer l'API du PlayerView : main.ts ajoute trail à la scène, et c'est
     // OK qu'il soit vide).
     if (this.hasTrail) {
-      const trailLen = q.playerDetail === "rich" ? 20 : 12;
+      // Deux sommets par point (tête, échantillons, bout interpolé) ; alpha
+      // par sommet (couleur RGBA).
+      const points = TRAIL_SAMPLES + 2;
       const trailGeo = new THREE.BufferGeometry();
-      trailGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * trailLen), 3));
-      const trailMat = new THREE.LineBasicMaterial({
-        color: accent,
+      trailGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(points * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      trailGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(points * 2 * 4), 4).setUsage(THREE.DynamicDrawUsage));
+      const index: number[] = [];
+      for (let i = 0; i < points - 1; i++) {
+        const a = i * 2;
+        index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+      trailGeo.setIndex(index);
+      trailGeo.setDrawRange(0, 0);
+      const trailMat = new THREE.MeshBasicMaterial({
+        vertexColors: true,
         transparent: true,
-        opacity: 0.55,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
       });
-      const line = new THREE.Line(trailGeo, trailMat);
-      line.frustumCulled = false;
-      this.trail = line;
+      this.trailColor.set(accent);
+      const ribbon = new THREE.Mesh(trailGeo, trailMat);
+      ribbon.frustumCulled = false;
+      this.trail = ribbon;
       this.disposables.push(trailGeo, trailMat);
     } else {
       this.trail = new THREE.Group();
@@ -253,29 +289,123 @@ export class PlayerView {
     this.prevRenderY = this.renderY;
   }
 
+  // Repart de zéro (apparition) : pas de trait depuis l'ancienne position.
+  resetTrail(): void {
+    this.trailCount = 0;
+    if (this.hasTrail) (this.trail as THREE.Mesh).geometry.setDrawRange(0, 0);
+  }
+
   updateTrail(dt: number): void {
     if (!this.hasTrail) return;
-    this.trailAccum += dt;
-    if (this.trailAccum < this.trailInterval) return;
-    this.trailAccum = 0;
-    const line = this.trail as THREE.Line;
-    const trailLen = (line.geometry.getAttribute("position") as THREE.BufferAttribute).count;
-    if (this.trailPoints.length < trailLen) {
-      this.trailPoints.unshift({ x: this.renderX, y: 0.05, z: this.renderY });
-    } else {
-      const last = this.trailPoints.pop()!;
-      last.x = this.renderX;
-      last.y = 0.05;
-      last.z = this.renderY;
-      this.trailPoints.unshift(last);
+    const x = this.renderX;
+    const z = this.renderY;
+    if (Math.hypot(x - this.trailHeadX, z - this.trailHeadZ) > TRAIL_JUMP) this.trailCount = 0;
+    this.trailHeadX = x;
+    this.trailHeadZ = z;
+    this.trailClock += dt * 1000;
+    const now = this.trailClock;
+    if (this.trailCount === 0 || now - this.trailT[0] >= TRAIL_SAMPLE_MS) {
+      // Nouvel échantillon en tête ; le plus ancien sort si plein.
+      const n = Math.min(this.trailCount, TRAIL_SAMPLES - 1);
+      this.trailX.copyWithin(1, 0, n);
+      this.trailZ.copyWithin(1, 0, n);
+      this.trailT.copyWithin(1, 0, n);
+      this.trailX[0] = x;
+      this.trailZ[0] = z;
+      this.trailT[0] = now;
+      this.trailCount = n + 1;
     }
-    const pos = line.geometry.getAttribute("position") as THREE.BufferAttribute;
-    const len = this.trailPoints.length;
-    for (let i = 0; i < trailLen; i++) {
-      const pt = i < len ? this.trailPoints[i] : this.trailPoints[len - 1];
-      if (pt) pos.setXYZ(i, pt.x, pt.y, pt.z);
+    this.buildTrail(now);
+  }
+
+  // Ruban : la tête (position courante), les échantillons plus récents que
+  // TRAIL_MS, puis un dernier point interpolé à exactement TRAIL_MS. La
+  // longueur ne dépend que de la vitesse, pas du FPS.
+  private buildTrail(now: number): void {
+    const mesh = this.trail as THREE.Mesh;
+    const geo = mesh.geometry;
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    const col = geo.getAttribute("color") as THREE.BufferAttribute;
+    const px = pos.array as Float32Array;
+    const cc = col.array as Float32Array;
+    const cut = now - TRAIL_MS;
+    let n = 0;
+    let lastX = this.trailHeadX;
+    let lastZ = this.trailHeadZ;
+    let lastT = now;
+    // Points du ruban, de la tête au bout, rangés dans px avant d'y
+    // calculer les bords (x, z, âge dans px[0..2]).
+    const pts = this.trailPts;
+    pts[0] = lastX; pts[1] = lastZ; pts[2] = 0;
+    n = 1;
+    for (let i = 0; i < this.trailCount; i++) {
+      const t = this.trailT[i];
+      const sx = this.trailX[i];
+      const sz = this.trailZ[i];
+      if (t >= cut) {
+        if (t < lastT || sx !== lastX || sz !== lastZ) {
+          pts[n * 3] = sx; pts[n * 3 + 1] = sz; pts[n * 3 + 2] = now - t;
+          n++;
+          lastX = sx; lastZ = sz; lastT = t;
+        }
+        continue;
+      }
+      // Premier échantillon trop vieux : bout interpolé à `cut`, puis fin.
+      const span = lastT - t;
+      const k = span > 0 ? (lastT - cut) / span : 0;
+      pts[n * 3] = lastX + (sx - lastX) * k;
+      pts[n * 3 + 1] = lastZ + (sz - lastZ) * k;
+      pts[n * 3 + 2] = TRAIL_MS;
+      n++;
+      break;
     }
+    if (n < 2) {
+      geo.setDrawRange(0, 0);
+      return;
+    }
+    let perpX = 0;
+    let perpZ = 0;
+    for (let i = 0; i < n; i++) {
+      const x = pts[i * 3];
+      const z = pts[i * 3 + 1];
+      // Direction locale du ruban : vers le point suivant (le précédent
+      // pour le bout) ; un segment nul garde la normale d'avant.
+      const j = i < n - 1 ? i + 1 : i - 1;
+      const dx = (pts[j * 3] - x) * (i < n - 1 ? 1 : -1);
+      const dz = (pts[j * 3 + 1] - z) * (i < n - 1 ? 1 : -1);
+      const len = Math.hypot(dx, dz);
+      if (len > 1e-4) {
+        perpX = -dz / len;
+        perpZ = dx / len;
+      }
+      const f = Math.min(1, pts[i * 3 + 2] / TRAIL_MS);
+      const w = TRAIL_HALF_WIDTH * (1 - f);
+      const a = TRAIL_ALPHA * (1 - f) * (1 - f);
+      const v = i * 2 * 3;
+      px[v] = x + perpX * w; px[v + 1] = TRAIL_Y; px[v + 2] = z + perpZ * w;
+      px[v + 3] = x - perpX * w; px[v + 4] = TRAIL_Y; px[v + 5] = z - perpZ * w;
+      const c = i * 2 * 4;
+      cc[c] = cc[c + 4] = this.trailColor.r;
+      cc[c + 1] = cc[c + 5] = this.trailColor.g;
+      cc[c + 2] = cc[c + 6] = this.trailColor.b;
+      cc[c + 3] = cc[c + 7] = a;
+    }
+    geo.setDrawRange(0, (n - 1) * 6);
     pos.needsUpdate = true;
+    col.needsUpdate = true;
+  }
+
+  // Longueur du ruban au sol (u), le long de son axe : contrôle de la
+  // tâche 2.6 (identique à 30 et 144 FPS).
+  trailLength(): number {
+    const geo = (this.trail as THREE.Mesh).geometry;
+    if (!geo) return 0;
+    const segments = geo.drawRange.count / 6;
+    let len = 0;
+    for (let i = 0; i < segments; i++) {
+      len += Math.hypot(this.trailPts[(i + 1) * 3] - this.trailPts[i * 3], this.trailPts[(i + 1) * 3 + 1] - this.trailPts[i * 3 + 1]);
+    }
+    return len;
   }
 
   dispose(): void {
