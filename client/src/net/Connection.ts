@@ -1,4 +1,5 @@
 import { Client, Room } from "colyseus.js";
+import { Loadout } from "@bladeio/shared";
 
 export type RoomState = any;
 
@@ -32,6 +33,8 @@ export interface JoinOptions {
   guestToken?: string | null;
   mustExist?: boolean;
   newcomer?: boolean;
+  // Cosmétiques demandés (tâche 6.1), validés par le serveur.
+  loadout?: Loadout;
 }
 
 export class Connection {
@@ -112,6 +115,7 @@ export class Connection {
     if (opts.token) joinOpts.token = opts.token;
     else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
     if (opts.newcomer) joinOpts.newcomer = true;
+    if (opts.loadout) joinOpts.loadout = opts.loadout;
     return joinOpts;
   }
 

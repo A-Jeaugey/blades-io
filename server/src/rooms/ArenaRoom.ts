@@ -64,6 +64,7 @@ import {
   ReportMessage,
   censorChat,
   nameProblem,
+  validateLoadout,
   tierBladeHitbox,
   tierFromBladeCount,
 } from "@bladeio/shared";
@@ -100,7 +101,7 @@ import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
 import { verifyAccessToken } from "../auth/supabase";
 import { recordMatch } from "../auth/matches";
-import { creditGuestWallet, creditWallet, getGuestWalletBalance, getWallet } from "../auth/wallet";
+import { creditGuestWallet, creditWallet, getGuestWalletBalance, getInventory, getWallet } from "../auth/wallet";
 import { verifyGuestToken } from "../auth/guestToken";
 import { logReport } from "../moderation";
 
@@ -306,6 +307,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     guestId: string | null;
     name: string;
     xp: number;
+    // Items achetés (tâche 6.1) : vérifient l'équipement demandé au join.
+    owned: string[];
   }> {
     // Redémarrage annoncé (cf. shutdown.ts) : plus personne n'entre.
     if (restartDeadline() > 0) throw new ServerError(503, "server_restarting");
@@ -324,8 +327,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
         // trophées vont directement dans wallets.
         const finalName = user.username && user.username.length > 0 ? user.username : requestedName;
         // XP du niveau (tâche 5.2) : trophées gagnés, achats non déduits.
-        const w = await getWallet(user.id);
-        return { userId: user.id, username: user.username, guestId: null, name: finalName, xp: w?.total_earned ?? 0 };
+        const [w, owned] = await Promise.all([getWallet(user.id), getInventory(user.id)]);
+        return { userId: user.id, username: user.username, guestId: null, name: finalName, xp: w?.total_earned ?? 0, owned };
       }
       // Token présent mais invalide/expiré → on dégrade en invité plutôt que
       // de refuser l'accès (l'UX côté client reflasher le token est plus
@@ -337,13 +340,14 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     const guestId = guestTok ? verifyGuestToken(guestTok) : null;
     // Invité : son solde est toute son XP (il ne peut rien acheter).
     const g = guestId ? await getGuestWalletBalance(guestId) : null;
-    return { userId: null, username: null, guestId, name: requestedName, xp: g && !g.claimed ? g.balance : 0 };
+    // Un invité n'achète rien : ses cosmétiques sont ceux de son niveau.
+    return { userId: null, username: null, guestId, name: requestedName, xp: g && !g.claimed ? g.balance : 0, owned: [] };
   }
 
   onJoin(
     client: Client,
-    options: { name?: string; token?: string; guestToken?: string; newcomer?: boolean },
-    auth: { userId: string | null; username: string | null; guestId: string | null; name: string; xp?: number },
+    options: { name?: string; token?: string; guestToken?: string; newcomer?: boolean; loadout?: unknown },
+    auth: { userId: string | null; username: string | null; guestId: string | null; name: string; xp?: number; owned?: string[] },
   ): void {
     const p = new Player();
     p.id = client.sessionId;
@@ -351,6 +355,13 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     p.guestId = auth?.guestId ?? null;
     p.xp = Math.max(0, Math.floor(auth?.xp ?? 0));
     p.level = levelForXp(p.xp);
+    // Équipement proposé par le client, gardé s'il lui appartient (tâche 6.1).
+    const owned = new Set(auth?.owned ?? []);
+    const loadout = validateLoadout(options?.loadout, { level: p.level, owns: (id) => owned.has(id) });
+    p.skin = loadout.skin;
+    p.bladeSkin = loadout.bladeSkin;
+    p.trail = loadout.trail;
+    p.killFx = loadout.killFx;
     // Première partie sur l'appareil, selon le client : sert seulement à la
     // télémétrie.
     p.newcomer = options?.newcomer === true;
@@ -1120,6 +1131,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       bounty,
       underdog,
     };
+    if (killer?.killFx) ev.killFx = killer.killFx;
     this.emit("playerKilled", ev);
   }
 }

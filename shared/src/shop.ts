@@ -9,7 +9,9 @@
 // thème neon). Pour rendre un nouveau thème payant, il faut donc l'ajouter
 // ici, sinon il sera distribué gratuitement.
 
-export type ShopItemKind = "theme";
+// Thème de carte (vu par son acheteur seul) ou cosmétique visible par tous
+// (cf. cosmetics.ts, dont les emplacements donnent les autres sortes).
+export type ShopItemKind = "theme" | "skin" | "bladeSkin" | "trail" | "killFx";
 
 export interface ShopItem {
   id: string;
@@ -23,6 +25,7 @@ export const SHOP_ITEMS: Readonly<Record<string, ShopItem>> = {
   sanctuaire: { id: "sanctuaire", kind: "theme", price: 1500 },
   "forge-vermeille": { id: "forge-vermeille", kind: "theme", price: 3500 },
   "profondeurs-glacees": { id: "profondeurs-glacees", kind: "theme", price: 6000 },
+  robot: { id: "robot", kind: "skin", price: 1500 },
 };
 
 // hasOwnProperty et non SHOP_ITEMS[id] seul : l'id vient d'une requête HTTP,

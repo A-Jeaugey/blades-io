@@ -66,6 +66,12 @@ export class Player extends Schema {
   // Niveau de compte (tâche 5.2), affiché dans les nametags ; 0 pour un bot
   // (pas de niveau inventé, cf. décision D8).
   @type("uint16") level: number = 0;
+  // Cosmétiques équipés (tâche 6.1), validés au join ; "" = apparence de
+  // base. Les bots n'en portent pas.
+  @type("string") skin: string = "";
+  @type("string") bladeSkin: string = "";
+  @type("string") trail: string = "";
+  @type("string") killFx: string = "";
 
   // Champs non synchronisés (gestion serveur)
   // ID Supabase auth.users du joueur authentifié ; null pour les invités et

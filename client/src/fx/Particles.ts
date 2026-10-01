@@ -55,6 +55,9 @@ interface Particle {
   // garde des floats plats pour zéro GC pression.
   cr: number; cg: number; cb: number;
   size: number;
+  // Part de la gravité (1 : étincelle qui retombe ; peu : confetti qui
+  // flotte, cf. spawnBurst).
+  g: number;
 }
 
 // Pool de particules : un Points unique avec BufferGeometry dynamique.
@@ -113,7 +116,7 @@ export class ParticlePool {
     for (let i = 0; i < maxParticles; i++) {
       this.pool.push({
         px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0,
-        life: 0, maxLife: 0, cr: 0, cg: 0, cb: 0, size: 0,
+        life: 0, maxLife: 0, cr: 0, cg: 0, cb: 0, size: 0, g: 1,
       });
     }
   }
@@ -137,15 +140,7 @@ export class ParticlePool {
     const cg = ((color >> 8) & 0xff) / 255;
     const cb = (color & 0xff) / 255;
     for (let i = 0; i < scaled; i++) {
-      let p: Particle;
-      if (this.particles.length >= this.maxParticles) {
-        // Pool pleine : on récupère le plus ancien (shift) et on le réutilise.
-        p = this.particles.shift()!;
-      } else if (this.pool.length > 0) {
-        p = this.pool.pop()!;
-      } else {
-        p = { px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, cr: 0, cg: 0, cb: 0, size: 0 };
-      }
+      const p = this.take();
       const a = Math.random() * Math.PI * 2;
       const elev = (Math.random() - 0.3) * 1.5;
       const s = speed * (0.5 + Math.random());
@@ -157,12 +152,46 @@ export class ParticlePool {
       p.maxLife = 0.6;
       p.cr = cr; p.cg = cg; p.cb = cb;
       p.size = 0.35 + Math.random() * 0.25;
+      p.g = 1;
       this.particles.push(p);
     }
   }
 
+  // Particule libre, ou la plus ancienne si la pool est pleine.
+  private take(): Particle {
+    if (this.particles.length >= this.maxParticles) return this.particles.shift()!;
+    if (this.pool.length > 0) return this.pool.pop()!;
+    return { px: 0, py: 0, pz: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, cr: 0, cg: 0, cb: 0, size: 0, g: 1 };
+  }
+
   spawnExplosion(x: number, y: number, z: number, color: number, count: number): void {
     this.spawnSparks(x, y, z, color, count, 6);
+  }
+
+  // Salve d'un effet d'élimination (tâche 6.1) : couleurs tirées de la
+  // liste, montée, gravité et durée propres à l'effet.
+  spawnBurst(x: number, y: number, z: number, look: {
+    colors: readonly number[]; count: number; speed: number; rise: number; gravity: number; life: number; size: number;
+  }): void {
+    const scaled = Math.max(1, Math.round(look.count * this.particleScale));
+    for (let i = 0; i < scaled; i++) {
+      const p = this.take();
+      const color = look.colors[i % look.colors.length];
+      const a = Math.random() * Math.PI * 2;
+      const s = look.speed * (0.4 + Math.random() * 0.8);
+      p.px = x; p.py = y; p.pz = z;
+      p.vx = Math.cos(a) * s;
+      p.vy = look.rise * (0.5 + Math.random());
+      p.vz = Math.sin(a) * s;
+      p.life = look.life * (0.7 + Math.random() * 0.3);
+      p.maxLife = look.life;
+      p.cr = ((color >> 16) & 0xff) / 255;
+      p.cg = ((color >> 8) & 0xff) / 255;
+      p.cb = (color & 0xff) / 255;
+      p.size = look.size * (0.7 + Math.random() * 0.6);
+      p.g = look.gravity;
+      this.particles.push(p);
+    }
   }
 
   update(dt: number): void {
@@ -178,7 +207,7 @@ export class ParticlePool {
       p.px += p.vx * dt;
       p.py += p.vy * dt;
       p.pz += p.vz * dt;
-      p.vy -= 9 * dt * 0.3;
+      p.vy -= 9 * dt * 0.3 * p.g;
       const damp = 1 - dt * 1.5;
       p.vx *= damp;
       p.vy *= damp;

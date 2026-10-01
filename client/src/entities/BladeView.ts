@@ -25,6 +25,8 @@ export interface PlayerPositionProvider {
     tier: number;
     // Nombre total de lames du joueur, utilisé pour le rotMult dynamique.
     bladeCount: number;
+    // Motif du style de lame équipé (tâche 6.1), 0 = aucun.
+    bladeStyle: number;
   } | undefined;
 }
 
@@ -79,18 +81,36 @@ const FLASH_MS = 80;
 // Lames brisées en plein flash, gardées en blanc à leur dernière pose.
 const MAX_GHOSTS = 64;
 
-// Flash par instance : attribut aFlash (0..1) qui tire la couleur finale
-// vers le blanc. Mélangé en toute fin de shader, après brouillard et
-// émissif : blanc franc quelle que soit la rareté (multiplier la couleur
-// d'instance ne blanchit pas une teinte saturée).
-function addInstanceFlash(material: THREE.Material): void {
+// Motifs des styles de lame (tâche 6.1) : un multiplicateur de luminosité
+// (1 = aucun effet), jamais un changement de teinte, pour que la rareté
+// reste lisible. Coordonnées locales de la lame : pointe vers +x, de -0,55
+// à 0,95 (cf. bladeGeometries.ts).
+const STYLE_GLSL = /* glsl */ `
+float bladeStyle(float s, vec3 p) {
+  if (s < 0.5) return 1.0;
+  // 1. Pulse : une vague lumineuse remonte vers la pointe.
+  float w = sin(p.x * 7.0 - uBladeTime * 7.0) * 0.5 + 0.5;
+  return 0.85 + 0.55 * smoothstep(0.55, 1.0, w);
+}
+`;
+
+// Flash et motif par instance. aFlash (0..1) tire la couleur finale vers le
+// blanc, mélangé en toute fin de shader, après brouillard et émissif :
+// blanc franc quelle que soit la rareté (multiplier la couleur d'instance
+// ne blanchit pas une teinte saturée). aStyle choisit le motif du style de
+// lame du propriétaire, appliqué juste avant.
+function addInstanceShading(material: THREE.Material, time: { value: number }): void {
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.uBladeTime = time;
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float aFlash;\nvarying float vFlash;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFlash = aFlash;");
+      .replace("#include <common>", "#include <common>\nattribute float aFlash;\nattribute float aStyle;\nvarying float vFlash;\nvarying float vStyle;\nvarying vec3 vBladePos;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFlash = aFlash;\nvStyle = aStyle;\nvBladePos = position;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vFlash;")
-      .replace("#include <dithering_fragment>", "#include <dithering_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), vFlash);");
+      .replace("#include <common>", "#include <common>\nuniform float uBladeTime;\nvarying float vFlash;\nvarying float vStyle;\nvarying vec3 vBladePos;\n" + STYLE_GLSL)
+      .replace(
+        "#include <dithering_fragment>",
+        "#include <dithering_fragment>\ngl_FragColor.rgb *= bladeStyle(vStyle, vBladePos);\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), vFlash);",
+      );
   };
 }
 
@@ -108,6 +128,11 @@ export class BladeRenderer {
   // Flash par instance, un attribut par bucket (d'où une géométrie par
   // bucket : l'attribut vit sur la géométrie).
   private flashes: THREE.InstancedBufferAttribute[] = new Array(BUCKETS);
+  // Motif du style de lame du propriétaire, par instance (tâche 6.1).
+  private styles: THREE.InstancedBufferAttribute[] = new Array(BUCKETS);
+  private dirtyStyles: boolean[] = new Array(BUCKETS).fill(false);
+  // Horloge des motifs (secondes), partagée par tous les matériaux.
+  private time = { value: 0 };
   // Index inverse : id de la lame dessinée à chaque instance d'un bucket.
   // Retirer une instance y déplace la dernière : on sait laquelle sans
   // parcourir tout l'index (O(1) au lieu de O(n) par lame, d'où des pics
@@ -169,7 +194,7 @@ export class BladeRenderer {
               shininess: theme.blades.shininess,
               specular: theme.blades.specularColor,
             });
-        addInstanceFlash(mat);
+        addInstanceShading(mat, this.time);
         const key = bucketKey(r, t);
         this.materials[key] = mat;
         this.setBucketMesh(key, this.createBucketMesh(key, INITIAL_BUCKET_CAPACITY));
@@ -277,6 +302,9 @@ export class BladeRenderer {
     const flash = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
     flash.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute("aFlash", flash);
+    const style = new THREE.InstancedBufferAttribute(new Float32Array(capacity), 1);
+    style.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("aStyle", style);
     const mesh = new THREE.InstancedMesh(geo, this.materials[key], capacity);
     mesh.count = 0;
     mesh.frustumCulled = false;
@@ -287,6 +315,7 @@ export class BladeRenderer {
   private setBucketMesh(key: number, mesh: THREE.InstancedMesh): void {
     this.meshes[key] = mesh;
     this.flashes[key] = mesh.geometry.getAttribute("aFlash") as THREE.InstancedBufferAttribute;
+    this.styles[key] = mesh.geometry.getAttribute("aStyle") as THREE.InstancedBufferAttribute;
     this.root.add(mesh);
   }
 
@@ -301,6 +330,8 @@ export class BladeRenderer {
     (mesh.instanceMatrix.array as Float32Array).set((old.instanceMatrix.array as Float32Array).subarray(0, count * 16));
     const flash = mesh.geometry.getAttribute("aFlash") as THREE.InstancedBufferAttribute;
     (flash.array as Float32Array).set((this.flashes[key].array as Float32Array).subarray(0, count));
+    const style = mesh.geometry.getAttribute("aStyle") as THREE.InstancedBufferAttribute;
+    (style.array as Float32Array).set((this.styles[key].array as Float32Array).subarray(0, count));
     mesh.count = count;
     this.root.remove(old);
     old.geometry.dispose();
@@ -331,6 +362,9 @@ export class BladeRenderer {
       mesh.setMatrixAt(ref.index, this.tmpMat);
       const flash = this.flashes[key].array as Float32Array;
       flash[ref.index] = flash[last];
+      const style = this.styles[key].array as Float32Array;
+      style[ref.index] = style[last];
+      this.dirtyStyles[key] = true;
       this.slots[key][ref.index] = movedId;
       const movedRef = this.idToIndex.get(movedId);
       if (movedRef) movedRef.index = ref.index;
@@ -404,9 +438,11 @@ export class BladeRenderer {
     players: PlayerPositionProvider,
   ): void {
     const renderTime = now - renderDelay;
+    this.time.value = elapsedSec;
     this.ownerPoses.clear();
     const dirtyMatrices = this.dirtyMatrices;
     const dirtyFlashes = this.dirtyFlashes;
+    const dirtyStyles = this.dirtyStyles;
 
     // Pass 1 (rapide) : détection des changements de tier. On collecte les
     // ids à migrer puis on applique en dehors du forEach pour ne pas muter
@@ -498,13 +534,22 @@ export class BladeRenderer {
         flashArr[ref.index] = flash;
         dirtyFlashes[key] = true;
       }
+      // Motif du propriétaire ; lames au sol et lancées : aucun.
+      const style = owner?.bladeStyle ?? 0;
+      const styleArr = this.styles[key].array as Float32Array;
+      if (styleArr[ref.index] !== style) {
+        styleArr[ref.index] = style;
+        dirtyStyles[key] = true;
+      }
     });
 
     for (let key = 0; key < BUCKETS; key++) {
       if (dirtyMatrices[key]) this.meshes[key].instanceMatrix.needsUpdate = true;
       if (dirtyFlashes[key]) this.flashes[key].needsUpdate = true;
+      if (dirtyStyles[key]) this.styles[key].needsUpdate = true;
       dirtyMatrices[key] = false;
       dirtyFlashes[key] = false;
+      dirtyStyles[key] = false;
     }
 
     if (this.ghostList.length > 0 || this.ghosts.some((g) => g.count > 0)) {

@@ -57,6 +57,8 @@ client/src/
 │   │                    disques additifs (shader : taille, opacité)
 │   └── ScreenShake.ts
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
+├── cosmetics/           Cosmétiques visibles par tous (looks.ts : apparence,
+│                        loadout.ts : équipement de l'appareil)
 ├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks
 ├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
 │                        CombatFeedback (repères de perte, gains « +N 🏆 »),
@@ -306,9 +308,11 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   langue change à chaud, sans rechargement. Les pseudos et autres textes de
   joueurs s'échappent avant d'entrer dans un `data-i18n-html` ou un `t()`
   inséré en HTML.
-- **Couleurs** : ne **jamais** hardcoder un hex en dehors de `themes/*.ts`.
+- **Couleurs** : ne **jamais** hardcoder un hex en dehors de `themes/*.ts`
+  et `cosmetics/looks.ts` (apparence des cosmétiques, des données comme
+  les thèmes).
   Tous les modules de rendu lisent via `getActiveTheme()`. Si vous voyez un
-  `0xff2ea8` en dehors de `themes/`, c'est un bug à corriger.
+  `0xff2ea8` en dehors de ces deux endroits, c'est un bug à corriger.
 - **Accessibilité** (tâche 3.8) : une information ne passe jamais par la
   seule couleur (forme, symbole ou taille en plus : formes des power-ups,
   ▲/▼ des nametags, taille des raretés). Toute secousse passe par
@@ -363,6 +367,15 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   se vérifie contre la liste de faux positifs de
   `server/test/moderation.test.ts`. Signalements : `handleReport` dans
   `ArenaRoom`, table `reports` (migration 0010).
+- **Cosmétiques (phase 6)** : catalogue dans `shared/src/cosmetics.ts`
+  (emplacements skin, bladeSkin, trail, killFx ; débloqués au niveau ou
+  vendus via `SHOP_ITEMS`), apparence dans `client/src/cosmetics/looks.ts`.
+  Le client propose son équipement au join (`options.loadout`), le serveur
+  le valide (`validateLoadout` : inventaire du compte et niveau) et le
+  synchronise sur `Player`. Lisibilité : un skin ne touche ni l'anneau au
+  sol (soi / les autres) ni le halo de protection ; un style de lame
+  (attribut d'instance `aStyle`, `STYLE_GLSL` dans `BladeView.ts`) module
+  la luminosité, jamais la teinte de rareté ni la forme du palier.
 - **Partage (tâche 5.5)** : les balises d'aperçu des liens (Open Graph)
   sont écrites par le serveur à chaque requête de page, entre
   `<!-- og:start -->` et `<!-- og:end -->` dans `client/index.html`

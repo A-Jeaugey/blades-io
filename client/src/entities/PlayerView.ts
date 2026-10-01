@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
+import { SKIN_LOOKS, SkinLook, TRAIL_LOOKS, TrailLook, lookOf } from "../cosmetics/looks";
 
 // Traînée du joueur local (tâche 2.6) : ruban au sol qui couvre toujours
 // les TRAIL_MS dernières millisecondes de déplacement, échantillonné dans
@@ -24,7 +25,10 @@ export class PlayerView {
   protHalo!: THREE.Mesh | null;
   private protPhase = 0;
   private protected_ = false;
-  trail: THREE.Mesh | THREE.Group;
+  // Conteneur de la traînée, ajouté à la scène par main.ts ; le ruban y
+  // entre quand le joueur en a une (local, ou traînée équipée).
+  trail = new THREE.Group();
+  private ribbon: THREE.Mesh | null = null;
   // Sous-ensembles pour l'animation. Null si playerDetail = "minimal".
   private leftLeg: THREE.Mesh | null = null;
   private rightLeg: THREE.Mesh | null = null;
@@ -56,9 +60,26 @@ export class PlayerView {
   public prevTime = 0;
   public targetTime = 0;
   private hasTrail: boolean;
+  // Cosmétiques (tâche 6.1) : skin (couleurs, tête, accessoire) et traînée,
+  // appliqués d'après les champs synchronisés du joueur.
+  private readonly q: QualityConfig;
+  private readonly isLocal: boolean;
+  private bodyMats: Array<THREE.MeshStandardMaterial | THREE.MeshBasicMaterial> = [];
+  private baseColors: Array<{ color: number; emissive: number; intensity: number }> = [];
+  private sphereHeadGeo: THREE.BufferGeometry;
+  private boxHeadGeo: THREE.BufferGeometry | null = null;
+  private accessory: THREE.Group | null = null;
+  private accessoryDisposables: Array<THREE.BufferGeometry | THREE.Material> = [];
+  private skinId = "";
+  private trailId = "";
+  private trailLook: TrailLook | null = null;
+  private baseTrailColor = new THREE.Color();
+  private trailTail = new THREE.Color();
 
   constructor(isLocal: boolean, q: QualityConfig) {
     this.root = new THREE.Group();
+    this.q = q;
+    this.isLocal = isLocal;
     const simpleMaterials = q.simpleMaterials;
     const detail = q.playerDetail;
     this.hasTrail = q.playerTrail && isLocal;
@@ -71,8 +92,8 @@ export class PlayerView {
     const accent = isLocal ? t.palette.playerLocal.accent : t.palette.playerRemote.accent;
     const accentDim = isLocal ? t.palette.playerLocal.accentDim : t.palette.playerRemote.accentDim;
 
-    const mkMat = (color: number, emissive: number, intensity: number) =>
-      simpleMaterials
+    const mkMat = (color: number, emissive: number, intensity: number) => {
+      const mat = simpleMaterials
         ? new THREE.MeshBasicMaterial({ color: emissive })
         : new THREE.MeshStandardMaterial({
             color,
@@ -81,6 +102,11 @@ export class PlayerView {
             metalness: 0.35,
             roughness: 0.35,
           });
+      // Couleurs de base, rendues quand le skin revient à la base.
+      this.bodyMats.push(mat);
+      this.baseColors.push({ color: simpleMaterials ? emissive : color, emissive, intensity });
+      return mat;
+    };
 
     // Tronc — segments capsule réduits selon detail.
     const torsoCapSeg = detail === "rich" ? 6 : detail === "low" ? 4 : 4;
@@ -96,6 +122,7 @@ export class PlayerView {
     const headSeg = detail === "rich" ? 14 : detail === "low" ? 8 : 6;
     const headRingSeg = Math.max(6, headSeg - 4);
     const headGeo = new THREE.SphereGeometry(0.26, headSeg, headRingSeg);
+    this.sphereHeadGeo = headGeo;
     const headMat = mkMat(primary, accentDim, 0.4);
     this.head = new THREE.Mesh(headGeo, headMat);
     this.head.position.y = 1.55;
@@ -165,38 +192,133 @@ export class PlayerView {
       this.protHalo = null;
     }
 
-    // Trail (world space). Si désactivé, on crée un Group vide (pour ne pas
-    // changer l'API du PlayerView : main.ts ajoute trail à la scène, et c'est
-    // OK qu'il soit vide).
-    if (this.hasTrail) {
-      // Deux sommets par point (tête, échantillons, bout interpolé) ; alpha
-      // par sommet (couleur RGBA).
-      const points = TRAIL_SAMPLES + 2;
-      const trailGeo = new THREE.BufferGeometry();
-      trailGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(points * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage));
-      trailGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(points * 2 * 4), 4).setUsage(THREE.DynamicDrawUsage));
-      const index: number[] = [];
-      for (let i = 0; i < points - 1; i++) {
-        const a = i * 2;
-        index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-      }
-      trailGeo.setIndex(index);
-      trailGeo.setDrawRange(0, 0);
-      const trailMat = new THREE.MeshBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-      });
-      this.trailColor.set(accent);
-      const ribbon = new THREE.Mesh(trailGeo, trailMat);
-      ribbon.frustumCulled = false;
-      this.trail = ribbon;
-      this.disposables.push(trailGeo, trailMat);
-    } else {
-      this.trail = new THREE.Group();
+    // Traînée de base : le joueur local, à la couleur de son anneau.
+    this.baseTrailColor.set(accent);
+    this.trailColor.copy(this.baseTrailColor);
+    this.trailTail.copy(this.baseTrailColor);
+    if (this.hasTrail) this.ensureRibbon();
+  }
+
+  // Cosmétiques équipés (identifiants validés par le serveur, "" = base).
+  applyCosmetics(skin: string, trail: string): void {
+    if (skin !== this.skinId) {
+      this.skinId = skin;
+      this.applySkin(lookOf(SKIN_LOOKS, skin));
     }
+    if (trail !== this.trailId) {
+      this.trailId = trail;
+      this.applyTrail(lookOf(TRAIL_LOOKS, trail));
+    }
+  }
+
+  private applySkin(look: SkinLook | null): void {
+    const headMat = this.head.material;
+    this.bodyMats.forEach((m, i) => {
+      const base = this.baseColors[i];
+      if (m instanceof THREE.MeshStandardMaterial) {
+        m.color.setHex(look ? (m === headMat ? look.head : look.body) : base.color);
+        m.emissive.setHex(look ? look.emissive : base.emissive);
+        m.emissiveIntensity = look ? look.emissiveIntensity : base.intensity;
+      } else {
+        m.color.setHex(look ? look.flat : base.color);
+      }
+    });
+    const box = look?.headShape === "box";
+    if (box && !this.boxHeadGeo) {
+      this.boxHeadGeo = new THREE.BoxGeometry(0.42, 0.42, 0.42);
+      this.disposables.push(this.boxHeadGeo);
+    }
+    this.head.geometry = box ? this.boxHeadGeo! : this.sphereHeadGeo;
+    this.clearAccessory();
+    // Accessoires absents en qualité potato : le corps et la tête suffisent.
+    if (look && look.accessory !== "none" && this.q.playerDetail !== "minimal") this.buildAccessory(look);
+  }
+
+  // Accessoire accroché à la tête (il suit son balancement).
+  private buildAccessory(look: SkinLook): void {
+    const g = new THREE.Group();
+    const mat = this.q.simpleMaterials
+      ? new THREE.MeshBasicMaterial({ color: look.accent })
+      : new THREE.MeshStandardMaterial({ color: look.accent, emissive: look.accent, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.4 });
+    this.accessoryDisposables.push(mat);
+    const add = (geo: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0) => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.rotation.x = rx;
+      g.add(mesh);
+      this.accessoryDisposables.push(geo);
+    };
+    const seg = this.q.playerDetail === "rich" ? 16 : 10;
+    switch (look.accessory) {
+      case "headband":
+        add(new THREE.TorusGeometry(0.27, 0.035, 6, seg), 0, 0.05, 0, Math.PI / 2);
+        break;
+      case "antenna":
+        add(new THREE.CylinderGeometry(0.018, 0.018, 0.28, 6), 0, 0.33, 0);
+        add(new THREE.SphereGeometry(0.06, 8, 6), 0, 0.5, 0);
+        break;
+      case "visor":
+        add(new THREE.BoxGeometry(0.4, 0.1, 0.06), 0, 0.03, 0.24);
+        break;
+      case "none":
+        break;
+    }
+    this.head.add(g);
+    this.accessory = g;
+  }
+
+  private clearAccessory(): void {
+    if (this.accessory) this.head.remove(this.accessory);
+    this.accessory = null;
+    for (const d of this.accessoryDisposables) d.dispose();
+    this.accessoryDisposables = [];
+  }
+
+  // Traînée équipée : visible pour tous ; sans elle, seul le joueur local
+  // en a une, à sa couleur. Aucune en basse qualité (q.playerTrail).
+  private applyTrail(look: TrailLook | null): void {
+    this.trailLook = look;
+    this.hasTrail = this.q.playerTrail && (this.isLocal || look !== null);
+    if (look) {
+      this.trailColor.setHex(look.head);
+      this.trailTail.setHex(look.tail);
+    } else {
+      this.trailColor.copy(this.baseTrailColor);
+      this.trailTail.copy(this.baseTrailColor);
+    }
+    this.trailCount = 0;
+    if (this.hasTrail) this.ensureRibbon();
+    this.ribbon?.geometry.setDrawRange(0, 0);
+  }
+
+  // Ruban de la traînée (espace monde), créé au premier besoin.
+  private ensureRibbon(): void {
+    if (this.ribbon) return;
+    // Deux sommets par point (tête, échantillons, bout interpolé) ; alpha
+    // par sommet (couleur RGBA).
+    const points = TRAIL_SAMPLES + 2;
+    const trailGeo = new THREE.BufferGeometry();
+    trailGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(points * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    trailGeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(points * 2 * 4), 4).setUsage(THREE.DynamicDrawUsage));
+    const index: number[] = [];
+    for (let i = 0; i < points - 1; i++) {
+      const a = i * 2;
+      index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    trailGeo.setIndex(index);
+    trailGeo.setDrawRange(0, 0);
+    const trailMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    const ribbon = new THREE.Mesh(trailGeo, trailMat);
+    ribbon.frustumCulled = false;
+    this.ribbon = ribbon;
+    this.trail.add(ribbon);
+    this.disposables.push(trailGeo, trailMat);
   }
 
   setSnapshot(x: number, y: number, now: number): void {
@@ -292,7 +414,7 @@ export class PlayerView {
   // Repart de zéro (apparition) : pas de trait depuis l'ancienne position.
   resetTrail(): void {
     this.trailCount = 0;
-    if (this.hasTrail) (this.trail as THREE.Mesh).geometry.setDrawRange(0, 0);
+    this.ribbon?.geometry.setDrawRange(0, 0);
   }
 
   updateTrail(dt: number): void {
@@ -322,7 +444,8 @@ export class PlayerView {
   // TRAIL_MS, puis un dernier point interpolé à exactement TRAIL_MS. La
   // longueur ne dépend que de la vitesse, pas du FPS.
   private buildTrail(now: number): void {
-    const mesh = this.trail as THREE.Mesh;
+    const mesh = this.ribbon;
+    if (!mesh) return;
     const geo = mesh.geometry;
     const pos = geo.getAttribute("position") as THREE.BufferAttribute;
     const col = geo.getAttribute("color") as THREE.BufferAttribute;
@@ -379,15 +502,18 @@ export class PlayerView {
         perpZ = dx / len;
       }
       const f = Math.min(1, pts[i * 3 + 2] / TRAIL_MS);
-      const w = TRAIL_HALF_WIDTH * (1 - f);
-      const a = TRAIL_ALPHA * (1 - f) * (1 - f);
+      const w = TRAIL_HALF_WIDTH * (1 - f) * (this.trailLook?.width ?? 1);
+      const a = TRAIL_ALPHA * (1 - f) * (1 - f) * (this.trailLook?.alpha ?? 1);
       const v = i * 2 * 3;
       px[v] = x + perpX * w; px[v + 1] = TRAIL_Y; px[v + 2] = z + perpZ * w;
       px[v + 3] = x - perpX * w; px[v + 4] = TRAIL_Y; px[v + 5] = z - perpZ * w;
+      // Dégradé de la tête au bout (uni pour la traînée de base).
       const c = i * 2 * 4;
-      cc[c] = cc[c + 4] = this.trailColor.r;
-      cc[c + 1] = cc[c + 5] = this.trailColor.g;
-      cc[c + 2] = cc[c + 6] = this.trailColor.b;
+      const head = this.trailColor;
+      const tail = this.trailTail;
+      cc[c] = cc[c + 4] = head.r + (tail.r - head.r) * f;
+      cc[c + 1] = cc[c + 5] = head.g + (tail.g - head.g) * f;
+      cc[c + 2] = cc[c + 6] = head.b + (tail.b - head.b) * f;
       cc[c + 3] = cc[c + 7] = a;
     }
     geo.setDrawRange(0, (n - 1) * 6);
@@ -398,7 +524,7 @@ export class PlayerView {
   // Longueur du ruban au sol (u), le long de son axe : contrôle de la
   // tâche 2.6 (identique à 30 et 144 FPS).
   trailLength(): number {
-    const geo = (this.trail as THREE.Mesh).geometry;
+    const geo = this.ribbon?.geometry;
     if (!geo) return 0;
     const segments = geo.drawRange.count / 6;
     let len = 0;
@@ -410,6 +536,7 @@ export class PlayerView {
 
   dispose(): void {
     this.root.parent?.remove(this.root);
+    this.clearAccessory();
     for (const d of this.disposables) d.dispose();
   }
 }

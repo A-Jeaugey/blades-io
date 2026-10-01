@@ -12,3 +12,4 @@ export * from "./levels";
 export * from "./challenges";
 export * from "./seasons";
 export * from "./moderation";
+export * from "./cosmetics";

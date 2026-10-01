@@ -42,7 +42,7 @@ import {
   tierClashShake,
 } from "@bladeio/shared";
 import { getStateCallbacks } from "colyseus.js";
-import { Connection, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
+import { Connection, JoinOptions, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
 import { ServerClock } from "./net/ServerClock";
 import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
 import { SceneStack } from "./scene/Scene";
@@ -82,6 +82,8 @@ import { applyThemeCss, getActiveTheme } from "./themes";
 import { I18nKey, applyI18n, formatNumber, t } from "./i18n";
 import { showAlert } from "./ui/Dialog";
 import { RoomRef, ShareResult, inviteUrl, share } from "./ui/share";
+import { BLADE_STYLES, KILL_FX_LOOKS, lookOf } from "./cosmetics/looks";
+import { getLoadout } from "./cosmetics/loadout";
 import { isReloadPending, reloadAtMenu } from "./ui/pendingReload";
 import { Boutique } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
@@ -502,8 +504,11 @@ class Game {
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
     void this.sound.playBattleMusic();
     try {
-      const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null; mustExist?: boolean; newcomer?: boolean } = {};
+      const joinOpts: JoinOptions = {};
       joinOpts.newcomer = !playedBefore();
+      // Cosmétiques choisis sur cet appareil ; le serveur garde ce qui
+      // appartient au joueur (tâche 6.1).
+      joinOpts.loadout = getLoadout();
       if (res.mode === "create") {
         joinOpts.code = res.code;
         joinOpts.bots = res.bots;
@@ -656,6 +661,7 @@ class Game {
       if (this.players.has(key)) return;
       const isLocal = key === this.myId;
       const view = new PlayerView(isLocal, this.quality);
+      view.applyCosmetics(p.skin ?? "", p.trail ?? "");
       view.targetX = p.x; view.targetY = p.y;
       view.renderX = p.x; view.renderY = p.y;
       view.prevX = p.x; view.prevY = p.y;
@@ -675,6 +681,7 @@ class Game {
         const now = performance.now();
         this.recordOrbitSegment(key, p);
         view.setSnapshot(p.x, p.y, now);
+        view.applyCosmetics(p.skin ?? "", p.trail ?? "");
         if (!!p.alive !== aliveSeen) {
           aliveSeen = !!p.alive;
           const alive = aliveSeen;
@@ -810,7 +817,10 @@ class Game {
     });
     room.onMessage("playerKilled", (msg: PlayerKilledEvent) => this.atTick(msg.tick, () => {
       const victim = this.players.get(msg.victimId);
-      if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
+      // Effet d'élimination du tueur (tâche 6.1), sinon l'explosion du thème.
+      const fx = lookOf(KILL_FX_LOOKS, msg.killFx ?? "");
+      if (victim && fx) this.particles.spawnBurst(victim.renderX, 1, victim.renderY, fx);
+      else if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
       this.killFeed.push({
         killerName: msg.killerId ? msg.killerName : null,
         victimName: msg.victimName,
@@ -1029,7 +1039,8 @@ class Game {
       const tier = p?.tier ?? 0;
       const theta = this.orbitThetaFor(id, this.renderTick);
       const bladeCount = p?.bladeCount ?? 0;
-      return { x: v.renderX, y: v.renderY, spinPhase, theta, tier, bladeCount };
+      const bladeStyle = lookOf(BLADE_STYLES, p?.bladeSkin ?? "") ?? 0;
+      return { x: v.renderX, y: v.renderY, spinPhase, theta, tier, bladeCount, bladeStyle };
     },
   };
 

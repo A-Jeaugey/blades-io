@@ -64,6 +64,9 @@ export interface PlayerKilledEvent extends TickStamped {
   // contre un joueur au moins deux fois plus gros (tâche 4.2).
   bounty: number;
   underdog: boolean;
+  // Effet d'élimination du tueur (tâche 6.1), joué sur la victime ; le
+  // tueur peut être hors de la vue du client. Absent : effet de base.
+  killFx?: string;
 }
 
 export interface PickupEvent extends TickStamped {
