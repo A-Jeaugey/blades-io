@@ -85,7 +85,7 @@ import { RoomRef, ShareResult, inviteUrl, share } from "./ui/share";
 import { BLADE_STYLES, KILL_FX_LOOKS, lookOf } from "./cosmetics/looks";
 import { getLoadout } from "./cosmetics/loadout";
 import { isReloadPending, reloadAtMenu } from "./ui/pendingReload";
-import { Boutique } from "./boutique/Boutique";
+import { Boutique, isBoutiqueOpen } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
@@ -1798,6 +1798,13 @@ class Game {
   // Appelé une fois par fenêtre de mesure FPS (~0.5 s).
   private adaptiveQuality(_dt: number): void {
     if (!this.quality.dynamicResolution) return;
+    // Boutique ouverte (lobby) : son aperçu 3D fausse la mesure, et un
+    // reload la fermerait en plein achat. La mesure repart de zéro après.
+    if (isBoutiqueOpen()) {
+      this.lowFpsAccum = 0;
+      this.highFpsAccum = 0;
+      return;
+    }
     const fps = this.fps;
     // Fenêtre = pas du moniteur (~0.5 s entre 2 appels).
     const tick = 0.5;

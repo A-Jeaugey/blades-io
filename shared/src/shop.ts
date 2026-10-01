@@ -9,6 +9,8 @@
 // thème neon). Pour rendre un nouveau thème payant, il faut donc l'ajouter
 // ici, sinon il sera distribué gratuitement.
 
+import { nextParisMidnight, parisDayKey, seededRandom } from "./challenges";
+
 // Thème de carte (vu par son acheteur seul) ou cosmétique visible par tous
 // (cf. cosmetics.ts, dont les emplacements donnent les autres sortes).
 export type ShopItemKind = "theme" | "skin" | "bladeSkin" | "trail" | "killFx";
@@ -47,4 +49,93 @@ export function getShopItem(id: string): ShopItem | undefined {
 // Prix affiché d'un cosmétique : 0 s'il n'est pas vendu.
 export function shopPrice(id: string): number {
   return getShopItem(id)?.price ?? 0;
+}
+
+// ─── Mise en avant du jour (tâche 6.4) ──────────────────────────────────────
+// Trois cosmétiques vendus, les mêmes pour tous, renouvelés à minuit (heure de
+// Paris) : un skin et deux articles de sortes différentes, jamais ceux de la
+// veille. Remise de 20 %, arrondie à 50 trophées. Le serveur applique la même
+// règle au moment de l'achat (prix du jour) ; le client ne fait que l'afficher.
+// Les thèmes de carte n'y passent pas : la vitrine sert les cosmétiques que
+// les autres voient.
+
+export const FEATURED_COUNT = 3;
+export const FEATURED_DISCOUNT = 0.2;
+
+export interface ShopOffer {
+  // Jour de Paris (« 2026-10-01 ») et articles à la une.
+  day: string;
+  featured: string[];
+  // Prochaine rotation (ms depuis l'epoch).
+  endsAt: number;
+}
+
+function nextDay(dayKey: string): string {
+  const [y, m, d] = dayKey.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
+
+function drawFeatured(dayKey: string, exclude: ReadonlySet<string>): string[] {
+  const next = seededRandom(`shop:${dayKey}`);
+  const cosmetics = Object.values(SHOP_ITEMS).filter((i) => i.kind !== "theme");
+  const pickFrom = (pool: ShopItem[]): ShopItem | undefined => pool[Math.floor(next() * pool.length)];
+  const fresh = (i: ShopItem) => !exclude.has(i.id);
+  const picked: ShopItem[] = [];
+  const skin = pickFrom(cosmetics.filter((i) => i.kind === "skin" && fresh(i)))
+    ?? pickFrom(cosmetics.filter((i) => i.kind === "skin"));
+  if (skin) picked.push(skin);
+  // Les autres sortes dans un ordre tiré au sort, une par article.
+  const kinds: ShopItemKind[] = ["bladeSkin", "trail", "killFx"];
+  for (let i = kinds.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+  }
+  for (const kind of kinds) {
+    if (picked.length >= FEATURED_COUNT) break;
+    const item = pickFrom(cosmetics.filter((i) => i.kind === kind && fresh(i)));
+    if (item) picked.push(item);
+  }
+  // Catalogue trop petit pour tout respecter : on complète sans la règle de
+  // la veille, jamais avec un doublon.
+  for (const item of cosmetics) {
+    if (picked.length >= FEATURED_COUNT) break;
+    if (!picked.includes(item)) picked.push(item);
+  }
+  return picked.map((i) => i.id);
+}
+
+// « Jamais ceux de la veille » demande la vitrine réelle de la veille, qui
+// dépend elle-même de l'avant-veille : chaîne depuis le premier jour de la
+// vitrine, avec le dernier jour calculé en cache (un pas par jour ensuite).
+const FEATURED_EPOCH = "2026-10-01";
+let lastFeatured: { day: string; featured: string[] } | null = null;
+
+export function featuredItems(dayKey: string): string[] {
+  if (dayKey <= FEATURED_EPOCH) return drawFeatured(dayKey, new Set());
+  let current = lastFeatured && lastFeatured.day <= dayKey
+    ? lastFeatured
+    : { day: FEATURED_EPOCH, featured: drawFeatured(FEATURED_EPOCH, new Set()) };
+  while (current.day < dayKey) {
+    const day = nextDay(current.day);
+    current = { day, featured: drawFeatured(day, new Set(current.featured)) };
+  }
+  lastFeatured = current;
+  return [...current.featured];
+}
+
+export function shopOffer(now: Date): ShopOffer {
+  const day = parisDayKey(now);
+  return { day, featured: featuredItems(day), endsAt: nextParisMidnight(now).getTime() };
+}
+
+export function featuredPrice(price: number): number {
+  return Math.round((price * (1 - FEATURED_DISCOUNT)) / 50) * 50;
+}
+
+// Prix d'un article ce jour-là (remise s'il est à la une) ; 0 s'il n'est pas
+// vendu.
+export function priceToday(id: string, offer: ShopOffer): number {
+  const item = getShopItem(id);
+  if (!item) return 0;
+  return offer.featured.includes(id) ? featuredPrice(item.price) : item.price;
 }

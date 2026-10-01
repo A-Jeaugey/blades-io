@@ -1,8 +1,9 @@
 import { Router, Request, Response } from "express";
-import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, getShopItem, nameProblem, seasonAt } from "@bladeio/shared";
+import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, nameProblem, seasonAt } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import { getProfileStats } from "./profileStats";
+import { quotePurchase, shopOfferResponse } from "./shopQuote";
 import { getChallenges } from "../challenges";
 import { getLeaderboard } from "../seasons";
 import {
@@ -246,20 +247,31 @@ export function buildAuthRouter(): Router {
   });
 
   // --------------------------------------------------------------------- //
-  // POST /api/wallet/purchase  { item_id }
+  // GET /api/shop
+  // Vitrine du jour (tâche 6.4) : articles à la une, leur prix remisé et la
+  // prochaine rotation, à l'heure du serveur. Sans base ni compte.
+  // --------------------------------------------------------------------- //
+  router.get("/shop", (_req: Request, res: Response) => {
+    res.json(shopOfferResponse(new Date()));
+  });
+
+  // --------------------------------------------------------------------- //
+  // POST /api/wallet/purchase  { item_id, expected_price? }
   // Achat atomique : vérifie le solde + débite + ajoute à l'inventaire,
   // tout dans la même transaction Postgres (cf. RPC purchase_item).
   //
-  // Le prix vient du catalogue partagé (SHOP_ITEMS), jamais de la requête :
-  // un éventuel champ `price` envoyé par un ancien client est ignoré. Avant,
-  // le prix du body était débité tel quel → achat de n'importe quel item
-  // pour 0 trophée.
+  // Le prix vient du catalogue partagé (SHOP_ITEMS) et de la vitrine du
+  // jour, jamais de la requête : un éventuel champ `price` envoyé par un
+  // ancien client est ignoré. Avant, le prix du body était débité tel quel
+  // → achat de n'importe quel item pour 0 trophée. expected_price (le prix
+  // affiché) ne sert qu'à refuser un achat dont le prix a changé.
   //
   // Returns :
   //   200 { ok: true, new_balance }                              → succès
   //   400 { error: 'insufficient_funds', new_balance }           → solde insuffisant
   //   400 { error: 'already_owned', new_balance }                → idempotent (déjà dans inventaire)
   //   400 { error: 'invalid_item' }                              → item inconnu du catalogue
+  //   409 { error: 'price_changed', price }                      → prix affiché périmé, rien débité
   //   401 { error: 'unauthorized' }                              → non authed
   //   503 { error: 'auth_unavailable' }                          → Supabase off
   // --------------------------------------------------------------------- //
@@ -273,14 +285,12 @@ export function buildAuthRouter(): Router {
       res.status(401).json({ error: "unauthorized" });
       return;
     }
-    const body = (req.body ?? {}) as { item_id?: unknown };
-    const itemId = typeof body.item_id === "string" ? body.item_id : "";
-    const item = getShopItem(itemId);
-    if (!item) {
-      res.status(400).json({ error: "invalid_item" });
+    const quote = quotePurchase(req.body, new Date());
+    if (!quote.ok) {
+      res.status(quote.status).json({ error: quote.error, price: quote.price });
       return;
     }
-    const result = await purchaseItem(user.id, item.id, item.price);
+    const result = await purchaseItem(user.id, quote.item.id, quote.price);
     if (!result.ok) {
       res.status(400).json({
         error: result.error ?? "purchase_failed",

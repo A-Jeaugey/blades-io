@@ -59,8 +59,10 @@ client/src/
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── cosmetics/           Cosmétiques visibles par tous (looks.ts : apparence,
 │                        loadout.ts : équipement de l'appareil)
-├── boutique/            Boutique : thèmes de carte (Boutique.ts) et onglets
-│                        SKINS, LAMES, EFFETS (cosmeticsShop.ts, aperçus CSS)
+├── boutique/            Boutique : thèmes de carte (Boutique.ts), onglets
+│                        À LA UNE, SKINS, LAMES, EFFETS (cosmeticsShop.ts,
+│                        aperçus CSS), vitrine du jour (offer.ts), aperçu
+│                        3D d'essayage (PreviewStage.ts)
 ├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks
 ├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
 │                        CombatFeedback (repères de perte, gains « +N 🏆 »),
@@ -122,7 +124,9 @@ parmi `ultra | low | medium | high` (`ultra` est le mode le plus **léger**,
 en constructeur et adapte son détail (segments, post-FX, instances). Un moniteur
 FPS adaptatif baisse `resScale` runtime puis downgrade le preset si nécessaire
 (en pleine partie : post-FX coupés à chaud, preset appliqué au retour menu —
-jamais de rechargement pendant un match).
+jamais de rechargement pendant un match). Il se met en pause boutique ouverte
+(`isBoutiqueOpen`) : l'aperçu 3D y fausse la mesure, et changer de preset au
+lobby recharge la page.
 
 **Conséquence** : tout nouveau code de rendu doit gérer **les 3 niveaux de
 détail** (`rich`, `simple`, `minimal`) ou au moins ne pas casser les low/ultra.
@@ -328,9 +332,17 @@ Pour le nom et l'accroche affichés, ajouter `theme.<id>.name` et
 Un thème est **gratuit par défaut** (possédé par tous). Pour le vendre,
 ajouter son entrée dans le catalogue `SHOP_ITEMS` de `shared/src/shop.ts`
 (`{ id, kind: "theme", price }`). Ce catalogue est la seule source de prix :
-le serveur y relit le prix au moment de l'achat (`/api/wallet/purchase` ne
-reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
-`price` dans l'objet `Theme` ni accepter un prix venant du client.
+le serveur y relit le prix au moment de l'achat et la boutique l'affiche.
+Ne jamais remettre de `price` dans l'objet `Theme` ni accepter un prix venant
+du client.
+
+Le prix débité est celui du jour (`priceToday`, `shared/src/shop.ts`) : -20 %
+pour les trois cosmétiques à la une (`shopOffer`, tirage du jour de Paris,
+servi par `GET /api/shop`) ; les thèmes de carte n'y passent jamais.
+`/api/wallet/purchase` reçoit l'`item_id` et `expected_price`, le prix
+affiché, qui ne sert qu'à comparer (`server/src/auth/shopQuote.ts`) : s'il
+diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
+409 `price_changed`, sans débit.
 
 ---
 
@@ -424,6 +436,15 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   en CSS (`.cos-acc-<accessoire>`, `.cos-style-<n>` dans `styles.css`).
   Le client ne montre comme possédés que les items que le serveur
   accepterait : un invité n'a que ceux de son niveau.
+  Boutique V2 (tâche 6.4) : la vitrine du jour (`shopOffer`,
+  `shared/src/shop.ts`) est tirée d'après la date de Paris, les mêmes
+  articles pour tous, jamais ceux de la veille (chaîne depuis
+  `FEATURED_EPOCH`) ; le client la lit sur `GET /api/shop` (`offer.ts`,
+  calcul local en secours). Aperçu 3D (`PreviewStage.ts`) : un second
+  renderer WebGL sans post-FX qui reprend `PlayerView`, `BladeRenderer` et
+  `ParticlePool`, un seul canvas déplacé d'onglet en onglet, boucle active
+  boutique ouverte seulement, absent en potato. Un nouveau cosmétique y
+  apparaît sans rien ajouter, s'il passe par ces modules.
 - **Partage (tâche 5.5)** : les balises d'aperçu des liens (Open Graph)
   sont écrites par le serveur à chaque requête de page, entre
   `<!-- og:start -->` et `<!-- og:end -->` dans `client/index.html`

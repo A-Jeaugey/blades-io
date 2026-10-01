@@ -394,7 +394,7 @@
                 <li data-i18n-html="howto.seasons">Leaderboards of the day, the week, the season and all time, public games only. A season lasts six weeks: at its end, the top ten earn trophies (1,000 for the first, 750, 500, then 250).</li>
                 <li data-i18n-html="howto.challenges">Every day, three challenges (easy, medium, hard), and one per week: the same for everyone, renewed at midnight Paris time. Your lives in public rooms count; rewards are trophies. Find them in PROFILE.</li>
                 <li data-i18n-html="howto.trophies2">They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.</li>
-                <li data-i18n-html="howto.cosmetics">Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>. They never change hitboxes, rarity colors or the rings on the ground.</li>
+                <li data-i18n-html="howto.cosmetics">Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>, where three are 20% off each day (FEATURED) and every item can be tried on in 3D. They never change hitboxes, rarity colors or the rings on the ground.</li>
               </ul>
             </section>
           </div>
@@ -470,7 +470,11 @@
           </header>
 
           <nav class="boutique-tabs" role="tablist">
-            <button class="boutique-tab active" data-tab="maps" role="tab" aria-selected="true">
+            <button class="boutique-tab active" data-tab="featured" role="tab" aria-selected="true">
+              <span class="boutique-tab-label" data-i18n="shop.featured">FEATURED</span>
+              <span class="boutique-tab-count boutique-tab-deal" data-i18n="shop.deal">-20%</span>
+            </button>
+            <button class="boutique-tab" data-tab="maps" role="tab" aria-selected="false">
               <span class="boutique-tab-label" data-i18n="shop.maps">MAPS</span>
               <span class="boutique-tab-count" id="boutique-count-maps">0/0</span>
             </button>
@@ -489,21 +493,32 @@
           </nav>
 
           <main class="boutique-content">
+            <!-- À LA UNE : vitrine du jour (boutique/offer.ts), aperçu 3D -->
+            <section class="boutique-pane active" data-pane="featured">
+              <p class="boutique-featured-head"><span data-i18n="shop.featuredHead">Today's picks, 20% off</span> · <span id="boutique-featured-timer"></span></p>
+              <div class="cos-stage-slot"></div>
+              <div class="boutique-grid cos-grid" id="boutique-featured-grid"></div>
+            </section>
+
             <!-- MAPS : grille de cartes injectées par Boutique.ts -->
-            <section class="boutique-pane active" data-pane="maps">
+            <section class="boutique-pane" data-pane="maps">
               <div class="boutique-grid" id="boutique-maps-grid"></div>
             </section>
 
-            <!-- Cosmétiques : cartes injectées par boutique/cosmeticsShop.ts -->
+            <!-- Cosmétiques : cartes injectées par boutique/cosmeticsShop.ts ;
+                 l'aperçu 3D (PreviewStage) se place dans .cos-stage-slot. -->
             <section class="boutique-pane" data-pane="skins">
+              <div class="cos-stage-slot"></div>
               <div class="boutique-grid cos-grid" id="boutique-skins-grid"></div>
             </section>
 
             <section class="boutique-pane" data-pane="blades">
+              <div class="cos-stage-slot"></div>
               <div class="boutique-grid cos-grid" id="boutique-blades-grid"></div>
             </section>
 
             <section class="boutique-pane" data-pane="effects">
+              <div class="cos-stage-slot"></div>
               <h3 class="boutique-section-title" data-i18n="shop.trails">TRAILS</h3>
               <div class="boutique-grid cos-grid" id="boutique-trails-grid"></div>
               <h3 class="boutique-section-title" data-i18n="shop.kills">ELIMINATIONS</h3>

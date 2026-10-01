@@ -36,7 +36,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Challenges** | Three daily challenges (easy, medium, hard: throw 20 blades, reach 40 blades in one life, take down the leader…) and one weekly, the same for everyone, renewed at midnight Paris time (Monday for the weekly). Every life in a public room counts, for accounts and guests with a trophy wallet; rewards are trophées (so XP). They show in PROFILE (with the count done today on its button) and a banner pops in game when one is completed |
 | **Leaderboards & seasons** | Best score per account over the day, the week, the season and all time (public rooms only), in the lobby's right rail and in PROFILE (the rail is hidden on phones), with your own rank when signed in. A season lasts six weeks, from Monday midnight Paris time (season 1 starts on 28 September 2026); when it ends, the top 10 earn trophées, so XP: 1,000, 750, 500, then 250 |
 | **Levels** | Trophées earned in public rooms are also XP (spending them does not lower it): your level shows next to your name in other players' nametags, in the lobby, on the death card (with level-ups) and in your profile. Level 2 after a life or two, 10 after ~2 000, 50 after ~30 000; titles at levels 5, 10, 20, 30, 50, 75 and 100. Bots have no level |
-| **Cosmetics** | Seen by everyone, and never changing what you see or what hits: 9 character skins (colors, head shape and an accessory: headband, visor, antenna, hood, horns, ears or crest), 5 blade styles (a light pattern that leaves rarity colors and tier shapes alone), 4 trails and 3 elimination effects. Half unlock with your level (2 to 30, announced on the death card), the rest are sold for trophées in the BOUTIQUE (SKINS, BLADES and EFFECTS tabs, signed-in players). Equipped items apply from your next game, without reloading; the server checks each one when you join. Your ground ring and spawn shield never change |
+| **Cosmetics** | Seen by everyone, and never changing what you see or what hits: 9 character skins (colors, head shape and an accessory: headband, visor, antenna, hood, horns, ears or crest), 5 blade styles (a light pattern that leaves rarity colors and tier shapes alone), 4 trails and 3 elimination effects. Half unlock with your level (2 to 30, announced on the death card), the rest are sold for trophées in the BOUTIQUE (SKINS, BLADES and EFFECTS tabs, signed-in players). FEATURED, the tab the BOUTIQUE opens on, puts three of them at -20 % each day (a skin and two other kinds, the same for everyone, renewed at midnight Paris time, never the previous day's), and a 3D preview tries on whatever card you tap: your character walking with its trail, its blades and an elimination burst, in your map theme's colors (CSS previews only in potato quality). Equipped items apply from your next game, without reloading; the server checks each one when you join. Your ground ring and spawn shield never change |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
 | **Map themes** | Four looks for the arena: Original Neon (free), Spirit Sanctuary, Vermilion Forge and Frozen Depths (BOUTIQUE), seen only by whoever equips them. Same map, same framing and the same rarity colors on every theme (white, blue, violet, gold). Each theme passes a readability check, run in CI (`npm run check:themes`): dark ground, no ground or ambient color that looks like a blade or a threat, a red kill zone |
@@ -225,6 +225,7 @@ Restart the dev server (`npm run dev`) and:
 - Play a public game to the death — the result should appear in `matches` (Table editor in Supabase), and the life in `life_stats`.
 - The right rail of the login screen ("TOP TROPHÉES") populates from `/api/leaderboard?period=day|week|season|all` (with your rank when signed in). The game server closes finished seasons by itself, on start and every hour: `select * from seasons_closed;` lists them, `season_results` their top 10.
 - PROFILE also lists today's challenges from `/api/challenges` (with `?guest=<token>` for a guest).
+- The BOUTIQUE's FEATURED tab reads today's items and prices from `/api/shop` (no database needed); a purchase is charged that day's price.
 - PROFILE in the lobby shows your account's stats from `/api/profile/stats` (games, eliminations, best score and all-time rank, survival, last 10 games). Guests see the same stats for the public games played on their device, kept in `localStorage` (`blade.stats`).
 
 ### Guest mode
@@ -327,7 +328,7 @@ shared/src/
   orbits.ts            # ring radius / capacity / angular velocity helpers
   tiers.ts             # tier-derived multipliers (hitbox, rotation, scale)
   decor.ts             # static decor colliders
-  shop.ts              # shop catalogue — the only source of item prices
+  shop.ts              # shop catalogue and daily featured items — the only source of item prices
   cosmetics.ts         # cosmetics: slots, level unlocks, loadout validation
 
 server/src/
@@ -352,7 +353,7 @@ client/src/
   i18n/                # French and English dictionaries, t(), data-i18n attributes
   themes/              # cosmetic themes (palette, ground shader, decor, music)
   cosmetics/           # cosmetic looks (data) and the device's loadout
-  boutique/            # shop: map themes, skins, blade styles, trails, elimination effects
+  boutique/            # shop: featured items, map themes, skins, blade styles, trails, elimination effects, 3D try-on
   audio/SoundManager   # Tone.js procedural SFX + music player
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)

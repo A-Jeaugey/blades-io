@@ -320,7 +320,7 @@ export const fr: Record<keyof typeof en, string> = {
   "howto.trophies1": "Gagnés à la fin de chaque vie en partie publique : kills × 15, ton record de lames, 1 toutes les 10 s de survie, caisses × 3, bonus × 2. À dépenser dans la BOUTIQUE.",
   "howto.challenges": "Chaque jour, trois défis (facile, moyen, difficile), et un par semaine : les mêmes pour tous, renouvelés à minuit, heure de Paris. Tes vies en partie publique comptent ; les récompenses sont en trophées. À retrouver dans PROFIL.",
   "howto.trophies2": "Ils sont aussi ton XP : les dépenser ne fait pas baisser ton niveau, affiché à côté de ton pseudo. Nouveaux titres aux niveaux 5, 10, 20, 30, 50, 75 et 100.",
-  "howto.cosmetics": "Cosmétiques : skins, styles de lames, traînées et effets d'élimination, vus de tous. Ils se débloquent en montant de niveau (du niveau 2 au 30) ou s'achètent en <b>BOUTIQUE</b>. Ils ne changent jamais les hitbox, les couleurs de rareté ni les anneaux au sol.",
+  "howto.cosmetics": "Cosmétiques : skins, styles de lames, traînées et effets d'élimination, vus de tous. Ils se débloquent en montant de niveau (du niveau 2 au 30) ou s'achètent en <b>BOUTIQUE</b>, où trois sont à -20\u00a0% chaque jour (À LA UNE) et où tout s'essaie en 3D. Ils ne changent jamais les hitbox, les couleurs de rareté ni les anneaux au sol.",
   "howto.resetTips": "REVOIR LES CONSEILS EN JEU",
 
   // Boutique
@@ -348,6 +348,14 @@ export const fr: Record<keyof typeof en, string> = {
   "shop.levelHint": "Se débloque au niveau {n} · toi : {level}",
   "shop.signIn": "SE CONNECTER",
   "shop.cosHint": "Vus de tous dès ta prochaine partie. Monte de niveau pour en débloquer d'autres.",
+  "shop.featured": "À LA UNE",
+  "shop.featuredHead": "Les articles du jour, à -20\u00a0%",
+  "shop.featuredTimer": "nouveaux articles dans {time}",
+  "shop.featuredHint": "Les mêmes pour tous, renouvelés à minuit (heure de Paris). Touche une carte pour l'essayer.",
+  "shop.deal": "-20\u00a0%",
+  "shop.tryOn": "Essayer {name}",
+  "shop.stageBase": "Apparence de base",
+  "shop.errPrice": "La vitrine vient de changer : rien n'a été débité. Vérifie le prix et réessaie.",
 
   // Thèmes
   "theme.neon.name": "Néon Originel",

@@ -119,16 +119,17 @@ class WalletService {
   // Boutique : achat atomique + lecture inventaire.
   // ───────────────────────────────────────────────────────────────────────
 
-  // Seul l'identifiant part au serveur : le prix débité est celui du
-  // catalogue partagé (SHOP_ITEMS), relu côté serveur.
-  async purchase(itemId: string): Promise<{ ok: boolean; error?: string; newBalance?: number }> {
+  // Le prix débité est celui du serveur (catalogue partagé SHOP_ITEMS et
+  // vitrine du jour). expectedPrice, le prix affiché, ne sert qu'à refuser
+  // l'achat s'il a changé entre-temps (erreur price_changed, rien débité).
+  async purchase(itemId: string, expectedPrice?: number): Promise<{ ok: boolean; error?: string; newBalance?: number }> {
     const token = auth.getAccessToken();
     if (!token) return { ok: false, error: "unauthorized" };
     try {
       const r = await fetch("/api/wallet/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ item_id: itemId }),
+        body: JSON.stringify({ item_id: itemId, expected_price: expectedPrice }),
       });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string; new_balance?: number };
       const newBalance = j?.new_balance != null ? Number(j.new_balance) : undefined;

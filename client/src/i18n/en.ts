@@ -318,7 +318,7 @@ export const en = {
   "howto.trophies1": "Earned at the end of each life in public rooms: kills × 15, your peak blade count, 1 per 10 s alive, crates × 3, power-ups × 2. Spend them in the BOUTIQUE.",
   "howto.challenges": "Every day, three challenges (easy, medium, hard), and one per week: the same for everyone, renewed at midnight Paris time. Your lives in public rooms count; rewards are trophies. Find them in PROFILE.",
   "howto.trophies2": "They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.",
-  "howto.cosmetics": "Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>. They never change hitboxes, rarity colors or the rings on the ground.",
+  "howto.cosmetics": "Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>, where three are 20% off each day (FEATURED) and every item can be tried on in 3D. They never change hitboxes, rarity colors or the rings on the ground.",
   "howto.resetTips": "SHOW IN-GAME TIPS AGAIN",
 
   // Boutique
@@ -346,6 +346,14 @@ export const en = {
   "shop.levelHint": "Unlocks at level {n} · you: {level}",
   "shop.signIn": "SIGN IN",
   "shop.cosHint": "Seen by everyone from your next game. Level up to unlock more.",
+  "shop.featured": "FEATURED",
+  "shop.featuredHead": "Today's picks, 20% off",
+  "shop.featuredTimer": "new picks in {time}",
+  "shop.featuredHint": "The same for everyone, renewed at midnight (Paris time). Tap a card to try it on.",
+  "shop.deal": "-20%",
+  "shop.tryOn": "Try on {name}",
+  "shop.stageBase": "Default look",
+  "shop.errPrice": "Today's picks just changed: nothing was charged. Check the price and try again.",
 
   // Thèmes
   "theme.neon.name": "Original Neon",

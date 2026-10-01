@@ -113,8 +113,9 @@ export function nextParisWeek(date: Date): Date {
   return nextChange(date, parisWeekKey, 8 - p.wd);
 }
 
-// Tirage déterministe (FNV-1a puis mulberry32) : mêmes défis pour tous.
-function rng(seed: string): () => number {
+// Tirage déterministe (FNV-1a puis mulberry32) : mêmes défis pour tous
+// (et même mise en avant de la boutique, cf. shop.ts).
+export function seededRandom(seed: string): () => number {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {
     h ^= seed.charCodeAt(i);
@@ -135,7 +136,7 @@ const familyOf = (c: ChallengeDef): string =>
 
 // Un facile, un moyen, un difficile.
 export function dailyChallenges(dayKey: string): ChallengeDef[] {
-  const next = rng(`day:${dayKey}`);
+  const next = seededRandom(`day:${dayKey}`);
   const picked: ChallengeDef[] = [];
   for (const tier of ["easy", "medium", "hard"] as ChallengeTier[]) {
     const used = new Set(picked.map(familyOf));
@@ -146,7 +147,7 @@ export function dailyChallenges(dayKey: string): ChallengeDef[] {
 }
 
 export function weeklyChallenge(weekKey: string): ChallengeDef {
-  const next = rng(`week:${weekKey}`);
+  const next = seededRandom(`week:${weekKey}`);
   return WEEKLY_CHALLENGES[Math.floor(next() * WEEKLY_CHALLENGES.length)];
 }
 

@@ -3,6 +3,7 @@ import { getActiveTheme, listThemes, setActiveTheme, Theme } from "../themes";
 import { wallet } from "../auth/wallet";
 import { grantOwnership, isOwned, listOwned, subscribeOwnership } from "./owned";
 import { CosmeticTab, CosmeticsShop } from "./cosmeticsShop";
+import { refreshOffer, subscribeOffer } from "./offer";
 import { subscribeLoadout } from "../cosmetics/loadout";
 import { I18nKey, formatNumber, onLangChange, t, themeName, themeTagline } from "../i18n";
 import { showAlert, showConfirm } from "../ui/Dialog";
@@ -15,12 +16,21 @@ import { reloadAtMenu } from "../ui/pendingReload";
 //   prix du catalogue partagé SHOP_ITEMS), équipement = reload
 // - Skins / Lames / Effets : cosmétiques visibles par tous (cosmeticsShop.ts),
 //   même route d'achat, équipés sans rechargement
+// - À la une (tâche 6.4) : la vitrine du jour (offer.ts), trois cosmétiques
+//   à -20 %, et l'aperçu 3D qui essaie les cartes touchées
 //
 // Les prix affichés viennent du même catalogue que celui qui fait foi côté
 // serveur : pas de divergence possible entre le prix vu et le prix débité.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Tab = "maps" | CosmeticTab;
+
+// Boutique ouverte : le moniteur de qualité de main.ts se met en pause (son
+// aperçu 3D fait baisser les FPS du lobby sans rien dire de la partie, et
+// abaisser le preset hors partie recharge la page, en plein achat).
+export function isBoutiqueOpen(): boolean {
+  return !(document.getElementById("boutique")?.classList.contains("hidden") ?? true);
+}
 
 export class Boutique {
   private root: HTMLElement;
@@ -30,10 +40,13 @@ export class Boutique {
   private mapsCountEl: HTMLElement;
   private footHint: HTMLElement | null;
   private cosmetics: CosmeticsShop;
-  private currentTab: Tab = "maps";
+  // La vitrine du jour s'affiche à l'ouverture.
+  private currentTab: Tab = "featured";
   private unsubWallet: (() => void) | null = null;
   private unsubOwned: (() => void) | null = null;
   private unsubLoadout: (() => void) | null = null;
+  private unsubOffer: (() => void) | null = null;
+  private timer = 0;
   // État de "purchase pending" : empêche les double-clics + montre un état
   // visuel sur la carte. Stocké par theme id.
   private pendingPurchase = new Set<string>();
@@ -108,6 +121,12 @@ export class Boutique {
     });
     this.unsubLoadout?.();
     this.unsubLoadout = subscribeLoadout(() => this.cosmetics.render());
+    this.unsubOffer?.();
+    this.unsubOffer = subscribeOffer(() => this.cosmetics.render());
+    // Vitrine du jour à l'heure du serveur ; compte à rebours à la minute.
+    void refreshOffer();
+    window.clearInterval(this.timer);
+    this.timer = window.setInterval(() => this.cosmetics.renderTimer(), 30000);
     // Tente un refresh wallet (peut échouer silencieusement si pas authed).
     void wallet.refresh();
     this.refreshMapsCount();
@@ -123,6 +142,10 @@ export class Boutique {
     this.unsubOwned = null;
     this.unsubLoadout?.();
     this.unsubLoadout = null;
+    this.unsubOffer?.();
+    this.unsubOffer = null;
+    window.clearInterval(this.timer);
+    this.cosmetics.closed();
   }
 
   private switchTab(name: Tab): void {
@@ -135,14 +158,16 @@ export class Boutique {
     this.root.querySelectorAll<HTMLElement>(".boutique-pane").forEach((p) => {
       p.classList.toggle("active", p.dataset.pane === name);
     });
-    // Pied : comment gagner des trophées (cartes), ou qui voit les
-    // cosmétiques et quand ils s'appliquent. data-i18n suit, pour qu'un
+    // Pied : comment gagner des trophées (cartes), la vitrine, ou qui voit
+    // les cosmétiques et quand ils s'appliquent. data-i18n suit, pour qu'un
     // changement de langue garde le bon texte.
     if (this.footHint) {
-      const key: I18nKey = name === "maps" ? "shop.footHint" : "shop.cosHint";
+      const key: I18nKey = name === "maps" ? "shop.footHint" : name === "featured" ? "shop.featuredHint" : "shop.cosHint";
       this.footHint.dataset.i18n = key;
       this.footHint.textContent = t(key);
     }
+    // L'aperçu 3D suit l'onglet (pas sur les cartes, ni boutique fermée).
+    if (!this.root.classList.contains("hidden")) this.cosmetics.showTab(name === "maps" ? null : name);
   }
 
   private refreshBalance(): void {
@@ -305,7 +330,7 @@ export class Boutique {
     // wallet et insère dans inventory dans la même transaction Postgres.
     // Le wallet local est mis à jour automatiquement via le setState
     // déclenché côté wallet.purchase().
-    const result = await wallet.purchase(theme.id);
+    const result = await wallet.purchase(theme.id, price);
 
     if (result.ok) {
       grantOwnership(theme.id);
@@ -318,6 +343,9 @@ export class Boutique {
           // Le serveur dit déjà possédé : on aligne le local pour éviter
           // que le bouton ACHETER reste affiché à tort.
           grantOwnership(theme.id);
+          break;
+        case "price_changed":
+          void showAlert(t("shop.errPrice"));
           break;
         case "insufficient_funds":
           void showAlert(t("shop.errFunds"));
