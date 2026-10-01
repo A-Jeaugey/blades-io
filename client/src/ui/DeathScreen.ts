@@ -1,6 +1,7 @@
 import { KillCause } from "@bladeio/shared";
 import { I18nKey, t } from "../i18n";
 import { levelText, titleName } from "./level";
+import { ShareResult } from "./share";
 
 // Carte de fin de vie (tâche 3.5) : score, record, trophées, cause de la
 // mort en clair et un conseil adapté.
@@ -42,15 +43,26 @@ export class DeathScreen {
   private stats: HTMLElement;
   private respawn: HTMLButtonElement;
   private back: HTMLButtonElement;
+  // Partage du score (tâche 5.5), placé sous le score : en bas de la
+  // carte, la barre d'actions collante le cachait en paysage. Le libellé
+  // annonce un lien copié.
+  private shareBtn: HTMLElement;
+  private shareLabel: HTMLElement;
+  private shareTimer = 0;
+  // Dernière carte affichée : le texte du partage en est tiré.
+  lastStats: DeathStats | null = null;
 
-  constructor(onRespawn: () => void, onBackToMenu: () => void) {
+  constructor(onRespawn: () => void, onBackToMenu: () => void, onShare: () => void) {
     this.root = document.getElementById("death-screen")!;
     this.title = this.root.querySelector("h2")!;
     this.stats = document.getElementById("death-stats")!;
     this.respawn = document.getElementById("respawn-btn") as HTMLButtonElement;
     this.back = document.getElementById("back-menu-btn") as HTMLButtonElement;
+    this.shareBtn = document.getElementById("share-btn") as HTMLElement;
+    this.shareLabel = this.shareBtn.querySelector(".share-label") as HTMLElement;
     this.respawn.addEventListener("click", onRespawn);
     this.back.addEventListener("click", onBackToMenu);
+    this.shareBtn.addEventListener("click", onShare);
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !this.root.classList.contains("hidden")) {
         onBackToMenu();
@@ -63,6 +75,8 @@ export class DeathScreen {
   }
 
   show(s: DeathStats): void {
+    this.lastStats = s;
+    this.resetShareLabel();
     this.title.textContent = t(s.cause === "wall" ? "death.outOfBounds" : "death.shredded");
     const headline = s.privateRoom
       ? `${s.score} <span class="score-total-unit">${t("death.pts")}</span>`
@@ -89,11 +103,25 @@ export class DeathScreen {
       ${accountRow(s)}
       <div class="death-tip">${escapeHtml(tipFor(s))}</div>
     `;
+    this.stats.querySelector(".score-total-container")?.after(this.shareBtn);
     this.root.classList.remove("hidden");
   }
 
   hide(): void {
     this.root.classList.add("hidden");
+  }
+
+  // Lien copié (ou copie impossible) : dit sur le bouton, le temps de le lire.
+  shareFeedback(r: ShareResult): void {
+    if (r !== "copied" && r !== "failed") return;
+    this.shareLabel.textContent = t(r === "copied" ? "share.copied" : "share.failed");
+    window.clearTimeout(this.shareTimer);
+    this.shareTimer = window.setTimeout(() => this.resetShareLabel(), 1800);
+  }
+
+  private resetShareLabel(): void {
+    window.clearTimeout(this.shareTimer);
+    this.shareLabel.textContent = t("death.share");
   }
 }
 

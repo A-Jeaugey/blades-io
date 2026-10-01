@@ -17,7 +17,7 @@ export class Hud {
   private hud: HTMLElement;
   private roomBadge: HTMLElement;
   private roomCodeEl: HTMLElement;
-  private currentCode = "";
+  private inviteHandler: (() => void) | null = null;
   private effects: HTMLElement;
   private effectNodes: Map<string, { root: HTMLElement; bar: HTMLElement }> = new Map();
   private rankBadge: HTMLElement;
@@ -35,7 +35,9 @@ export class Hud {
     this.hud = document.getElementById("hud")!;
     this.roomBadge = document.getElementById("room-badge")!;
     this.roomCodeEl = document.getElementById("room-code")!;
-    this.roomBadge.addEventListener("click", () => this.copyInviteLink());
+    // Badge du salon privé : invite (partage natif sur mobile, lien copié
+    // ailleurs, cf. ui/share.ts et main.ts).
+    this.roomBadge.addEventListener("click", () => this.inviteHandler?.());
     this.effects = document.getElementById("effects")!;
     this.rankBadge = document.getElementById("rank-badge")!;
     this.writeBoostButton();
@@ -158,32 +160,17 @@ export class Hud {
 
   // code vide = room publique, le badge est caché.
   setRoomCode(code: string): void {
-    this.currentCode = code;
     if (!code) { this.roomBadge.classList.add("hidden"); return; }
     this.roomBadge.classList.remove("hidden");
     this.roomCodeEl.textContent = code;
   }
 
-  private copyInviteLink(): void {
-    if (!this.currentCode) return;
-    const url = new URL(window.location.href);
-    url.searchParams.set("room", this.currentCode);
-    const link = url.toString();
-    const fallback = () => {
-      const ta = document.createElement("textarea");
-      ta.value = link;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand("copy"); } catch {}
-      document.body.removeChild(ta);
-    };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(link).catch(fallback);
-    } else {
-      fallback();
-    }
+  onInvite(handler: () => void): void {
+    this.inviteHandler = handler;
+  }
+
+  // Lien copié : le badge clignote.
+  flashCopied(): void {
     this.roomBadge.classList.add("copied");
     setTimeout(() => this.roomBadge.classList.remove("copied"), 900);
   }

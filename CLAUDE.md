@@ -65,7 +65,8 @@ client/src/
 │                        indications uniques, page « How to play »),
 │                        ProfilePanel + localStats (profil : stats du
 │                        compte ou de l'appareil), LeaderboardView
-│                        (classements à onglets : lobby et profil)
+│                        (classements à onglets : lobby et profil),
+│                        share (partage natif ou lien copié, invitations)
 ├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
@@ -354,6 +355,15 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   (`seasons_closed` sert de verrou). Changer `SEASON_WEEKS` ou
   `SEASON_ONE_START` renumérote les saisons passées : à ne faire qu'avant
   la première clôture.
+- **Partage (tâche 5.5)** : les balises d'aperçu des liens (Open Graph)
+  sont écrites par le serveur à chaque requête de page, entre
+  `<!-- og:start -->` et `<!-- og:end -->` dans `client/index.html`
+  (`server/src/http/ogTags.ts`) : garder ces marqueurs. L'image `og.jpg`
+  est dessinée au build par le plugin Vite de `client/vite.config.ts`
+  (`client/tools/ogImage.ts`, couleurs du thème neon, encodeur JPEG
+  maison : le PNG des halos dépassait les ~300 Ko qu'accepte WhatsApp).
+  Lien « rejoins-moi » : `?join=<roomId>`, rejoint par `joinById` ; un
+  salon privé exige son code jusque dans `onAuth`.
 - **Build et CI** : `npm run build` (shared, puis serveur, puis client)
   passe avec la version de TypeScript verrouillée (5.9.3) ; l'ancien
   plantage de `build:shared` ne se reproduit plus. La CI GitHub Actions

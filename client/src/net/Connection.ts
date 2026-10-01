@@ -25,10 +25,18 @@ function isNoRoomFoundError(e: unknown): boolean {
   return msg.includes("no rooms found") || msg.includes("matchmake");
 }
 
+export interface JoinOptions {
+  code?: string;
+  bots?: boolean;
+  token?: string;
+  guestToken?: string | null;
+  mustExist?: boolean;
+  newcomer?: boolean;
+}
+
 export class Connection {
   private client: Client;
   public room: Room<RoomState> | null = null;
-  private reconnectAttempts = 0;
 
   constructor(endpoint: string) {
     this.client = new Client(endpoint);
@@ -49,29 +57,14 @@ export class Connection {
   // opts.guestToken : token guest signé (HMAC) pour les joueurs non
   // authentifiés. Sans aucun des deux, le joueur joue mais ses trophées
   // ne sont pas trackés.
-  async join(
-    name: string,
-    opts: {
-      code?: string;
-      bots?: boolean;
-      token?: string;
-      guestToken?: string | null;
-      mustExist?: boolean;
-      newcomer?: boolean;
-    } = {},
-  ): Promise<Room<RoomState>> {
+  async join(name: string, opts: JoinOptions = {}): Promise<Room<RoomState>> {
     const maxAttempts = 3;
     let backoff = 500;
-    // code TOUJOURS envoyé (string vide = public). Si on l'omet, filterBy
-    // l'ignore dans la requête matchmaker → un client public peut
-    // matcher une room privée (et vice-versa). En forçant code = "" pour
-    // le public, l'égalité stricte du filtre garantit l'isolation.
-    const joinOpts: any = { name, code: (opts.code ?? "").toUpperCase() };
-    if (opts.bots !== undefined) joinOpts.bots = opts.bots;
-    if (opts.token) joinOpts.token = opts.token;
-    else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
-    if (opts.newcomer) joinOpts.newcomer = true;
-    while (this.reconnectAttempts < maxAttempts) {
+    const joinOpts = this.joinOptions(name, opts);
+    // Compteur propre à chaque appel : partagé, trois échecs (serveur
+    // coupé) bloquaient toutes les parties suivantes jusqu'au rechargement.
+    let attempts = 0;
+    while (attempts < maxAttempts) {
       try {
         // mustExist=true (mode JOIN CODE) → client.join() qui throw si
         // aucune room ne matche le filterBy. Sinon → joinOrCreate
@@ -81,7 +74,6 @@ export class Connection {
           ? await this.client.join<RoomState>("arena", joinOpts)
           : await this.client.joinOrCreate<RoomState>("arena", joinOpts);
         this.room = room;
-        this.reconnectAttempts = 0;
         return room;
       } catch (e) {
         // En mode JOIN CODE, on NE retry PAS sur "no room found" — c'est
@@ -89,15 +81,38 @@ export class Connection {
         // hoquet réseau. Le retry ne ferait que masquer l'erreur réelle
         // pendant 1.5s avant de finalement la propager.
         if (opts.mustExist && isNoRoomFoundError(e)) {
-          throw new RoomNotFoundError(joinOpts.code);
+          throw new RoomNotFoundError(String(joinOpts.code));
         }
-        this.reconnectAttempts++;
-        if (this.reconnectAttempts >= maxAttempts) throw e;
+        attempts++;
+        if (attempts >= maxAttempts) throw e;
         await new Promise((r) => setTimeout(r, backoff));
         backoff *= 2;
       }
     }
     throw new Error("Could not join arena");
+  }
+
+  // Lien « rejoins-moi » (tâche 5.5) : l'arène publique précise d'un ami.
+  // Un seul essai : fermée, pleine ou introuvable, main.ts passe au
+  // matchmaking habituel.
+  async joinById(roomId: string, name: string, opts: JoinOptions = {}): Promise<Room<RoomState>> {
+    const room = await this.client.joinById<RoomState>(roomId, this.joinOptions(name, { ...opts, code: "" }));
+    this.room = room;
+    return room;
+  }
+
+  private joinOptions(name: string, opts: JoinOptions): Record<string, unknown> {
+    // code TOUJOURS envoyé (string vide = public). Si on l'omet, filterBy
+    // l'ignore dans la requête matchmaker → un client public peut
+    // matcher une room privée (et vice-versa). En forçant code = "" pour
+    // le public, l'égalité stricte du filtre garantit l'isolation ; le
+    // serveur le vérifie aussi pour un accès par identifiant.
+    const joinOpts: Record<string, unknown> = { name, code: (opts.code ?? "").toUpperCase() };
+    if (opts.bots !== undefined) joinOpts.bots = opts.bots;
+    if (opts.token) joinOpts.token = opts.token;
+    else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
+    if (opts.newcomer) joinOpts.newcomer = true;
+    return joinOpts;
   }
 
   // Réutilisé par main.ts quand room.onLeave fire avec un code non-consent

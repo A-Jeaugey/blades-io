@@ -7,6 +7,23 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>Blade.io</title>
+    <!-- Aperçu des liens partagés (tâche 5.5). Le serveur de jeu réécrit ce
+         bloc à chaque requête : adresses absolues, langue du visiteur, texte
+         d'une invitation (server/src/http/ogTags.ts). Ces valeurs servent
+         aux autres hébergements. Image : og.jpg, dessinée au build
+         (client/tools/ogImage.ts). -->
+    <!-- og:start -->
+    <meta name="description" content="Free multiplayer arena in your browser: collect blades, make them orbit around you and shred the other players. No download, no sign-up." />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="blade.io" />
+    <meta property="og:title" content="blade.io — Spin to survive" />
+    <meta property="og:description" content="Free multiplayer arena in your browser: collect blades, make them orbit around you and shred the other players. No download, no sign-up." />
+    <meta property="og:image" content="%BASE_URL%og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- og:end -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230a0e1a'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%2300eaff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23ff2bd6'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./src/styles.css" />
   </head>
@@ -71,7 +88,7 @@
             <div class="st-score"><span id="score-val">🏆 0</span><span id="best-val"></span></div>
             <div id="boost-info"></div>
           </div>
-          <div id="room-badge" class="hidden" title="Click to copy invite link" data-i18n-attr="title:hud.roomTitle">
+          <div id="room-badge" class="hidden" title="Click to invite a friend" data-i18n-attr="title:hud.roomTitle">
             <span class="room-label" data-i18n="hud.room">ROOM</span>
             <span id="room-code">—</span>
           </div>
@@ -249,7 +266,9 @@
               </div>
             </div>
 
-            <div id="mode-public" class="mode-panel active"></div>
+            <div id="mode-public" class="mode-panel active">
+              <p id="join-invite" class="bio2-invite hidden" role="status" data-i18n="lobby.joinInvite">A friend invited you into their arena: enter to join them.</p>
+            </div>
             <div id="mode-create" class="bio2-field mode-panel hidden">
               <label class="bio2-toggle">
                 <input type="checkbox" id="create-bots" />
@@ -364,6 +383,7 @@
                 <li data-i18n-html="howto.arena5">When you die, 70 % of your blades drop, rarest first, plus those you lost in the last 10 s.</li>
                 <li data-i18n-html="howto.arena6">The leader wears a crown with a bounty: take them down for bonus trophies and all of their blades. Killing a player with at least twice your blades pays double.</li>
                 <li data-i18n-html="howto.arena7">Bots are marked BOT in the leaderboard. Some are easy, some hard; in your first game, they go easy on you.</li>
+                <li data-i18n-html="howto.friends">Play with friends: <b>INVITE A FRIEND</b> (settings, in game) or <b>SHARE</b> on the end-of-life card sends a link to your arena. In a private room, tap the ROOM badge.</li>
               </ul>
             </section>
             <section>
@@ -499,6 +519,7 @@
         <div class="death-card">
           <h2 data-i18n="death.shredded">YOU WERE SHREDDED</h2>
           <div id="death-stats"></div>
+          <button id="share-btn" class="death-share" type="button"><span aria-hidden="true">⤴</span> <span class="share-label" data-i18n="death.share">SHARE</span></button>
           <div class="death-actions">
             <button id="respawn-btn" data-i18n="death.respawn">RESPAWN</button>
             <button id="back-menu-btn" data-i18n="death.backToMenu">BACK TO MENU</button>
@@ -509,6 +530,7 @@
       <div id="settings-panel" class="hidden">
         <div class="settings-card">
           <h3 data-i18n="settings.title">SETTINGS</h3>
+          <button id="invite-btn" class="settings-invite hidden" type="button"><span aria-hidden="true">⤴</span> <span class="share-label" data-i18n="settings.invite">INVITE A FRIEND</span></button>
           <label><span data-i18n="settings.master">Master</span> <input type="range" id="vol-master" min="0" max="1" step="0.01" value="0.7" /></label>
           <label><span data-i18n="settings.music">Music</span> <input type="range" id="vol-music" min="0" max="1" step="0.01" value="0.5" /></label>
           <label><span data-i18n="settings.sfx">SFX</span> <input type="range" id="vol-sfx" min="0" max="1" step="0.01" value="0.8" /></label>

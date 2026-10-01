@@ -31,6 +31,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Leader bounty** | The leader (best score among living players) wears a crown showing their bounty: a quarter of their score, from 10 to 150 trophées, paid to whoever kills them, and they drop all of their blades instead of 70 %. No bounty below 30 points |
 | **Underdog** | Killing a player who had at least twice your blades at the start of the fight (and at least 10 of them) pays double: +15 on top of the kill. On death, the rarest blades drop first |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
+| **Play with friends** | INVITE A FRIEND (settings, in game) and SHARE on the death card send a link to your arena: whoever opens it lands in the same public arena (another one if it closed or filled up), or in your private room (`?room=CODE`; the ROOM badge does the same). On phones, the system share sheet opens; elsewhere the link is copied. Shared links show a preview: the server writes the Open Graph tags (absolute URLs, the visitor's language, the invitation's text) and the image, `og.jpg`, is drawn at build time from the default theme (`client/tools/ogImage.ts`), like everything else in the game |
 | **Challenges** | Three daily challenges (easy, medium, hard: throw 20 blades, reach 40 blades in one life, take down the leader…) and one weekly, the same for everyone, renewed at midnight Paris time (Monday for the weekly). Every life in a public room counts, for accounts and guests with a trophy wallet; rewards are trophées (so XP). They show in PROFILE (with the count done today on its button) and a banner pops in game when one is completed |
 | **Leaderboards & seasons** | Best score per account over the day, the week, the season and all time (public rooms only), in the lobby's right rail and in PROFILE (the rail is hidden on phones), with your own rank when signed in. A season lasts six weeks, from Monday midnight Paris time (season 1 starts on 28 September 2026); when it ends, the top 10 earn trophées, so XP: 1,000, 750, 500, then 250 |
 | **Levels** | Trophées earned in public rooms are also XP (spending them does not lower it): your level shows next to your name in other players' nametags, in the lobby, on the death card (with level-ups) and in your profile. Level 2 after a life or two, 10 after ~2 000, 50 after ~30 000; titles at levels 5, 10, 20, 30, 50, 75 and 100. Bots have no level |
@@ -251,7 +252,7 @@ The script:
 - builds, tests and starts the first release with `auto-deploy.sh` (below)
 - enables pm2 auto-start at boot
 
-The server listens on **2567**, serves the client at `/`, and exposes `/api` and `/healthz` (`503` while a restart is announced). Server settings (Supabase keys, `SERVER_GUEST_SECRET`, `TRUST_PROXY`, `ALLOWED_ORIGINS`) go in `~/bladeio/.env`, linked into every release; see `.env.example`.
+The server listens on **2567**, serves the client at `/`, and exposes `/api` and `/healthz` (`503` while a restart is announced). Server settings (Supabase keys, `SERVER_GUEST_SECRET`, `TRUST_PROXY`, `ALLOWED_ORIGINS`, and optionally `PUBLIC_URL` for link previews) go in `~/bladeio/.env`, linked into every release; see `.env.example`.
 
 #### Updates: graceful deploys
 

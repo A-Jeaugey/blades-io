@@ -229,7 +229,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   // n'utilise pas ça pour gating l'accès (mode invité possible) — juste
   // pour valider le token Supabase et stocker l'identité authentifiée que
   // onJoin pourra consommer via auth.userId.
-  async onAuth(_client: Client, options: { token?: string; guestToken?: string; name?: string }): Promise<{
+  async onAuth(_client: Client, options: { token?: string; guestToken?: string; name?: string; code?: string }): Promise<{
     userId: string | null;
     username: string | null;
     guestId: string | null;
@@ -238,6 +238,11 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   }> {
     // Redémarrage annoncé (cf. shutdown.ts) : plus personne n'entre.
     if (restartDeadline() > 0) throw new ServerError(503, "server_restarting");
+    // Rejoindre par identifiant (lien « rejoins-moi », tâche 5.5) passe à
+    // côté du filtre du matchmaker : un salon privé exige toujours son code,
+    // une arène publique n'en a pas.
+    const code = typeof options?.code === "string" ? options.code.toUpperCase() : "";
+    if (code !== this.roomCode) throw new ServerError(403, "wrong_room");
     const token = typeof options?.token === "string" && options.token.length > 0 ? options.token : null;
     const guestTok = typeof options?.guestToken === "string" && options.guestToken.length > 0 ? options.guestToken : null;
     const requestedName = sanitizeName(options?.name ?? "");

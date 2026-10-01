@@ -6,6 +6,7 @@ import { fetchGuestWallet } from "../auth/guestToken";
 import { I18nKey, onLangChange, t } from "../i18n";
 import { levelText } from "./level";
 import { LeaderboardView } from "./LeaderboardView";
+import { joinIdFromUrl } from "./share";
 
 // Identifiant de build (date + commit) injecté par Vite (cf. vite.config.ts).
 declare const __BUILD_ID__: string;
@@ -16,6 +17,8 @@ export interface LoginResult {
   mode: LoginMode;
   code?: string;
   bots?: boolean;
+  // Arène publique d'un ami (lien « rejoins-moi », tâche 5.5).
+  roomId?: string;
 }
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -77,6 +80,9 @@ export class LoginScreen {
   private shownXp: number | null = null;
   // Classements à onglets du rail droit (tâche 5.4).
   private board: LeaderboardView | null = null;
+  // Invitation dans l'arène d'un ami (?join=ID, tâche 5.5), jusqu'à la
+  // première partie.
+  private inviteRoomId: string | null = null;
   private renameActions: HTMLElement | null = null;
   private renameBtn: HTMLButtonElement | null = null;
   private renameSaveBtn: HTMLButtonElement | null = null;
@@ -162,6 +168,11 @@ export class LoginScreen {
       this.setMode("join");
       this.codeInput.value = sanitizeCode(urlCode);
       this.renderCodeCells();
+    } else {
+      // ?join=ID → partie rapide dans l'arène de l'ami, annoncée au-dessus
+      // du bouton d'entrée.
+      this.inviteRoomId = joinIdFromUrl();
+      document.getElementById("join-invite")?.classList.toggle("hidden", this.inviteRoomId === null);
     }
 
     this.input.addEventListener("input", () => this.updateNameCount());
@@ -181,6 +192,7 @@ export class LoginScreen {
       if (name.length > NAME_MAX_LENGTH) name = name.slice(0, NAME_MAX_LENGTH);
       if (!lockedName) localStorage.setItem("blade.name", name);
       const res: LoginResult = { name, mode: this.mode };
+      if (this.mode === "public" && this.inviteRoomId) res.roomId = this.inviteRoomId;
       if (this.mode === "create") {
         res.code = randomCode(5);
         res.bots = this.botsCheckbox.checked;
@@ -504,6 +516,12 @@ export class LoginScreen {
       panel.classList.toggle("active", key === m);
     });
     if (m === "join") setTimeout(() => this.codeInput.focus(), 0);
+  }
+
+  // L'invitation ne sert qu'une fois : ensuite, matchmaking habituel.
+  clearInvite(): void {
+    this.inviteRoomId = null;
+    document.getElementById("join-invite")?.classList.add("hidden");
   }
 
   show(): void {

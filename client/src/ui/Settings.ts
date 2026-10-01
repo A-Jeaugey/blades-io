@@ -5,6 +5,7 @@ import { Haptics } from "../fx/Haptics";
 import { I18nKey, Lang, getLang, onLangChange, setLang, t, themeName } from "../i18n";
 import { showConfirm } from "./Dialog";
 import { reloadAtMenu } from "./pendingReload";
+import { ShareResult } from "./share";
 
 export interface SettingsState {
   master: number;
@@ -67,6 +68,9 @@ export class SettingsPanel {
   };
   private listeners: Array<(s: SettingsState) => void> = [];
   private quitListeners: Array<() => void> = [];
+  // Inviter un ami dans la room en cours (tâche 5.5), en jeu seulement.
+  private inviteHandler: (() => void) | null = null;
+  private inviteTimer = 0;
 
   constructor() {
     this.panel = document.getElementById("settings-panel")!;
@@ -89,6 +93,7 @@ export class SettingsPanel {
         for (const cb of this.quitListeners) cb();
       });
     }
+    document.getElementById("invite-btn")?.addEventListener("click", () => this.inviteHandler?.());
 
     const saved = localStorage.getItem("blade.settings");
     if (saved) {
@@ -235,6 +240,19 @@ export class SettingsPanel {
     cb(this.state);
   }
 
+  onInvite(handler: () => void): void {
+    this.inviteHandler = handler;
+  }
+
+  // Lien copié : dit sur le bouton, le temps de le lire.
+  inviteFeedback(r: ShareResult): void {
+    const label = document.querySelector("#invite-btn .share-label");
+    if (!label || (r !== "copied" && r !== "failed")) return;
+    label.textContent = t(r === "copied" ? "share.copied" : "share.failed");
+    window.clearTimeout(this.inviteTimer);
+    this.inviteTimer = window.setTimeout(() => { label.textContent = t("settings.invite"); }, 1800);
+  }
+
   onQuit(cb: () => void): void {
     this.quitListeners.push(cb);
   }
@@ -264,6 +282,7 @@ export class SettingsPanel {
       if (inGame) quitBtn.classList.remove("hidden");
       else quitBtn.classList.add("hidden");
     }
+    document.getElementById("invite-btn")?.classList.toggle("hidden", !inGame);
   }
 
   private emit(): void {

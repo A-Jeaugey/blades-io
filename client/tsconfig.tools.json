@@ -1,0 +1,10 @@
+{
+  // Outils de build exécutés par Node (configuration Vite, image d'aperçu
+  // des liens) : vérifiés à part, avec les types de Node.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2020", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "tools/**/*"]
+}

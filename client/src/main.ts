@@ -77,8 +77,9 @@ import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
-import { I18nKey, applyI18n, t } from "./i18n";
+import { I18nKey, applyI18n, formatNumber, t } from "./i18n";
 import { showAlert } from "./ui/Dialog";
+import { RoomRef, ShareResult, inviteUrl, share } from "./ui/share";
 import { isReloadPending, reloadAtMenu } from "./ui/pendingReload";
 import { Boutique } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
@@ -209,9 +210,10 @@ class Game {
   private clashChecksImmediate: ClashCheck[] = [];
   private settings: SettingsPanel;
   private profile!: ProfilePanel;
-  // Défis réussis (tâche 5.3) : bandeau l'un après l'autre.
-  private challengeToasts: string[] = [];
-  private challengeToastUntil = 0;
+  // Bandeaux d'information en jeu, l'un après l'autre : défis réussis
+  // (tâche 5.3), arène d'un ami indisponible (5.5).
+  private toasts: string[] = [];
+  private toastUntil = 0;
   private chat!: ChatPanel;
   private nametags = new NametagOverlay();
   private sound = new SoundManager();
@@ -410,7 +412,7 @@ class Game {
       try { this.room?.send("chat", { text }); } catch { /* noop */ }
     });
     this.login = new LoginScreen((res) => this.start(res));
-    this.death = new DeathScreen(() => this.respawn(), () => this.returnToMenu());
+    this.death = new DeathScreen(() => this.respawn(), () => this.returnToMenu(), () => void this.shareScore());
     // Caméra sur le tueur : un clic sur le jeu ou Espace, Entrée, Échap
     // passent directement à la carte (Échap la ferme ensuite, cf.
     // DeathScreen). L'écouteur de la carte, sur document, passe avant
@@ -466,6 +468,8 @@ class Game {
     this.settings.onQuit(() => {
       this.returnToMenu();
     });
+    this.settings.onInvite(() => void this.invite((r) => this.settings.inviteFeedback(r)));
+    this.hud.onInvite(() => void this.invite((r) => { if (r === "copied") this.hud.flashCopied(); }));
     this.conn = new Connection(resolveServerEndpoint());
     window.addEventListener("beforeunload", () => { this.conn.leave(); });
     // Pré-provisionne un guest token en background dès le boot : le claim
@@ -515,7 +519,21 @@ class Game {
         this.guestBalance = null;
         if (joinOpts.guestToken) void fetchGuestWallet().then((w) => { this.guestBalance = w ? w.balance : null; });
       }
-      this.room = await this.conn.join(res.name, joinOpts);
+      // Lien « rejoins-moi » (tâche 5.5) : l'arène de l'ami si elle existe
+      // encore et a de la place, sinon une autre, annoncée en jeu.
+      let room: any = null;
+      if (res.roomId) {
+        try {
+          room = await this.conn.joinById(res.roomId, res.name, joinOpts);
+        } catch (e) {
+          console.warn("[blade.io] friend arena unavailable", e);
+        }
+      }
+      this.room = room ?? await this.conn.join(res.name, joinOpts);
+      if (res.roomId) {
+        this.login.clearInvite();
+        if (!room) this.toasts.push(t("net.friendArenaGone"));
+      }
       markPlayed();
     } catch (e) {
       console.error("could not join", e);
@@ -540,9 +558,12 @@ class Game {
       u.searchParams.set("room", res.code!);
       window.history.replaceState({}, "", u.toString());
     } else {
+      // Partie publique : l'adresse ne garde ni code ni invitation (un
+      // rechargement ne doit pas viser une arène peut-être fermée).
       const u = new URL(window.location.href);
-      if (u.searchParams.has("room")) {
+      if (u.searchParams.has("room") || u.searchParams.has("join")) {
         u.searchParams.delete("room");
+        u.searchParams.delete("join");
         window.history.replaceState({}, "", u.toString());
       }
     }
@@ -882,7 +903,7 @@ class Game {
       for (const done of msg.challenges ?? []) {
         const def = challengeById(done.challenge);
         if (!def) continue;
-        this.challengeToasts.push(t("challenge.toast", { name: challengeText(def), reward: done.reward }));
+        this.toasts.push(t("challenge.toast", { name: challengeText(def), reward: done.reward }));
         // Récompense créditée par le serveur : solde et niveau à jour.
         if (this.guestBalance !== null && !auth.getAccessToken()) this.guestBalance += done.reward;
       }
@@ -1242,28 +1263,54 @@ class Game {
     document.getElementById("killcam")?.classList.add("hidden");
   }
 
-  // Fin d'une vie en room publique, versée une fois (à la mort ou au retour
-  // au menu) : record personnel (cf. personalBest) et statistiques locales
-  // du profil (tâche 5.1). Renvoie le record d'avant et s'il est battu
-  // (null : rien de versé).
-  // Bandeau « défi réussi » (tâche 5.3), 4 s chacun, dans l'ordre.
-  private updateChallengeToast(now: number): void {
-    if (now < this.challengeToastUntil) return;
+  // Bandeaux en jeu, 4 s chacun, dans l'ordre.
+  private updateToast(now: number): void {
+    if (now < this.toastUntil) return;
     const el = document.getElementById("challenge-toast");
     if (!el) return;
-    const next = this.challengeToasts.shift();
+    const next = this.toasts.shift();
     if (next === undefined) {
-      if (this.challengeToastUntil !== 0) {
+      if (this.toastUntil !== 0) {
         el.classList.add("hidden");
-        this.challengeToastUntil = 0;
+        this.toastUntil = 0;
       }
       return;
     }
     el.textContent = next;
     el.classList.remove("hidden");
-    this.challengeToastUntil = now + 4000;
+    this.toastUntil = now + 4000;
   }
 
+  // Room en cours, pour les liens d'invitation (tâche 5.5).
+  private roomRef(): RoomRef | null {
+    const room = this.room;
+    if (!room) return null;
+    return { roomId: room.roomId, code: String(room.state?.code ?? ""), isPrivate: !!room.state?.isPrivate };
+  }
+
+  // Invitation dans la room en cours : lien vers le salon privé, ou vers
+  // cette arène publique.
+  private async invite(feedback: (r: ShareResult) => void): Promise<void> {
+    const ref = this.roomRef();
+    if (!ref) return;
+    const text = ref.isPrivate ? t("share.inviteRoom", { code: ref.code }) : t("share.inviteArena");
+    feedback(await share({ title: "blade.io", text, url: inviteUrl(ref) }, { native: this.input.isTouch }));
+  }
+
+  // Partage du score de la carte de fin de vie, avec le lien de l'arène.
+  private async shareScore(): Promise<void> {
+    const s = this.death.lastStats;
+    const ref = this.roomRef();
+    if (!s || !ref) return;
+    const text = t("share.score", { score: formatNumber(s.score, 0), kills: s.kills, blades: s.maxBlades });
+    const r = await share({ title: "blade.io", text, url: inviteUrl(ref) }, { native: this.input.isTouch, copyText: true });
+    this.death.shareFeedback(r);
+  }
+
+  // Fin d'une vie en room publique, versée une fois (à la mort ou au retour
+  // au menu) : record personnel (cf. personalBest) et statistiques locales
+  // du profil (tâche 5.1). Renvoie le record d'avant et s'il est battu
+  // (null : rien de versé).
   private submitLife(me: any): { previous: number; isNew: boolean } | null {
     if (this.bestSubmitted || this.room?.state?.isPrivate) return null;
     this.bestSubmitted = true;
@@ -1927,7 +1974,7 @@ class Game {
         window.innerHeight,
       );
       this.updateHud();
-      this.updateChallengeToast(performance.now());
+      this.updateToast(performance.now());
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
 
       // Crown UI rendering

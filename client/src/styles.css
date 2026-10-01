@@ -958,6 +958,33 @@ button:hover {
 .mode-panel.hidden {
   display: none;
 }
+/* Invitation dans l'arène d'un ami (lien ?join=, tâche 5.5). */
+.bio2-invite {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--pink);
+  background: rgba(var(--accent-warm-rgb), 0.08);
+  color: var(--fg-bright);
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  line-height: 1.35;
+}
+/* Partage du score et invitation (tâche 5.5) : boutons secondaires. */
+.death-share {
+  display: block;
+  margin: 2px auto 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  border-color: rgba(var(--accent-cool-rgb), 0.45);
+  color: var(--fg-muted);
+}
+.settings-invite {
+  display: block;
+  width: 100%;
+  margin: 0 0 12px;
+  grid-column: 1 / -1;
+}
 .mode-hint {
   font-size: 12px;
   color: var(--fg-muted);

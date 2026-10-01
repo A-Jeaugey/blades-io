@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, Plugin } from "vite";
 import path from "path";
 import { execSync } from "child_process";
 
@@ -23,8 +23,34 @@ function buildId(): string {
   return sha ? `${date} · ${sha.slice(0, 7)}` : date;
 }
 
+// Image d'aperçu des liens partagés (balises Open Graph, tâche 5.5) :
+// dessinée par programme depuis la palette du thème par défaut, comme tout
+// le jeu (aucune image dans le dépôt). Émise au build sous og.jpg, servie
+// à la volée par le serveur de dev. Import paresseux : la configuration se
+// charge même si le paquet shared n'est pas encore compilé.
+function ogImage(): Plugin {
+  let jpeg: Promise<Buffer> | null = null;
+  const render = () => (jpeg ??= import("./tools/ogImage").then((m) => m.renderOgImage()));
+  return {
+    name: "bladeio-og-image",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.split("?")[0] !== `${base}og.jpg`) return next();
+        render().then((buf) => {
+          res.setHeader("Content-Type", "image/jpeg");
+          res.end(buf);
+        }, next);
+      });
+    },
+    async generateBundle() {
+      this.emitFile({ type: "asset", fileName: "og.jpg", source: await render() });
+    },
+  };
+}
+
 export default defineConfig({
   base,
+  plugins: [ogImage()],
   // Le .env vit à la racine du monorepo (partagé avec le serveur), pas dans client/.
   envDir: "..",
   define: {

@@ -7,7 +7,7 @@
     "predev": "npm run sync-music",
     "prebuild": "npm run sync-music",
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "tsc -p tsconfig.json && tsc -p tsconfig.tools.json && vite build",
     "preview": "vite preview --port 5173 --host"
   },
   "dependencies": {

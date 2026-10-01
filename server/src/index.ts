@@ -12,6 +12,7 @@ import { buildAuthRouter } from "./auth/routes";
 import { rateLimit } from "./http/rateLimit";
 import { afterShutdown, beforeShutdown, restartDeadline } from "./shutdown";
 import { scheduleSeasonClosing } from "./seasons";
+import { injectOgTags, ogRequestInfo } from "./http/ogTags";
 
 initSupabase();
 
@@ -87,11 +88,23 @@ const clientDist = [
 ].find((p) => fs.existsSync(p));
 if (clientDist) {
   console.log(`[blade.io] serving static client from ${clientDist}`);
-  app.use(express.static(clientDist));
+  // index.html passe toujours par le rendu des balises d'aperçu des liens
+  // (tâche 5.5), racine comprise : le statique ne le sert pas lui-même.
+  // Relu quand il change (client reconstruit, serveur toujours lancé).
+  const indexFile = path.join(clientDist, "index.html");
+  let indexCache: { mtimeMs: number; html: string } | null = null;
+  const indexHtml = (): string => {
+    const mtimeMs = fs.statSync(indexFile).mtimeMs;
+    if (!indexCache || indexCache.mtimeMs !== mtimeMs) indexCache = { mtimeMs, html: fs.readFileSync(indexFile, "utf8") };
+    return indexCache.html;
+  };
+  app.use(express.static(clientDist, { index: false }));
   app.get("*", (req, res, next) => {
     if (path.extname(req.path)) return next();
     if (req.path.startsWith("/api")) return next();
-    res.sendFile(path.join(clientDist, "index.html"));
+    // Revalidée à chaque visite : un déploiement change les assets qu'elle cite.
+    res.setHeader("Cache-Control", "no-cache");
+    res.type("html").send(injectOgTags(indexHtml(), ogRequestInfo(req)));
   });
 }
 
