@@ -74,6 +74,8 @@ import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
 import { I18nKey, applyI18n, t } from "./i18n";
+import { showAlert } from "./ui/Dialog";
+import { isReloadPending, reloadAtMenu } from "./ui/pendingReload";
 import { Boutique } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
@@ -162,7 +164,6 @@ class Game {
   private lastDowngradeAt = 0;
   // Baisse de preset décidée pendant une partie : appliquée (reload) au
   // prochain retour au menu, jamais en plein match.
-  private pendingPresetReload = false;
   private input: InputManager;
   private hud: Hud;
   private login: LoginScreen;
@@ -505,13 +506,15 @@ class Game {
     } catch (e) {
       console.error("could not join", e);
       if (e instanceof RoomNotFoundError) {
-        alert(t("net.noRoom", { code: e.code }));
+        void showAlert(t("net.noRoom", { code: e.code }));
       } else if (String((e as any)?.message ?? e).includes("server_restarting")) {
-        alert(t("net.restarting"));
+        void showAlert(t("net.restarting"));
       }
       this.login.show();
       this.hud.hide();
       this.chat.hide();
+      this.settings.setInGame(false);
+      void this.sound.playLobbyMusic();
       return;
     }
     this.myId = this.room.sessionId;
@@ -892,7 +895,7 @@ class Game {
       // de toute façon), et on dit pourquoi. L'alerte passe avant le retour
       // au menu, qui peut recharger la page (preset abaissé en partie).
       if (code === CLOSE_CODE_INPUT_FLOOD) {
-        alert(t("net.inputFlood"));
+        void showAlert(t("net.inputFlood"));
         this.returnToMenu();
         return;
       }
@@ -1303,9 +1306,9 @@ class Game {
     // affiché qu'APRÈS, garantissant que tout clic suivant sur Enter
     // démarre sur une ardoise propre.
     await this.conn.leave();
-    if (this.pendingPresetReload) {
-      // Preset abaissé pendant la partie : on le construit maintenant que
-      // le joueur n'a plus rien en cours.
+    if (isReloadPending()) {
+      // Preset abaissé, qualité ou thème changés pendant la partie : on les
+      // construit maintenant que le joueur n'a plus rien en cours.
       window.location.reload();
       return;
     }
@@ -1487,7 +1490,7 @@ class Game {
     }
     this.restartWaiting = false;
     if (this.room !== room) return;
-    alert(t("net.updated"));
+    void showAlert(t("net.updated"));
     void this.returnToMenu();
   }
 
@@ -1693,7 +1696,7 @@ class Game {
         console.log(`[blade.io] dynRes: ${cur.toFixed(2)} → ${next.toFixed(2)} (fps=${fps.toFixed(0)})`);
       } else if (
         this.quality.autoDowngrade &&
-        !this.pendingPresetReload &&
+        !isReloadPending() &&
         fps < 35 &&
         Date.now() - this.lastDowngradeAt > 30000
       ) {
@@ -1707,7 +1710,7 @@ class Game {
             // En partie : le bloom et les passes plein écran sont le plus
             // gros poste GPU et se coupent sans reconstruire la scène.
             this.postFx.setEnabled(false);
-            this.pendingPresetReload = true;
+            reloadAtMenu();
           } else {
             // Hors partie : les matériaux/shaders sont construits au boot
             // selon le preset, seul un reload les reconstruit.

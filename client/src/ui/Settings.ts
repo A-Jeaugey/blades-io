@@ -2,7 +2,9 @@ import { QualityPreset, detectPreset, savePresetChoice } from "../quality";
 import { getActiveTheme, listThemes, setActiveTheme } from "../themes";
 import { isOwned } from "../boutique/owned";
 import { Haptics } from "../fx/Haptics";
-import { Lang, getLang, onLangChange, setLang, t, themeName } from "../i18n";
+import { I18nKey, Lang, getLang, onLangChange, setLang, t, themeName } from "../i18n";
+import { showConfirm } from "./Dialog";
+import { reloadAtMenu } from "./pendingReload";
 
 export interface SettingsState {
   master: number;
@@ -28,6 +30,7 @@ const SETTINGS_VERSION = 2;
 
 export class SettingsPanel {
   private panel: HTMLElement;
+  private inGame = false;
   private icon: HTMLElement;
   private state: SettingsState = {
     master: 0.7,
@@ -88,11 +91,9 @@ export class SettingsPanel {
         }
         this.persist();
         this.emit();
-        // Un reload est nécessaire parce que les matériaux/shaders sont
-        // construits au boot selon le preset.
-        if (confirm(t("settings.qualityReload"))) {
-          window.location.reload();
-        }
+        // Les matériaux et shaders sont construits au démarrage selon le
+        // preset : il faut recharger la page.
+        void this.applyWithReload("settings.qualityReload");
       });
     }
 
@@ -119,9 +120,7 @@ export class SettingsPanel {
         const newId = themeSel.value;
         if (newId === activeId) return;
         setActiveTheme(newId);
-        if (confirm(t("settings.themeReload"))) {
-          window.location.reload();
-        }
+        void this.applyWithReload("settings.themeReload");
       });
     }
 
@@ -189,7 +188,26 @@ export class SettingsPanel {
     this.quitListeners.push(cb);
   }
 
+  // Changement qui demande un rechargement : jamais en pleine partie
+  // (appliqué au retour au menu, une note le dit) ; au lobby, le joueur
+  // choisit entre maintenant et au prochain retour au menu.
+  private async applyWithReload(question: I18nKey): Promise<void> {
+    const note = document.getElementById("settings-note");
+    if (this.inGame) {
+      reloadAtMenu();
+      if (note) {
+        note.textContent = t("settings.applyAtMenu");
+        note.classList.remove("hidden");
+      }
+      return;
+    }
+    if (await showConfirm(t(question), t("dialog.reload"), t("dialog.later"))) window.location.reload();
+    else reloadAtMenu();
+  }
+
   setInGame(inGame: boolean): void {
+    this.inGame = inGame;
+    if (!inGame) document.getElementById("settings-note")?.classList.add("hidden");
     const quitBtn = document.getElementById("quit-match-btn");
     if (quitBtn) {
       if (inGame) quitBtn.classList.remove("hidden");

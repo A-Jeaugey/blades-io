@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { getShopItem } from "@bladeio/shared";
+import { USERNAME_RE, getShopItem } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import {
@@ -10,8 +10,6 @@ import {
   getWallet,
   purchaseItem,
 } from "./wallet";
-
-const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
 
 function bearerToken(req: Request): string | null {
   const h = req.header("authorization") ?? req.header("Authorization");

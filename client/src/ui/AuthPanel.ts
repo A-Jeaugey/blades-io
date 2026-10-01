@@ -1,7 +1,7 @@
+import { USERNAME_RE } from "@bladeio/shared";
 import { auth, AuthState } from "../auth/supabase";
 import { onLangChange, t } from "../i18n";
 
-const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
 
 type Mode = "signin" | "signup" | "username";
 
@@ -86,7 +86,7 @@ export class AuthPanel {
       return;
     }
     if (state.status === "signed_in" && state.profile.username) {
-      this.renderSignedIn(state.profile.username, state.profile.email ?? "");
+      this.renderSignedIn(state.profile.username);
       return;
     }
     if (state.status === "signed_in" && !state.profile.username) {
@@ -120,7 +120,9 @@ export class AuthPanel {
     });
   }
 
-  private renderSignedIn(username: string, email: string): void {
+  // Pseudo seul : l'e-mail ne s'affiche plus (captures, streams ; tâche
+  // 3.9).
+  private renderSignedIn(username: string): void {
     this.root.classList.remove("hidden");
     this.root.classList.remove("bio2-auth-mini");
     this.root.innerHTML = `
@@ -128,7 +130,6 @@ export class AuthPanel {
         <div class="bio2-auth-summary-l">
           <span class="bio2-auth-status bio2-auth-on">${t("auth.signedIn")}</span>
           <span class="bio2-auth-user">${escapeHtml(username)}</span>
-          ${email ? `<span class="bio2-auth-email">${escapeHtml(email)}</span>` : ""}
         </div>
         <button type="button" class="bio2-auth-link" data-action="signout">${t("auth.signOut")}</button>
       </div>

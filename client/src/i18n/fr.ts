@@ -14,6 +14,11 @@ export const fr: Record<keyof typeof en, string> = {
   "common.nBlades": "{n} LAMES",
   "common.oneBlade": "1 LAME",
 
+  // Modales
+  "dialog.ok": "OK",
+  "dialog.reload": "RECHARGER",
+  "dialog.later": "PLUS TARD",
+
   // Chat
   "chat.placeholder": "Écris ton message…",
   "chat.send": "Envoyer",
@@ -131,8 +136,9 @@ export const fr: Record<keyof typeof en, string> = {
   "settings.nametags": "Afficher les pseudos",
   "settings.vibration": "Vibrations",
   "settings.quitMatch": "QUITTER LA PARTIE",
-  "settings.qualityReload": "Changer la qualité nécessite un rechargement. Recharger maintenant ?",
-  "settings.themeReload": "Changer de thème nécessite un rechargement. Recharger maintenant ?",
+  "settings.qualityReload": "La nouvelle qualité s'applique après un rechargement. Recharger maintenant, ou plus tard, au retour au menu ?",
+  "settings.themeReload": "Le nouveau thème s'applique après un rechargement. Recharger maintenant, ou plus tard, au retour au menu ?",
+  "settings.applyAtMenu": "S'applique au retour au menu.",
 
   // Lobby
   "lobby.inGame": "EN JEU",
@@ -157,7 +163,7 @@ export const fr: Record<keyof typeof en, string> = {
   "lobby.namePlaceholder": "TON PSEUDO",
   "lobby.rename": "RENOMMER",
   "lobby.renameTitle": "Renommer",
-  "lobby.nameRule": "3 à 16 caractères (lettres, chiffres, _ . -).",
+  "lobby.nameRule": "3 à 16 caractères : lettres A–Z, chiffres, _ . - (sans accents ni espaces).",
   "lobby.deployMode": "MODE DE JEU",
   "lobby.quickPlay": "PARTIE RAPIDE",
   "lobby.quickPlayHint": "arène ouverte · avec bots",
@@ -221,7 +227,7 @@ export const fr: Record<keyof typeof en, string> = {
   "shop.equip": "ÉQUIPER",
   "shop.buy": "ACHETER",
   "shop.notEnough": "FONDS INSUFFISANTS",
-  "shop.equipReload": "Équiper ce thème nécessite un rechargement. Recharger maintenant ?",
+  "shop.equipReload": "Le thème s'applique après un rechargement. Recharger maintenant, ou plus tard, au retour au menu ?",
   "shop.errFunds": "Fonds insuffisants : ton solde a peut-être changé entre-temps.",
   "shop.errAuth": "Connecte-toi pour acheter des thèmes.",
   "shop.errWallet": "Ton portefeuille n'est pas prêt. Recharge la page et réessaie.",
@@ -244,7 +250,7 @@ export const fr: Record<keyof typeof en, string> = {
   "auth.signedIn": "CONNECTÉ",
   "auth.signOut": "SE DÉCONNECTER",
   "auth.chooseUsername": "CHOISIS&nbsp;TON&nbsp;PSEUDO",
-  "auth.usernameHint": "Obligatoire pour suivre tes scores. 3 à 16 caractères · lettres, chiffres, _ . -",
+  "auth.usernameHint": "Obligatoire pour suivre tes scores. 3 à 16 caractères : lettres A–Z, chiffres, _ . -",
   "auth.username": "PSEUDO",
   "auth.save": "ENREGISTRER",
   "auth.createAccount": "CRÉER&nbsp;UN&nbsp;COMPTE",
@@ -258,7 +264,7 @@ export const fr: Record<keyof typeof en, string> = {
   "auth.ctaSignIn": "SE CONNECTER",
   "auth.guestFoot": "Tu peux aussi {guest}",
   "auth.playGuest": "jouer en invité",
-  "auth.errUsername": "Pseudo : 3 à 16 caractères (lettres, chiffres, _ . -).",
+  "auth.errUsername": "Pseudo : 3 à 16 caractères, lettres A–Z, chiffres, _ . - (sans accents ni espaces).",
   "auth.errRequired": "E-mail et mot de passe obligatoires.",
   "auth.checkInbox": "Confirme ton e-mail depuis ta boîte de réception, puis connecte-toi.",
   "auth.errWrongLogin": "E-mail ou mot de passe incorrect.",

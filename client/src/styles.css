@@ -1957,14 +1957,6 @@ button:hover {
   font-weight: 700;
   letter-spacing: 0.5px;
 }
-.bio2-auth-email {
-  font-size: 11px;
-  color: var(--fg-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .bio2-input-locked {
   opacity: 0.7;
   cursor: not-allowed;
@@ -2980,3 +2972,58 @@ button:hover {
   .chat-input,
   .settings-card select { font-size: 16px; }
 }
+
+/* Modales du jeu (cf. ui/Dialog.ts, tâche 3.9) : au-dessus de tout. */
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.6);
+}
+.dialog.hidden { display: none; }
+.dialog-card {
+  max-width: 420px;
+  width: 100%;
+  padding: 22px 24px 18px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 0 40px rgba(var(--accent-cool-rgb), 0.25);
+  text-align: center;
+}
+.dialog-msg {
+  margin: 0;
+  color: var(--fg-bright);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+.dialog-btn {
+  margin-top: 0;
+  min-width: 110px;
+  min-height: 44px;
+  border-color: var(--fg-muted);
+  color: var(--fg-muted);
+}
+.dialog-btn.primary {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+/* Changement de thème ou de qualité en partie (tâche 3.9). */
+.settings-note {
+  margin: 10px 0 0;
+  color: var(--cyan);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+.settings-note.hidden { display: none; }

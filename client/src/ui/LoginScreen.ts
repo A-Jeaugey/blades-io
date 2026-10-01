@@ -1,4 +1,4 @@
-import { NAME_MAX_LENGTH, NAME_MIN_LENGTH } from "@bladeio/shared";
+import { NAME_MAX_LENGTH, NAME_MIN_LENGTH, USERNAME_RE } from "@bladeio/shared";
 import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
@@ -354,12 +354,10 @@ export class LoginScreen {
   private async saveRename(): Promise<void> {
     if (!this.renaming || this.renameBusy) return;
     const next = this.input.value.trim();
-    // Validation alignée avec le sanitizeName serveur : accepte n'importe
-    // quelle lettre Unicode (\p{L} → kïppa, ééé, ñoño, 漢字…), n'importe
-    // quel chiffre Unicode (\p{N}), et les séparateurs _-. Avant : ASCII
-    // strict, donc tout pseudo avec accents était rejeté côté client mais
-    // accepté côté serveur — incohérent.
-    if (!/^[\p{L}\p{N}_.\-]{3,16}$/u.test(next)) {
+    // Pseudo de compte : la règle de l'API et de la base (USERNAME_RE).
+    // Avant, ce champ acceptait les lettres accentuées, que l'API refusait
+    // ensuite avec un message qui ne disait pas pourquoi.
+    if (!USERNAME_RE.test(next)) {
       this.setRenameMessage(t("lobby.nameRule"));
       return;
     }

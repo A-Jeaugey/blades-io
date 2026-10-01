@@ -3,6 +3,8 @@ import { getActiveTheme, listThemes, setActiveTheme, Theme } from "../themes";
 import { wallet } from "../auth/wallet";
 import { grantOwnership, isOwned, listOwned, subscribeOwnership } from "./owned";
 import { onLangChange, t, themeName, themeTagline } from "../i18n";
+import { showAlert, showConfirm } from "../ui/Dialog";
+import { reloadAtMenu } from "../ui/pendingReload";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boutique — UI controller pour la modal d'achat de cosmétiques.
@@ -227,7 +229,7 @@ export class Boutique {
       const btn = document.createElement("button");
       btn.className = "boutique-btn primary";
       btn.textContent = t("shop.equip");
-      btn.addEventListener("click", () => this.equip(theme.id));
+      btn.addEventListener("click", () => void this.equip(theme.id));
       action.appendChild(btn);
     } else {
       const priceTag = document.createElement("span");
@@ -250,14 +252,15 @@ export class Boutique {
     return card;
   }
 
-  private equip(themeId: string): void {
+  private async equip(themeId: string): Promise<void> {
     if (!isOwned(themeId)) return;
     setActiveTheme(themeId);
-    // Reload obligatoire — le thème est résolu une fois au boot par tous
-    // les modules de rendu (cf. CLAUDE.md § Système de thèmes).
-    if (confirm(t("shop.equipReload"))) {
-      window.location.reload();
-    }
+    this.renderMaps();
+    // Rechargement obligatoire : le thème est résolu une fois au démarrage
+    // par tous les modules de rendu (cf. CLAUDE.md § Système de thèmes).
+    // La boutique ne s'ouvre que depuis le lobby, aucune partie en cours.
+    if (await showConfirm(t("shop.equipReload"), t("dialog.reload"), t("dialog.later"))) window.location.reload();
+    else reloadAtMenu();
   }
 
   private async buy(theme: Theme): Promise<void> {
@@ -289,16 +292,16 @@ export class Boutique {
           grantOwnership(theme.id);
           break;
         case "insufficient_funds":
-          alert(t("shop.errFunds"));
+          void showAlert(t("shop.errFunds"));
           break;
         case "unauthorized":
-          alert(t("shop.errAuth"));
+          void showAlert(t("shop.errAuth"));
           break;
         case "no_wallet":
-          alert(t("shop.errWallet"));
+          void showAlert(t("shop.errWallet"));
           break;
         default:
-          alert(t("shop.errGeneric", { error: result.error ?? t("shop.errNetwork") }));
+          void showAlert(t("shop.errGeneric", { error: result.error ?? t("shop.errNetwork") }));
       }
     }
 

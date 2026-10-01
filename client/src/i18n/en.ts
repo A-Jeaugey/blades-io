@@ -12,6 +12,11 @@ export const en = {
   "common.nBlades": "{n} BLADES",
   "common.oneBlade": "1 BLADE",
 
+  // Modales
+  "dialog.ok": "OK",
+  "dialog.reload": "RELOAD",
+  "dialog.later": "LATER",
+
   // Chat
   "chat.placeholder": "Type your message…",
   "chat.send": "Send",
@@ -129,8 +134,9 @@ export const en = {
   "settings.nametags": "Show nametags",
   "settings.vibration": "Vibration",
   "settings.quitMatch": "QUIT MATCH",
-  "settings.qualityReload": "Changing the quality needs a reload. Reload now?",
-  "settings.themeReload": "Changing the theme needs a reload. Reload now?",
+  "settings.qualityReload": "The new quality applies after a reload. Reload now, or later when you're back at the menu?",
+  "settings.themeReload": "The new theme applies after a reload. Reload now, or later when you're back at the menu?",
+  "settings.applyAtMenu": "Applies when you return to the menu.",
 
   // Lobby
   "lobby.inGame": "IN GAME",
@@ -155,7 +161,7 @@ export const en = {
   "lobby.namePlaceholder": "ENTER NAME",
   "lobby.rename": "RENAME",
   "lobby.renameTitle": "Rename",
-  "lobby.nameRule": "3–16 characters (letters, digits, _ . -).",
+  "lobby.nameRule": "3–16 characters: letters A–Z, digits, _ . - (no accents or spaces).",
   "lobby.deployMode": "DEPLOY MODE",
   "lobby.quickPlay": "QUICK PLAY",
   "lobby.quickPlayHint": "open arena · bots fill",
@@ -219,7 +225,7 @@ export const en = {
   "shop.equip": "EQUIP",
   "shop.buy": "BUY",
   "shop.notEnough": "NOT ENOUGH TROPHIES",
-  "shop.equipReload": "Equipping this theme needs a reload. Reload now?",
+  "shop.equipReload": "The theme applies after a reload. Reload now, or later when you're back at the menu?",
   "shop.errFunds": "Not enough trophies: your balance may have changed in the meantime.",
   "shop.errAuth": "Sign in to buy themes.",
   "shop.errWallet": "Your wallet isn't ready. Reload the page and try again.",
@@ -242,7 +248,7 @@ export const en = {
   "auth.signedIn": "SIGNED IN",
   "auth.signOut": "SIGN OUT",
   "auth.chooseUsername": "CHOOSE&nbsp;USERNAME",
-  "auth.usernameHint": "Required to track your scores. 3–16 characters · letters, digits, _ . -",
+  "auth.usernameHint": "Required to track your scores. 3–16 characters: letters A–Z, digits, _ . -",
   "auth.username": "USERNAME",
   "auth.save": "SAVE",
   "auth.createAccount": "CREATE&nbsp;ACCOUNT",
@@ -256,7 +262,7 @@ export const en = {
   "auth.ctaSignIn": "SIGN IN",
   "auth.guestFoot": "You can also {guest}",
   "auth.playGuest": "play as guest",
-  "auth.errUsername": "Username: 3–16 characters (letters, digits, _ . -).",
+  "auth.errUsername": "Username: 3–16 characters, letters A–Z, digits, _ . - (no accents or spaces).",
   "auth.errRequired": "Email and password are required.",
   "auth.checkInbox": "Check your inbox to confirm your email, then sign in.",
   "auth.errWrongLogin": "Wrong email or password.",

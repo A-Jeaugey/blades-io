@@ -564,3 +564,8 @@ export const CHAT_LOG_CAP = 50;
 // --- Divers ---
 export const NAME_MIN_LENGTH = 3;
 export const NAME_MAX_LENGTH = 16;
+// Pseudo de compte (profil) : même règle pour le client, l'API et la
+// contrainte de la base (profiles_username_format, migration 0001). Le
+// pseudo en partie d'un invité accepte aussi les lettres accentuées (cf.
+// sanitizeName dans ArenaRoom).
+export const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
