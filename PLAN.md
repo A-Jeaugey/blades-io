@@ -308,9 +308,10 @@ Objectif : un nouveau joueur comprend le jeu, survit à sa première minute et s
   - Quoi : forme ou icône propre à chaque power-up ; rareté lisible aussi par la silhouette ou l'intensité lumineuse ; palette daltonienne en option ; réglage d'intensité du screen shake (0 à 100 %) et des flashs ; `prefers-reduced-motion` respecté par défaut pour le shake.
   - Acceptation : les cinq power-ups se distinguent sur une capture en niveaux de gris.
 
-- [ ] **3.9 — Finitions d'interface** · S · `UX-07` `UX-09`
+- [x] **3.9 — Finitions d'interface** · S · `UX-07` `UX-09` · 2026-10-01 · `32e61cd`
   - Quoi : modales du jeu à la place de `alert()`/`confirm()` ; changement de thème ou de qualité en pleine partie appliqué au prochain retour au menu (pas de reload) ; e-mail masqué dans le lobby ; validation du pseudo alignée entre client et API, messages d'erreur clairs.
   - Acceptation : plus aucun `alert(` ni `confirm(` dans `client/src`.
+  - Réalisé : `ui/Dialog.ts` (une modale à la fois, Entrée valide, Échap annule, touches gardées loin du jeu) remplace les huit appels ; plus aucun `alert(` ni `confirm(` dans `client/src`. Thème ou qualité changés en partie : une note dans les réglages, rechargement au retour au menu (mécanisme de la baisse automatique du preset, mis en commun dans `ui/pendingReload.ts`) ; au lobby et dans la boutique, RECHARGER ou PLUS TARD. E-mail retiré du résumé de compte. Pseudo de compte : `USERNAME_RE` dans `shared/`, pour l'API, l'inscription et le renommage (le renommage acceptait des accents que l'API refusait) ; messages explicites. Au passage, un échec de connexion à un salon remet l'état de lobby (réglages, musique). Vérifié au navigateur : aucune boîte native, pas de rechargement en partie, rechargement au retour au menu.
 
 ---
 
