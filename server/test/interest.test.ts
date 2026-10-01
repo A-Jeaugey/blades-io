@@ -146,6 +146,15 @@ test("résumé : classement complet, minimap sans les joueurs cachés", () => {
   assert.deepEqual(summary.legendaries, [[12, 34]]);
 });
 
+test("résumé : les bots sont signalés au classement (décision D8)", () => {
+  const r = new TestRoom(clock, { bots: true });
+  r.join("me");
+  r.tick();
+  const board = r.room.buildSummary().board;
+  assert.ok(board.length > 1);
+  for (const [id, , , , bot] of board) assert.equal(bot, id !== "me", id);
+});
+
 test("mode debug : pas d'orbites de joueurs cachés dans les trames", () => {
   // Tout client peut demander les trames de debug : elles ne doivent pas
   // servir de wallhack.

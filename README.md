@@ -46,6 +46,14 @@ When the room has fewer than 15 players, bots fill in (capped at 10). Each bot p
 
 Their decision-making runs through a multi-factor scoring system (flee · chase · farm · power-up · crate · wander · avoid-wall) and they react with imperfect timing, aim jitter, perpendicular evasion, target prediction and anti-double-aggro. They aim like players: a throw goes at the predicted intercept of their target, whatever direction they are walking.
 
+Each bot also gets a skill level at spawn, which sets how it goes after human players (against other bots, they all fight the same way):
+
+- **Easy** — only chases up close (45 u), without boosting, and gives up after 6 s; loose aim and a 3 s pause after each throw
+- **Normal** — the behavior described above
+- **Hard** — tighter aim, spots players from further away (95 u)
+
+Usually 30 % easy, 40 % normal and 30 % hard. While a beginner (first game on that device) is in the room, new bots are 60 % easy and never hard, and hard bots already there leave beginners alone. A newcomer (a beginner, or anyone in the 50 s after spawning) is chased by one bot at a time. Bots keep their silly names and are marked **BOT** in the leaderboard.
+
 ---
 
 ## Architecture
@@ -105,6 +113,7 @@ node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated secon
 BENCH_VIEWERS=60 node tools/bench-server.js 60 120   # same with 60 connected clients (per-client views)
 node tools/bench-survival.js        # newcomer survival against bots (after npm test)
 node tools/bench-survival.js first  # time before a newcomer's first death (random walker)
+BENCH_RETURNING=1 node tools/bench-survival.js first  # same for a returning player (bots don't spare them)
 node tools/bench-snowball.js        # bot rooms: leader reign length, underdog kills (after npm test)
 ```
 

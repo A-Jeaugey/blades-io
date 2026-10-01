@@ -21,9 +21,12 @@
 // versions, lancer le banc sur chacune avec plusieurs graines, et regarder
 // les écarts à l'aune de la variance entre séries de graines.
 //
+// Le joueur est un débutant (première partie sur l'appareil), que les bots
+// ménagent (tâche 4.6) ; BENCH_RETURNING=1 pour un joueur qui revient.
+//
 // Prérequis : `npm test` (compile server/dist-test, dont TestRoom et
 // l'horloge simulée).
-// Usage     : node tools/bench-survival.js [capped|first] [minutesParGraine=10] [graines=1,2,3,4,5,6,7,8]
+// Usage     : [BENCH_RETURNING=1] node tools/bench-survival.js [capped|first] [minutesParGraine=10] [graines=1,2,3,4,5,6,7,8]
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -38,6 +41,8 @@ const MODE = args[0] === "first" || args[0] === "capped" ? args.shift() : "cappe
 const MINUTES = Number(args[0] || 10);
 const SEEDS = (args[1] || "1,2,3,4,5,6,7,8").split(",").map(Number);
 const WARMUP_S = 300;
+const NEWCOMER = process.env.BENCH_RETURNING !== "1";
+const WHO = NEWCOMER ? "débutant" : "joueur qui revient";
 
 // Room chauffée : les bots jouent seuls pendant WARMUP_S.
 function warmRoom(seed) {
@@ -54,7 +59,7 @@ function warmRoom(seed) {
 // Nouveau venu, avec les protections d'un vrai joueur (TestRoom les retire
 // par défaut pour les tests unitaires).
 function joinNewcomer(r, id) {
-  return r.join(id, {}, { protected: true });
+  return r.join(id, {}, { protected: true, newcomer: NEWCOMER });
 }
 
 function quantile(sorted, q) {
@@ -139,7 +144,7 @@ function runCapped() {
     done();
   }
 
-  console.log(`Mode capped. Graines ${SEEDS.join(",")}, ${MINUTES} min chacune après ${WARMUP_S / 60} min de bots seuls`);
+  console.log(`Mode capped, ${WHO}. Graines ${SEEDS.join(",")}, ${MINUTES} min chacune après ${WARMUP_S / 60} min de bots seuls`);
   console.log(`  vies                    : ${lives}`);
   console.log(`  mortes avant ${LIFE_CAP_S} s       : ${deaths} (${((100 * deaths) / lives).toFixed(1)} %)`);
   console.log(`  survie moyenne plafonnée : ${(survivedSum / lives).toFixed(1)} s`);
@@ -242,7 +247,7 @@ function runFirst() {
   const share = (s) => ((100 * lifetimes.filter((t) => t < s).length) / lifetimes.length).toFixed(0);
   const radii = [...spawnRadii].sort((a, b) => a - b);
   const near = [...nearestAtSpawn].sort((a, b) => a - b);
-  console.log(`Mode first. Graines ${SEEDS.join(",")}, ${MINUTES} min chacune après ${WARMUP_S / 60} min de bots seuls`);
+  console.log(`Mode first, ${WHO}. Graines ${SEEDS.join(",")}, ${MINUTES} min chacune après ${WARMUP_S / 60} min de bots seuls`);
   console.log(`  sessions                 : ${lifetimes.length} (dont ${censored} plafonnées à ${LIFE_CAP_S} s)`);
   console.log(`  temps avant la 1re mort  : médiane ${quantile(sorted, 0.5).toFixed(1)} s, quartiles ${quantile(sorted, 0.25).toFixed(1)} / ${quantile(sorted, 0.75).toFixed(1)} s`);
   console.log(`  mortes avant 10 / 30 s   : ${share(10)} % / ${share(30)} %`);

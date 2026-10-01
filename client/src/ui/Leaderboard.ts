@@ -3,6 +3,7 @@ export interface LeaderboardEntry {
   name: string;
   score: number;
   bladeCount: number;
+  bot?: boolean;
 }
 
 // Repliable (tâche 3.6) : sur téléphone, le classement cachait le haut de
@@ -75,10 +76,14 @@ function initiallyCollapsed(): boolean {
   return window.matchMedia(SMALL_SCREEN).matches;
 }
 
+// Les bots gardent leurs noms humoristiques, avec une petite mention
+// (décision D8, tâche 4.6).
+// Seul le nom se tronque : la mention et la couronne restent visibles.
 function row(e: LeaderboardEntry, rank: number, me: boolean, leader: boolean): string {
-  const crown = leader ? " 👑" : "";
+  const bot = e.bot ? `<span class="lb-bot" title="Bot">BOT</span>` : "";
+  const crown = leader ? `<span class="lb-crown">👑</span>` : "";
   return `<div class="${me ? "lb-row me" : "lb-row"}">
-    <span class="name">${rank + 1}. ${escapeHtml(e.name)}${crown}</span>
+    <span class="name"><span class="lb-name">${rank + 1}. ${escapeHtml(e.name)}</span>${bot}${crown}</span>
     <div class="lb-stat"><span class="icon">🏆</span><span class="val">${e.score}</span></div>
     <div class="lb-stat"><span class="icon">🗡️</span><span class="val">${e.bladeCount}</span></div>
   </div>`;

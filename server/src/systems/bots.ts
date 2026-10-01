@@ -35,6 +35,66 @@ const CHASE_RADIUS = 80;
 const BOUNTY_HUNT_RATIO = 0.6;
 const BOUNTY_HUNT_WEIGHT = 1.0;
 
+// Niveaux de difficulté (tâche 4.6), indépendants de la personnalité. Ils
+// règlent la façon dont un bot s'en prend aux joueurs humains. Normal : le
+// comportement d'avant. Facile : ne poursuit que de près, moins vite qu'un
+// joueur (on peut toujours lui échapper) et sans boost, et lâche l'affaire
+// au bout de quelques secondes ; vise mal et marque une pause après chaque
+// lancer. Difficile : vise mieux et repère de plus loin. Entre bots, tous
+// se battent comme avant : des bots faciles aussi avec les autres bots
+// rendaient aux règnes du leader leur durée d'avant 4.2 (banc du
+// snowball : 7 à 8 changements de leader par heure au lieu de ~40).
+export enum BotSkill {
+  Easy = 0,
+  Normal = 1,
+  Hard = 2,
+}
+
+interface SkillProfile {
+  chaseRadius: number; // rayon de poursuite (hors rampe de grâce)
+  chaseSpeed: number; // part de la vitesse de marche en poursuite
+  chaseBoost: boolean;
+  giveUpMs: number; // poursuite abandonnée au bout de ce temps
+  aimSpread: number; // multiplie l'erreur de visée de la personnalité
+  throwPauseMs: number; // attente en plus du cooldown entre deux lancers
+}
+
+const SKILLS: Record<BotSkill, SkillProfile> = {
+  [BotSkill.Easy]: { chaseRadius: 45, chaseSpeed: 0.85, chaseBoost: false, giveUpMs: 6000, aimSpread: 1.8, throwPauseMs: 3000 },
+  [BotSkill.Normal]: { chaseRadius: CHASE_RADIUS, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 1, throwPauseMs: 0 },
+  [BotSkill.Hard]: { chaseRadius: 95, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 0.6, throwPauseMs: 0 },
+};
+
+// Profil d'un bot face à ce joueur : son niveau contre un humain, normal
+// contre un autre bot.
+function profileAgainst(st: { skill: BotSkill }, other: Player): SkillProfile {
+  return other.isBot ? SKILLS[BotSkill.Normal] : SKILLS[st.skill];
+}
+
+// Après un abandon, la cible est ignorée ce temps-là (sinon le bot la
+// reprendrait à la décision suivante).
+const GIVE_UP_IGNORE_MS = 5000;
+
+// Part des bots faciles, normaux et difficiles à leur apparition. Avec un
+// débutant dans la room (première partie sur l'appareil), plus de bots
+// faciles et aucun difficile ; les difficiles déjà là le laissent
+// tranquille.
+const SKILL_MIX_USUAL: [number, number, number] = [0.3, 0.4, 0.3];
+const SKILL_MIX_BEGINNERS: [number, number, number] = [0.6, 0.4, 0];
+
+function drawSkill(mix: [number, number, number]): BotSkill {
+  const r = Math.random();
+  if (r < mix[0]) return BotSkill.Easy;
+  if (r < mix[0] + mix[1]) return BotSkill.Normal;
+  return BotSkill.Hard;
+}
+
+// Débutant : première partie sur cet appareil (drapeau du client, cf.
+// télémétrie 4.8), pour toute la session.
+function isBeginner(p: Player): boolean {
+  return !p.isBot && p.newcomer;
+}
+
 // Clamp un point cible dans la zone safe.
 function clampToSafe(x: number, y: number): { x: number; y: number } {
   const d = Math.hypot(x, y);
@@ -80,6 +140,17 @@ interface BotState {
   // dernières 3s. Mis à jour à chaque decide(). >3 = "je prends cher"
   // → bias vers flee.
   threatLevel: number;
+  skill: BotSkill;
+  // Début de la poursuite de currentTargetId (ms), pour l'abandon des bots
+  // faciles, et cible ignorée après un abandon.
+  chaseSince: number;
+  // Vitesse de marche en poursuite (cf. SkillProfile.chaseSpeed).
+  chaseSpeed: number;
+  ignoreId: string | null;
+  ignoreUntil: number;
+  // Pas de nouveau lancer sur un humain avant (ms) : pause des bots
+  // faciles.
+  nextThrowAt: number;
 }
 
 // Cache vélocité par joueur — une seule entrée par playerID, mise à jour
@@ -134,6 +205,10 @@ export class BotController {
   // Leader et sa prime, fixés par la room à chaque tick (cf. setLeader).
   private leaderId: string | null = null;
   private leaderBounty = 0;
+  // Cible → bot qui la poursuit, d'après les dernières décisions : un
+  // nouveau venu (débutant ou rampe de grâce) n'a qu'un poursuivant à la
+  // fois (tâche 4.6).
+  private chasers = new Map<string, string>();
 
   spawnBot(arena: ArenaState, spawnPoint: { x: number; y: number }): Player {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
@@ -191,9 +266,17 @@ export class BotController {
     this.updateVelocityCache(arena, now);
     const nowMs = Date.now();
     this.graced.length = 0;
+    this.chasers.clear();
+    let beginners = false;
     arena.players.forEach((p) => {
+      if (isBeginner(p)) beginners = true;
       if (p.alive && p.graceUntil > nowMs) {
         this.graced.push({ x: p.x, y: p.y, reach: outerOrbitRadius(p.bladeCount) });
+      }
+      if (!p.isBot || !p.alive) return;
+      const st = this.state.get(p.id);
+      if (st && st.actionType === "chase" && st.currentTargetId && !this.chasers.has(st.currentTargetId)) {
+        this.chasers.set(st.currentTargetId, p.id);
       }
     });
     arena.players.forEach((p) => {
@@ -213,6 +296,12 @@ export class BotController {
           curveSign: Math.random() < 0.5 ? 1 : -1,
           curvePhaseOffset: Math.random() * Math.PI * 2,
           threatLevel: 0,
+          skill: drawSkill(beginners ? SKILL_MIX_BEGINNERS : SKILL_MIX_USUAL),
+          chaseSince: 0,
+          chaseSpeed: 1,
+          ignoreId: null,
+          ignoreUntil: 0,
+          nextThrowAt: 0,
         };
         this.state.set(p.id, st);
       }
@@ -228,6 +317,9 @@ export class BotController {
           0.30; // Camper
         st.nextThinkAt = now + BOT_THINK_INTERVAL + Math.random() * reactionByPers;
         this.decide(p, arena, st);
+        if (st.actionType === "chase" && st.currentTargetId && !this.chasers.has(st.currentTargetId)) {
+          this.chasers.set(st.currentTargetId, p.id);
+        }
       }
       this.applyInput(p, st, now);
       // Évalue un throw opportuniste à chaque tick (le cooldown est géré
@@ -309,13 +401,19 @@ export class BotController {
   }
 
   // Rayon dans lequel un bot prend ce joueur en chasse : nul pendant la
-  // grâce, puis croissant jusqu'au rayon normal pendant la rampe (un nouveau
-  // venu n'est d'abord remarqué que de près).
-  private chaseRadiusFor(other: Player, nowMs: number): number {
+  // grâce, puis croissant jusqu'au rayon du bot (selon son niveau) pendant
+  // la rampe (un nouveau venu n'est d'abord remarqué que de près).
+  private chaseRadiusFor(other: Player, nowMs: number, full: number): number {
     if (other.graceUntil > nowMs) return 0;
-    if (other.graceRampUntil <= nowMs) return CHASE_RADIUS;
+    if (other.graceRampUntil <= nowMs) return full;
     const t = 1 - (other.graceRampUntil - nowMs) / SPAWN_GRACE_RAMP_MS;
-    return SPAWN_GRACE_CHASE_RADIUS + (CHASE_RADIUS - SPAWN_GRACE_CHASE_RADIUS) * Math.max(0, Math.min(1, t));
+    return Math.min(full, SPAWN_GRACE_CHASE_RADIUS + (full - SPAWN_GRACE_CHASE_RADIUS) * Math.max(0, Math.min(1, t)));
+  }
+
+  // Nouveau venu : débutant, ou joueur dans les 50 s qui suivent son
+  // apparition (grâce et rampe). Un seul bot à la fois le poursuit.
+  private isNewcomer(p: Player, nowMs: number): boolean {
+    return isBeginner(p) || p.graceRampUntil > nowMs;
   }
 
   // Compte les lames perdues récemment (3s) — proxy pour "je prends cher".
@@ -446,6 +544,7 @@ export class BotController {
     let bestId: string | null = null;
     let targetX = 0, targetY = 0;
     let shouldBoost = false;
+    let speed = 1;
 
     let minBlades = 6;
     let aggroAdvantage = 3;
@@ -470,13 +569,28 @@ export class BotController {
     const COMMITMENT_BONUS = 20;
 
     const nowMs = Date.now();
+    // Bot facile : abandon d'une poursuite qui s'éternise, la cible est
+    // ignorée un moment.
+    const current = st.currentTargetId ? arena.players.get(st.currentTargetId) : undefined;
+    if (current && nowMs - st.chaseSince > profileAgainst(st, current).giveUpMs) {
+      st.ignoreId = current.id;
+      st.ignoreUntil = nowMs + GIVE_UP_IGNORE_MS;
+      st.currentTargetId = null;
+    }
     arena.players.forEach((other) => {
       if (other.id === bot.id || !other.alive) return;
+      if (other.id === st.ignoreId && nowMs < st.ignoreUntil) return;
+      if (this.leavesAlone(bot, st, other)) return;
+      if (this.isNewcomer(other, nowMs)) {
+        const chaser = this.chasers.get(other.id);
+        if (chaser !== undefined && chaser !== bot.id) return;
+      }
       const bounty = other.id === this.leaderId ? this.leaderBounty : 0;
       if (bounty > 0) {
         if (bot.bladeCount < other.bladeCount * BOUNTY_HUNT_RATIO) return;
       } else if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
-      const radius = this.chaseRadiusFor(other, nowMs);
+      const profile = profileAgainst(st, other);
+      const radius = this.chaseRadiusFor(other, nowMs, profile.chaseRadius);
       if (radius <= 0) return;
       if (this.hiddenFrom(bot, other)) return;
 
@@ -518,14 +632,24 @@ export class BotController {
         const leadT = d / Math.max(0.1, PLAYER_SPEED);
         targetX = other.x + v.vx * leadT;
         targetY = other.y + v.vy * leadT;
-        shouldBoost = bot.bladeCount > 5 && d > 15 && d < 40 && st.personality !== BotPersonality.Camper;
+        shouldBoost = profile.chaseBoost && bot.bladeCount > 5 && d > 15 && d < 40 && st.personality !== BotPersonality.Camper;
+        speed = profile.chaseSpeed;
       }
     });
 
     if (bestScore <= 0) return null;
     // Mémorise la cible pour le prochain tick (commitment).
+    if (bestId !== st.currentTargetId) st.chaseSince = nowMs;
     st.currentTargetId = bestId;
+    st.chaseSpeed = speed;
     return { type: "chase", score: bestScore, x: targetX, y: targetY, boost: shouldBoost };
+  }
+
+  // Un bot difficile laisse les débutants tranquilles : ni poursuite, ni
+  // lancer (les difficiles n'apparaissent plus quand il y en a, mais ceux
+  // qui étaient là restent).
+  private leavesAlone(bot: Player, st: BotState, other: Player): boolean {
+    return st.skill === BotSkill.Hard && isBeginner(other);
   }
 
   private scoreFarmBlades(bot: Player, arena: ArenaState, st: BotState) {
@@ -685,8 +809,9 @@ export class BotController {
       angle += Math.sin(t) * curveAmp;
     }
 
-    let dirX = Math.cos(angle);
-    let dirY = Math.sin(angle);
+    const pace = st.actionType === "chase" ? st.chaseSpeed : 1;
+    let dirX = Math.cos(angle) * pace;
+    let dirY = Math.sin(angle) * pace;
 
     // ── Filet de sécurité temps-réel ──
     // Entre deux décisions, le bot peut encore dériver vers le mur
@@ -736,9 +861,14 @@ export class BotController {
     const maxDist = THROW_PROJECTILE_MAX_RANGE - 2;
 
     let aim: { x: number; y: number } | null = null;
+    // Joueur visé (pas une caisse) : le niveau du bot s'applique à un humain.
+    let victim: Player | null = null;
     if (st.actionType === "chase" && st.currentTargetId) {
       const target = arena.players.get(st.currentTargetId);
-      if (target) aim = this.leadAim(bot, target, now, minDist, maxDist);
+      if (target) {
+        aim = this.leadAim(bot, target, now, minDist, maxDist);
+        victim = target;
+      }
     } else if (
       st.actionType === "flee" &&
       (st.personality === BotPersonality.Hunter || st.personality === BotPersonality.Aggressive)
@@ -748,11 +878,14 @@ export class BotController {
       let best = Infinity;
       arena.players.forEach((other) => {
         if (other.id === bot.id || !other.alive || other.bladeCount <= bot.bladeCount) return;
-        if (other.graceUntil > now || this.hiddenFrom(bot, other)) return;
+        if (other.graceUntil > now || this.hiddenFrom(bot, other) || this.leavesAlone(bot, st, other)) return;
         const d = Math.hypot(other.x - bot.x, other.y - bot.y);
         if (d < best) { best = d; pursuer = other; }
       });
-      if (pursuer) aim = this.leadAim(bot, pursuer, now, minDist, maxDist);
+      if (pursuer) {
+        aim = this.leadAim(bot, pursuer, now, minDist, maxDist);
+        victim = pursuer;
+      }
     } else if (
       st.actionType === "farm_crate" &&
       (st.personality === BotPersonality.Farmer || st.personality === BotPersonality.Camper)
@@ -773,6 +906,9 @@ export class BotController {
       }
     }
     if (!aim) return;
+    const profile = victim ? profileAgainst(st, victim) : SKILLS[BotSkill.Normal];
+    const onHuman = victim !== null && !victim.isBot;
+    if (onHuman && st.nextThrowAt > now) return;
 
     // Erreur de visée uniforme par personnalité (rad). Avant la visée libre,
     // le bot tirait dès que la cible entrait dans un cône de 20 à 35° autour
@@ -784,10 +920,12 @@ export class BotController {
     let spread = 0.3;
     if (st.personality === BotPersonality.Hunter) spread = 0.18;
     else if (st.personality === BotPersonality.Aggressive) spread = 0.45;
+    spread *= profile.aimSpread;
     const angle = Math.atan2(aim.y, aim.x) + (Math.random() * 2 - 1) * spread;
     bot.aimX = Math.cos(angle);
     bot.aimY = Math.sin(angle);
     bot.inputThrow = true;
+    if (onHuman) st.nextThrowAt = now + profile.throwPauseMs;
   }
 
   // Direction (normalisée) vers le point d'interception d'une cible, ou

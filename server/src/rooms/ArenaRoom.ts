@@ -702,7 +702,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     this.state.players.forEach((p) => {
       if (p.alive && !isInBush(p.x, p.y)) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
       if (p.id === this.leaderId) summary.leader = [summary.board.length, bountyFor(p.score)];
-      summary.board.push([p.id, p.name, p.score, p.bladeCount]);
+      summary.board.push([p.id, p.name, p.score, p.bladeCount, p.isBot]);
     });
     this.state.blades.forEach((b) => {
       if (!b.ownerId && !b.isProjectile && b.rarity === BladeRarity.Legendary) {

@@ -195,8 +195,9 @@ export interface ViewMessage {
 // Serveur → tous, toutes les SUMMARY_INTERVAL_MS : ce que la zone d'intérêt
 // ne donne plus. Tableaux compacts.
 export interface RoomSummary {
-  // Classement : [id, nom, score, lames], tous les joueurs (vivants ou non).
-  board: Array<[string, string, number, number]>;
+  // Classement : [id, nom, score, lames, bot], tous les joueurs (vivants ou
+  // non). Les bots y sont signalés (décision D8, tâche 4.6).
+  board: Array<[string, string, number, number, boolean]>;
   // Minimap : [indice dans board, x, y] des joueurs vivants hors buissons,
   // positions arrondies au mètre.
   map: Array<[number, number, number]>;

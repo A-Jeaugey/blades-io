@@ -12,7 +12,7 @@ import {
 import { ArenaState } from "../src/state/ArenaState";
 import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
-import { BotController, BotPersonality } from "../src/systems/bots";
+import { BotController, BotPersonality, BotSkill } from "../src/systems/bots";
 import { updateMovement } from "../src/systems/movement";
 import { processThrows } from "../src/systems/throws";
 import { DT, FakeClock, addGroundBlade, addPlayer, seedRandom } from "./helpers";
@@ -97,14 +97,21 @@ test("près du bord, un bot n'avance jamais vers l'extérieur", () => {
   assert.ok(bot.inputDy > 0.99, `inputDy = ${bot.inputDy}`);
 });
 
-// La personnalité est tirée au hasard à la création de l'état du bot (au
-// premier update) : on la fixe ensuite et on force une nouvelle décision.
-function setPersonality(bot: Player, personality: BotPersonality): void {
+// La personnalité et le niveau sont tirés au hasard à la création de
+// l'état du bot (au premier update) : on les fixe ensuite (niveau normal,
+// le comportement d'avant 4.6, sauf demande) et on force une nouvelle
+// décision.
+function setPersonality(bot: Player, personality: BotPersonality, skill = BotSkill.Normal): void {
   bots.update(DT, state);
-  const internals = bots as unknown as { state: Map<string, { personality: BotPersonality; nextThinkAt: number }> };
+  const internals = bots as unknown as {
+    state: Map<string, { personality: BotPersonality; skill: BotSkill; nextThinkAt: number; nextThrowAt: number }>;
+  };
   const st = internals.state.get(bot.id)!;
   st.personality = personality;
+  st.skill = skill;
   st.nextThinkAt = 0;
+  // Pause de lancer d'un bot facile tiré au premier update.
+  st.nextThrowAt = 0;
   bot.inputThrow = false;
   bot.aimX = 0;
   bot.aimY = 0;
@@ -276,4 +283,103 @@ test("buissons : un bot ne poursuit ni ne vise un joueur caché hors de portée 
   prey.x = bush.x + bush.radius + 2;
   rethink(bot);
   assert.equal(decision(bot), "chase");
+});
+
+// Niveaux de difficulté et débutants (tâche 4.6).
+function skillOf(bot: Player): BotSkill {
+  const internals = bots as unknown as { state: Map<string, { skill: BotSkill }> };
+  return internals.state.get(bot.id)!.skill;
+}
+
+function rethinkAll(list: Player[]): void {
+  const internals = bots as unknown as { state: Map<string, { nextThinkAt: number }> };
+  for (const bot of list) internals.state.get(bot.id)!.nextThinkAt = 0;
+  clock.advance(DT * 1000);
+  bots.update(DT, state);
+}
+
+test("niveaux : faciles, normaux et difficiles ; avec un débutant, plus de faciles et aucun difficile", () => {
+  const draw = (beginner: boolean): number[] => {
+    state = new ArenaState();
+    bots = new BotController();
+    if (beginner) addPlayer(state, { x: 0, y: 0, blades: 3 }).newcomer = true;
+    const list: Player[] = [];
+    for (let i = 0; i < 300; i++) list.push(addPlayer(state, { x: 100, y: 0, blades: 3, isBot: true }));
+    bots.update(DT, state);
+    const n = [0, 0, 0];
+    for (const bot of list) n[skillOf(bot)]++;
+    return n;
+  };
+  const usual = draw(false);
+  assert.ok(usual.every((k) => k > 50), `sans débutant : ${usual}`);
+  const withBeginner = draw(true);
+  assert.equal(withBeginner[BotSkill.Hard], 0);
+  assert.ok(withBeginner[BotSkill.Easy] > 150, `avec un débutant : ${withBeginner}`);
+});
+
+test("débutant : un seul bot à la fois le poursuit", () => {
+  const prey = addPlayer(state, { x: 0, y: -84, blades: 3 });
+  prey.newcomer = true;
+  const a = addPlayer(state, { x: -12, y: -100, blades: 10, isBot: true });
+  const b = addPlayer(state, { x: 12, y: -100, blades: 10, isBot: true });
+  setPersonality(a, BotPersonality.Hunter);
+  setPersonality(b, BotPersonality.Hunter);
+  rethinkAll([a, b]);
+  rethinkAll([a, b]);
+  assert.equal([a, b].filter((bot) => bots.isChasing(bot.id, prey.id)).length, 1);
+  // Un joueur qui revient, hors de la rampe de grâce : les deux.
+  prey.newcomer = false;
+  rethinkAll([a, b]);
+  assert.equal([a, b].filter((bot) => bots.isChasing(bot.id, prey.id)).length, 2);
+  // Fin de la rampe de grâce (rayon de poursuite presque entier) : de
+  // nouveau un seul.
+  prey.graceRampUntil = clock.now + 1000;
+  rethinkAll([a, b]);
+  assert.equal([a, b].filter((bot) => bots.isChasing(bot.id, prey.id)).length, 1);
+});
+
+test("débutant : un bot difficile ne le poursuit ni ne le vise, un normal si", () => {
+  const prey = addPlayer(state, { x: 12, y: -84, blades: 3 });
+  prey.newcomer = true;
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Hard);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
+  assert.equal(bot.inputThrow, false);
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Normal);
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+  assert.equal(bot.inputThrow, true);
+});
+
+test("bot facile : poursuit de moins loin et moins vite, abandonne au bout de 6 s, puis y revient", () => {
+  const prey = addPlayer(state, { x: 60, y: -100, blades: 3 });
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Easy);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase"); // 60 u : hors de son rayon
+  prey.x = 30;
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+  // 85 % de la vitesse d'un joueur : on peut lui échapper.
+  assert.ok(Math.abs(Math.hypot(bot.inputDx, bot.inputDy) - 0.85) < 1e-6);
+  clock.advance(6500);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
+  clock.advance(5500);
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+});
+
+test("niveaux : entre bots, un bot facile se bat comme un normal", () => {
+  const prey = addPlayer(state, { x: 60, y: -100, blades: 3, isBot: true });
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Easy);
+  setPersonality(prey, BotPersonality.Camper);
+  rethink(bot);
+  assert.equal(decision(bot), "chase"); // 60 u : hors de son rayon face à un humain
+  assert.ok(Math.abs(Math.hypot(bot.inputDx, bot.inputDy) - 1) < 1e-6);
+  clock.advance(6500);
+  rethink(bot);
+  assert.equal(decision(bot), "chase"); // pas d'abandon
 });

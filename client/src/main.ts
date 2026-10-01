@@ -59,7 +59,7 @@ import { InputManager } from "./input/InputManager";
 import { Hud } from "./ui/Hud";
 import { LoginScreen, LoginResult } from "./ui/LoginScreen";
 import { DeathScreen } from "./ui/DeathScreen";
-import { Leaderboard } from "./ui/Leaderboard";
+import { Leaderboard, LeaderboardEntry } from "./ui/Leaderboard";
 import { Minimap } from "./ui/Minimap";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
@@ -1229,13 +1229,13 @@ class Game {
   // Classement de toute la room : résumé du serveur (2 Hz), avec mes
   // propres valeurs prises dans l'état, plus frais. Avant le premier
   // résumé : les joueurs reçus (ceux de ma zone).
-  private boardEntries(): Array<{ id: string; name: string; score: number; bladeCount: number }> {
-    const entries: Array<{ id: string; name: string; score: number; bladeCount: number }> = [];
+  private boardEntries(): LeaderboardEntry[] {
+    const entries: LeaderboardEntry[] = [];
     const me = this.room?.state?.players?.get(this.myId);
     if (this.summary) {
-      for (const [id, name, score, bladeCount] of this.summary.board) {
+      for (const [id, name, score, bladeCount, bot] of this.summary.board) {
         if (id === this.myId && me) entries.push({ id, name: me.name, score: me.score, bladeCount: me.bladeCount });
-        else entries.push({ id, name, score, bladeCount });
+        else entries.push({ id, name, score, bladeCount, bot });
       }
       if (me && !entries.some((e) => e.id === this.myId)) {
         entries.push({ id: this.myId, name: me.name, score: me.score, bladeCount: me.bladeCount });
@@ -1243,7 +1243,7 @@ class Game {
       return entries;
     }
     this.room?.state?.players?.forEach((p: any, id: string) => {
-      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount });
+      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount, bot: p.isBot });
     });
     return entries;
   }
