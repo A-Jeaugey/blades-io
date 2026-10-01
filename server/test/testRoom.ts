@@ -49,9 +49,9 @@ export class TestRoom {
   join(
     sessionId: string,
     auth: { userId?: string | null; guestId?: string | null } = {},
-    opts: { protected?: boolean } = {},
+    opts: { protected?: boolean; newcomer?: boolean } = {},
   ): Player {
-    this.room.onJoin({ sessionId }, {}, {
+    this.room.onJoin({ sessionId }, { newcomer: opts.newcomer }, {
       userId: auth.userId ?? null,
       username: null,
       guestId: auth.guestId ?? null,

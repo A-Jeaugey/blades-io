@@ -57,6 +57,7 @@ export class Connection {
       token?: string;
       guestToken?: string | null;
       mustExist?: boolean;
+      newcomer?: boolean;
     } = {},
   ): Promise<Room<RoomState>> {
     const maxAttempts = 3;
@@ -69,6 +70,7 @@ export class Connection {
     if (opts.bots !== undefined) joinOpts.bots = opts.bots;
     if (opts.token) joinOpts.token = opts.token;
     else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
+    if (opts.newcomer) joinOpts.newcomer = true;
     while (this.reconnectAttempts < maxAttempts) {
       try {
         // mustExist=true (mode JOIN CODE) → client.join() qui throw si

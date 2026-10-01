@@ -315,6 +315,11 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   complète hors réseau. Toute modification d'un système serveur passe par
   ces tests ; un changement de comportement voulu met le test à jour dans
   le même commit.
+- **Télémétrie** (`server/src/telemetry.ts`) : chaque fin de vie humaine
+  écrit une ligne `life_stats` (Supabase, migration 0005). Une nouvelle
+  façon de finir une vie s'ajoute au type `LifeEnd` **et** à la contrainte
+  `check` de la colonne `cause`, par une nouvelle migration : sinon
+  l'insertion échoue (un avertissement par minute dans les logs).
 - **Arrêt du serveur** : sur SIGINT/SIGTERM, le serveur annonce le
   redémarrage, refuse les entrées et attend le départ des joueurs
   (`server/src/shutdown.ts`, préavis `RESTART_NOTICE_MS` : 60 s en

@@ -137,6 +137,7 @@ function applyStep(
   }, dt);
   p.boost = r.boosting;
   if (r.boosting) {
+    p.lifeBoostMs += dt * 1000;
     p.boostAccum += dt;
     while (p.boostAccum >= BOOST_DRAIN_INTERVAL && p.bladeCount > 0) {
       p.boostAccum -= BOOST_DRAIN_INTERVAL;

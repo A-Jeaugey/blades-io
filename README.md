@@ -167,6 +167,17 @@ Open the **SQL editor** in your Supabase dashboard and run every file of
 - `0002_trophies.sql` — `wallets` and `guest_wallets` (trophées), plus the credit and guest-claim RPCs
 - `0003_inventory.sql` — `inventory` and the atomic `purchase_item` RPC used by the shop
 - `0004_leaderboard_public_only.sql` — the leaderboard ignores private-room games
+- `0005_life_stats.sql` — gameplay telemetry (below)
+
+#### Gameplay telemetry
+
+The game server writes one row to `life_stats` at the end of every human life (bots are not recorded): duration, how it ended (`blades`, `throw`, `wall`, or `quit`, `disconnect`, `restart` for a life that ended alive), the killer's kind and tier, the balance of power at the start of the fight, peak blades and tier, kills, throws and throws that hit, boost time, whether the spawn grace was still on, the room's population, public or private, and whether it was the player's first life of the session and first game on that device. Guests are anonymous; signed-in players are linked by `user_id`. Clients can neither read nor write the table, and the views are revoked from `anon` and `authenticated`: query them from the SQL editor. They cover the last 7 days of public games (30 days for the daily view):
+
+```sql
+select first_lives_under_20s_pct, top_death_cause from life_stats_summary;
+select * from life_stats_causes;   -- how lives end, median duration, deaths to bots
+select * from life_stats_daily;    -- daily trend: median life, wall deaths, throw accuracy…
+```
 
 ### 4. Enable OAuth providers
 
@@ -184,7 +195,7 @@ Restart the dev server (`npm run dev`) and:
 
 - The login screen shows an `// AUTH` panel with sign-in / sign-up tabs.
 - After signing up, choose a username (3–16 chars).
-- Play a public game to the death — the result should appear in `matches` (Table editor in Supabase).
+- Play a public game to the death — the result should appear in `matches` (Table editor in Supabase), and the life in `life_stats`.
 - The right rail of the login screen ("TOP TROPHÉES") populates from `/api/leaderboard`.
 
 ### Guest mode
@@ -292,6 +303,7 @@ shared/src/
 server/src/
   index.ts             # Express + Colyseus bootstrap, /api/stats, static client
   shutdown.ts          # graceful restart: notice to players, pending writes
+  telemetry.ts         # one life_stats row per human life (Supabase)
   rooms/ArenaRoom.ts   # tick loop, message handling, drop logic
   state/               # Colyseus schemas (Player, Blade, Crate, PowerUp)
   systems/             # movement, collisions, throws, pickup, bots, …

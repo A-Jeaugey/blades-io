@@ -110,6 +110,28 @@ interface OrbitSegment {
   rate: number;
 }
 
+// Première partie sur cet appareil : envoyé au serveur pour la télémétrie
+// (tâche 4.8), qui distingue ainsi les toutes premières vies. Repli sur
+// l'onboarding pour les joueurs d'avant ce drapeau ; stockage indisponible :
+// compté comme déjà joué, plutôt que de gonfler les débutants.
+const PLAYED_KEY = "blade.played";
+function playedBefore(): boolean {
+  try {
+    if (localStorage.getItem(PLAYED_KEY) === "1") return true;
+    const onboarding = JSON.parse(localStorage.getItem("blade.onboarding") ?? "null");
+    return !!onboarding?.controls;
+  } catch {
+    return true;
+  }
+}
+function markPlayed(): void {
+  try {
+    localStorage.setItem(PLAYED_KEY, "1");
+  } catch {
+    // Stockage indisponible.
+  }
+}
+
 class Game {
   private canvas: HTMLCanvasElement;
   private sceneStack: SceneStack;
@@ -447,7 +469,8 @@ class Game {
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
     void this.sound.playBattleMusic();
     try {
-      const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null; mustExist?: boolean } = {};
+      const joinOpts: { code?: string; bots?: boolean; token?: string; guestToken?: string | null; mustExist?: boolean; newcomer?: boolean } = {};
+      joinOpts.newcomer = !playedBefore();
       if (res.mode === "create") {
         joinOpts.code = res.code;
         joinOpts.bots = res.bots;
@@ -472,6 +495,7 @@ class Game {
         if (joinOpts.guestToken) void fetchGuestWallet().then((w) => { this.guestBalance = w ? w.balance : null; });
       }
       this.room = await this.conn.join(res.name, joinOpts);
+      markPlayed();
     } catch (e) {
       console.error("could not join", e);
       if (e instanceof RoomNotFoundError) {

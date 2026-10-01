@@ -121,4 +121,13 @@ export class Player extends Schema {
   // < (now - CHAT_RATE_LIMIT_WINDOW_MS), si le tableau a déjà
   // CHAT_RATE_LIMIT_COUNT entrées le message est rejeté silencieusement.
   chatTimestamps: number[] = [];
+  // Télémétrie (tâche 4.8, cf. telemetry.ts) : rang de la vie dans la
+  // session (1 = première), première partie sur l'appareil (déclarée par le
+  // client), et compteurs de la vie en cours, remis à zéro au respawn.
+  lifeIndex: number = 1;
+  newcomer: boolean = false;
+  lifeThrows: number = 0;
+  lifeThrowHits: number = 0;
+  lifeBoostMs: number = 0;
+  lifeMaxTier: number = 0;
 }

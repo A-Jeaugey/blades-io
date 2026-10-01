@@ -67,6 +67,7 @@ import { SpawnSystem, pickRarity } from "../systems/spawning";
 import { pickSpawnPoint, randomSpawnPoint } from "../systems/spawnPoint";
 import { EventScope, InterestManager } from "../systems/interest";
 import { RestartAware, registerRoom, restartDeadline, trackWrite, unregisterRoom } from "../shutdown";
+import { LifeEnd, recordLife } from "../telemetry";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
 import { PowerUpSystem } from "../systems/powerups";
@@ -137,6 +138,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   // Zones d'intérêt des clients (tâche 2.4) et prochain résumé de la room.
   private interest = new InterestManager();
   private nextSummaryAt = 0;
+  // Projectiles dont la touche est déjà comptée (télémétrie).
+  private throwHitsCounted = new WeakSet<Blade>();
 
   onCreate(options: { code?: string; bots?: boolean } = {}): void {
     registerRoom(this);
@@ -251,13 +254,16 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
 
   onJoin(
     client: Client,
-    _options: { name?: string; token?: string; guestToken?: string },
+    options: { name?: string; token?: string; guestToken?: string; newcomer?: boolean },
     auth: { userId: string | null; username: string | null; guestId: string | null; name: string },
   ): void {
     const p = new Player();
     p.id = client.sessionId;
     p.userId = auth?.userId ?? null;
     p.guestId = auth?.guestId ?? null;
+    // Première partie sur l'appareil, selon le client : sert seulement à la
+    // télémétrie.
+    p.newcomer = options?.newcomer === true;
     p.name = sanitizeName(auth?.name ?? "");
     const spawn = pickSpawnPoint(this.state);
     p.x = spawn.x; p.y = spawn.y;
@@ -299,7 +305,10 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       // Si le joueur était encore en vie (quit via menu), on persiste son
       // score actuel — sinon il aurait fait une "vraie" partie sans la voir
       // comptée au leaderboard.
-      if (p.alive) this.persistMatchIfAuthed(p);
+      if (p.alive) {
+        this.persistMatchIfAuthed(p);
+        this.recordLifeEnd(p, "quit", null, p.bladeCount, null);
+      }
       this.cleanupPlayer(client.sessionId);
       return;
     }
@@ -320,13 +329,66 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       if (again) this.interest.reattach(back, again);
     } catch {
       const stale = this.state.players.get(client.sessionId);
-      if (stale && stale.alive) this.persistMatchIfAuthed(stale);
+      if (stale && stale.alive) {
+        this.persistMatchIfAuthed(stale);
+        this.recordLifeEnd(stale, restartDeadline() > 0 ? "restart" : "disconnect", null, stale.bladeCount, null);
+      }
       this.cleanupPlayer(client.sessionId);
     }
   }
 
   onDispose(): void {
     unregisterRoom(this);
+  }
+
+  // Fin de vie d'un humain : une ligne de télémétrie (tâche 4.8).
+  private recordLifeEnd(
+    p: Player,
+    cause: LifeEnd,
+    killer: Player | null,
+    victimBlades: number,
+    killerBlades: number | null,
+  ): void {
+    if (p.isBot) return;
+    const now = Date.now();
+    let humans = 0;
+    let bots = 0;
+    this.state.players.forEach((o) => {
+      if (o.isBot) bots++;
+      else humans++;
+    });
+    recordLife({
+      roomPrivate: this.isPrivate,
+      userId: p.userId,
+      lifeIndex: p.lifeIndex,
+      newcomer: p.newcomer,
+      durationMs: now - p.spawnedAt,
+      cause,
+      killerKind: killer ? (killer.isBot ? "bot" : "player") : null,
+      killerTier: killer ? killer.tier : null,
+      killerBlades,
+      victimBlades,
+      maxBlades: p.maxBladeCount,
+      maxTier: p.lifeMaxTier,
+      score: p.score,
+      kills: p.kills,
+      throws: p.lifeThrows,
+      throwHits: p.lifeThrowHits,
+      boostMs: p.lifeBoostMs,
+      inGrace: p.graceRampUntil > now,
+      humans,
+      bots,
+    });
+  }
+
+  // Un lancer compte une touche au premier adversaire atteint, même s'il en
+  // perce plusieurs.
+  private countThrowHit(bladeId: string): void {
+    const proj = this.state.blades.get(bladeId);
+    if (!proj || this.throwHitsCounted.has(proj)) return;
+    this.throwHitsCounted.add(proj);
+    const thrower = this.state.players.get(proj.thrownBy);
+    if (thrower?.alive) thrower.lifeThrowHits++;
   }
 
   // Redémarrage du serveur (tâche T.3) : les joueurs voient un compte à
@@ -481,6 +543,9 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     p.knockbackVx = 0;
     p.knockbackVy = 0;
     p.recentLosses = [];
+    p.lifeIndex++;
+    p.lifeThrows = 0; p.lifeThrowHits = 0;
+    p.lifeBoostMs = 0; p.lifeMaxTier = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
@@ -523,6 +588,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     this.state.players.forEach((p) => {
       if (!p.alive) return;
       const next = tierFromBladeCount(p.bladeCount);
+      if (next > p.lifeMaxTier) p.lifeMaxTier = next;
       if (next > p.tier) {
         p.tier = next;
         const ev: TierUpEvent = { playerId: p.id, tier: next, x: p.x, y: p.y };
@@ -681,11 +747,16 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   private makeThrowCallbacks() {
     return {
       onBladeThrown: (ev: BladeThrownEvent) => {
-        this.endGrace(this.state.players.get(ev.thrownBy));
+        const thrower = this.state.players.get(ev.thrownBy);
+        if (thrower) thrower.lifeThrows++;
+        this.endGrace(thrower);
         this.emit("bladeThrown", ev, { players: [ev.thrownBy], blade: ev.bladeId });
       },
-      onProjectileImpact: (ev: ProjectileImpactEvent) =>
-        this.emit("projectileImpact", ev, { blade: ev.bladeId, at: { x: ev.x, y: ev.y } }),
+      onProjectileImpact: (ev: ProjectileImpactEvent) => {
+        // Lame en orbite ou corps : le lancer a touché un adversaire.
+        if (ev.kind === 0 || ev.kind === 1) this.countThrowHit(ev.bladeId);
+        this.emit("projectileImpact", ev, { blade: ev.bladeId, at: { x: ev.x, y: ev.y } });
+      },
       onPlayerKilled: (victim: Player, killer: Player | null) =>
         this.killPlayer(victim, killer, "throw"),
       onCrateHit: (crate: Crate, attacker: Player | null) =>
@@ -814,6 +885,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // les clashs qui précèdent.
     const victimBlades = bladesBeforeFight(victim);
     const killerBlades = killer ? bladesBeforeFight(killer) : null;
+    this.recordLifeEnd(victim, reason, killer, victimBlades, killerBlades);
     // Persiste le match juste après le passage à mort (avant le drop, mais
     // après que tous les compteurs de session ont été incrémentés au cours
     // de la vie). Pas de await : recordMatch gère ses propres erreurs et on
