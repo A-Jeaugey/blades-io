@@ -227,11 +227,12 @@ Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Réf�
   - Fichiers : `server/src/state/*.ts`, `server/src/rooms/ArenaRoom.ts`, `client/src/main.ts`, `client/src/entities/*.ts`.
   - Acceptation : bench 60 bots < 45 Ko/s par client ; pas de dégradation visible du mouvement des joueurs distants.
 
-- [ ] **2.4 — Filtrage par zone d'intérêt et bushes côté serveur** · L · `NET-01` `SEC-03` `GAME-09`
+- [x] **2.4 — Filtrage par zone d'intérêt et bushes côté serveur** · L · `NET-01` `SEC-03` `GAME-09` · 2026-10-01 · `8d94a48`
   - Note (D6) : l'intérêt principal devient l'équité (un client modifié voit les joueurs cachés dans les bushes, les bots aussi), plus la bande passante.
   - Quoi : utiliser `StateView` (Colyseus 0.16) pour n'envoyer à chaque client que les entités proches (rayon à calibrer, ~70 u) plus lui-même. Un joueur caché dans un bush est retiré de la vue des autres sauf à très courte distance. Minimap et classement passent par un résumé basse fréquence (2 Hz) qui exclut les joueurs cachés. Les bots respectent les bushes (pas de ciblage d'un joueur caché hors courte portée).
   - Fichiers : `server/src/rooms/ArenaRoom.ts`, `server/src/state/*.ts`, `server/src/systems/bots.ts`, `client/src/main.ts`, `client/src/ui/Minimap.ts`, `client/src/ui/Leaderboard.ts`.
   - Acceptation : un client modifié ne reçoit pas la position d'un joueur caché ; bench 60 bots < 30 Ko/s par client ; minimap et classement fonctionnent.
+  - Réalisé : `server/src/systems/interest.ts`, vues recalculées un tick sur deux par diff. Le rayon ne pouvait pas être fixe : l'étendue de sol visible va de 50 u (16:9) à ~133 u (téléphone en portrait, caméra très reculée) ; le client annonce la sienne (`view`), bornée à 50–140 u, +8 u de marge. Buissons : caché tant que les orbites ne peuvent pas se toucher (+3 u), même règle pour les bots ; le client ne masque plus rien lui-même. Évènements positionnels ciblés (`emit` avec portée) ; deux fuites colmatées en route : le mode debug, demandable par tout client, envoyait les orbites des joueurs cachés, et `crateDestroyed` nommait l'auteur. Classement, rang, couronne et minimap : résumé à 2 Hz. Piège Colyseus 0.16 : les vues de tous les clients sont encodées à la suite dans un tampon partagé, et au-delà de ses 8 Ko les patchs des clients suivants sortaient tronqués (60 clients au banc) : tampon à 1 Mo. Mesures : 18,5 Ko/s par client (23,7 avec 60 clients connectés) contre ~95 ; tick 3,2 ms (3,7 ms avec 60 clients). Vérifié au navigateur et par décodage de l'état reçu en test.
 
 - [ ] **2.5 — Orbites synchronisées sous forme compacte** · XL · `NET-01` · Optionnel, à évaluer après 2.3 et 2.4
   - Quoi : ne plus synchroniser chaque lame en orbite comme une entité ; synchroniser par joueur la liste ordonnée des raretés (par exemple un tableau d'octets). Les entités `Blade` ne concernent plus que les lames au sol et en vol. Le client reconstruit les instances d'orbite.
@@ -458,13 +459,13 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 |---|---|---|---|---|
 | Tick serveur moyen, 60 joueurs | 10,6 ms | 1,6 ms (25/09) ; 3,0 ms le 01/10 sur une machine plus lente, identique avant et après la phase 3 (mesure appariée) | < 4 ms | `tools/bench-server.js 60 120` |
 | Tick serveur p99, 60 joueurs | 17,5 ms | 4,0 ms (25/09) ; 7,4 ms le 01/10, même remarque | < 8 ms | idem |
-| Données reçues par client, 60 joueurs | 93 Ko/s | 94 Ko/s | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem |
+| Données reçues par client, 60 joueurs | 93 Ko/s | 19 Ko/s (24 Ko/s avec 60 clients connectés), depuis 2.4 | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem (`BENCH_VIEWERS=60` pour la room pleine) |
 | Écart angulaire rendu / serveur des lames | arbitraire | ≤ 1e-7 rad | < 0,1 rad | mode debug de 1.1 |
 | Temps médian avant la première mort (session scriptée) | ~10 s | 62 s (16 s juste avant 3.2) | > 45 s | `tools/bench-survival.js first` |
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | inconnu | < 15 % | télémétrie 4.8 |
 | JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 115 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 122 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
