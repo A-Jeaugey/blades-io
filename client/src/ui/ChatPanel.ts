@@ -1,4 +1,5 @@
 import { CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent } from "@bladeio/shared";
+import { onLangChange, t } from "../i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatPanel — overlay bas-gauche, gestion ouverture/saisie/envoi.
@@ -57,6 +58,8 @@ export class ChatPanel {
     this.cntEl = document.getElementById("chat-cnt")!;
     this.hintEl = document.getElementById("chat-hint")!;
     this.fab = document.getElementById("chat-fab") as HTMLButtonElement;
+    this.renderHint();
+    onLangChange(() => this.renderHint());
 
     // Compteur de chars en temps réel.
     this.input.addEventListener("input", () => {
@@ -117,10 +120,14 @@ export class ChatPanel {
     });
   }
 
+  private renderHint(): void {
+    this.hintEl.innerHTML = t(this.isTouch ? "chat.hintTouch" : "chat.hintDesktop");
+  }
+
   // Appelé par main.ts au démarrage puis à chaque bascule du mode d'entrée.
   setTouchMode(touch: boolean): void {
     this.isTouch = touch;
-    this.hintEl.innerHTML = touch ? "Touche pour discuter" : "<kbd>Entrée</kbd> pour discuter";
+    this.renderHint();
     this.fab.classList.toggle("hidden", !touch || this.isOpenFlag);
     if (touch) {
       this.updateMobileVisibility();

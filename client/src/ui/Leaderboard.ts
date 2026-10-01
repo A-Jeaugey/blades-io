@@ -1,3 +1,5 @@
+import { onLangChange, t } from "../i18n";
+
 export interface LeaderboardEntry {
   id: string;
   name: string;
@@ -22,8 +24,10 @@ export class Leaderboard {
   constructor() {
     this.root = document.getElementById("leaderboard")!;
     this.root.innerHTML = `<button type="button" id="lb-toggle" class="lb-head" aria-controls="lb-rows">
-      <span>TROPHÉES</span><span class="lb-caret" aria-hidden="true">▾</span>
+      <span data-i18n="hud.leaderboard">${t("hud.leaderboard")}</span><span class="lb-caret" aria-hidden="true">▾</span>
     </button><div id="lb-rows"></div>`;
+    // Lignes refaites à la prochaine mise à jour (mention BOT).
+    onLangChange(() => { this.lastUpdate = 0; });
     this.toggle = this.root.querySelector<HTMLButtonElement>("#lb-toggle")!;
     this.setCollapsed(initiallyCollapsed());
     // Tout le panneau bascule (cible tactile plus grande que l'en-tête) ;
@@ -80,7 +84,7 @@ function initiallyCollapsed(): boolean {
 // (décision D8, tâche 4.6).
 // Seul le nom se tronque : la mention et la couronne restent visibles.
 function row(e: LeaderboardEntry, rank: number, me: boolean, leader: boolean): string {
-  const bot = e.bot ? `<span class="lb-bot" title="Bot">BOT</span>` : "";
+  const bot = e.bot ? `<span class="lb-bot" title="Bot">${t("hud.bot")}</span>` : "";
   const crown = leader ? `<span class="lb-crown">👑</span>` : "";
   return `<div class="${me ? "lb-row me" : "lb-row"}">
     <span class="name"><span class="lb-name">${rank + 1}. ${escapeHtml(e.name)}</span>${bot}${crown}</span>

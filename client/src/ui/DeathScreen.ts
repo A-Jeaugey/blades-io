@@ -1,8 +1,8 @@
 import { KillCause } from "@bladeio/shared";
+import { I18nKey, t } from "../i18n";
 
 // Carte de fin de vie (tâche 3.5) : score, record, trophées, cause de la
-// mort en clair et un conseil adapté. Textes en anglais, comme le reste de
-// l'interface en jeu (traduction : tâche 3.7).
+// mort en clair et un conseil adapté.
 
 export interface DeathStats {
   lifeSeconds: number;
@@ -59,17 +59,17 @@ export class DeathScreen {
   }
 
   show(s: DeathStats): void {
-    this.title.textContent = s.cause === "wall" ? "OUT OF BOUNDS" : "YOU WERE SHREDDED";
+    this.title.textContent = t(s.cause === "wall" ? "death.outOfBounds" : "death.shredded");
     const headline = s.privateRoom
-      ? `${s.score} <span class="score-total-unit">PTS</span>`
+      ? `${s.score} <span class="score-total-unit">${t("death.pts")}</span>`
       : `🏆 +${s.score}`;
     const best = s.best === null ? "" : s.best.isNew && s.best.previous > 0
-      ? `<div class="row death-best new"><span class="label">best</span><span>NEW RECORD · was ${s.best.previous}</span></div>`
+      ? row("death.best", t("death.newRecord", { n: s.best.previous }), "death-best new")
       : s.best.isNew
-        ? `<div class="row death-best new"><span class="label">best</span><span>FIRST RECORD</span></div>`
-        : `<div class="row death-best"><span class="label">best</span><span>${s.best.previous}</span></div>`;
+        ? row("death.best", t("death.firstRecord"), "death-best new")
+        : row("death.best", String(s.best.previous), "death-best");
     const total = (!s.privateRoom && s.walletTotal !== undefined && s.walletTotal !== null && s.walletTotal > 0)
-      ? `<div class="row rank-row"><span class="label">total</span><span>🏆 ${s.walletTotal}</span></div>`
+      ? row("death.total", `🏆 ${s.walletTotal}`, "rank-row")
       : "";
 
     this.stats.innerHTML = `
@@ -77,9 +77,9 @@ export class DeathScreen {
         <div class="score-total">${headline}</div>
         <div class="score-sub">💀 ${s.kills} &nbsp;&nbsp; 🗡️ ${s.maxBlades} &nbsp;&nbsp; ⏱ ${formatDuration(s.lifeSeconds)}</div>
       </div>
-      <div class="row death-cause"><span class="label">cause</span><span>${causeText(s)}</span></div>
+      ${row("death.cause", causeText(s), "death-cause")}
       ${best}
-      <div class="row rank-row"><span class="label">rank</span><span>#${s.rank}</span></div>
+      ${row("death.rank", `#${s.rank}`, "rank-row")}
       ${total}
       ${accountRow(s)}
       <div class="death-tip">${escapeHtml(tipFor(s))}</div>
@@ -92,47 +92,40 @@ export class DeathScreen {
   }
 }
 
+// Ligne libellé / valeur (valeur en HTML déjà échappé).
+function row(label: I18nKey, valueHtml: string, cls: string): string {
+  return `<div class="row ${cls}"><span class="label">${t(label)}</span><span>${valueHtml}</span></div>`;
+}
+
 // Cause en une ligne : qui, comment, et avec combien de lames.
 function causeText(s: DeathStats): string {
-  if (s.cause === "wall" || !s.killerName) return "touched the red edge of the arena";
+  if (s.cause === "wall" || !s.killerName) return t("death.causeWall");
   const who = `<b>${escapeHtml(s.killerName)}</b>`;
-  const blades = s.killerBlades !== null ? ` · ${s.killerBlades} blades` : "";
-  if (s.cause === "throw") return `hit by a blade thrown by ${who}${blades}`;
-  if (s.victimBlades === 0) return `touched by ${who} while you had no blades${blades}`;
-  return `cut down by ${who}'s blades${blades}`;
+  const blades = s.killerBlades !== null ? t("death.killerBlades", { n: s.killerBlades }) : "";
+  if (s.cause === "throw") return t("death.causeThrow", { who, blades });
+  if (s.victimBlades === 0) return t("death.causeNoBlades", { who, blades });
+  return t("death.causeBlades", { who, blades });
 }
 
 function accountRow(s: DeathStats): string {
-  if (s.privateRoom) {
-    return `<div class="row death-guest"><span class="label">private room</span><span>no trophées · unranked</span></div>`;
-  }
-  if (s.scorePersisted) {
-    return `<div class="row death-saved"><span class="label">trophées</span><span>added to your account</span></div>`;
-  }
+  if (s.privateRoom) return row("death.privateRoom", t("death.privateNoTrophies"), "death-guest");
+  if (s.scorePersisted) return row("death.trophies", t("death.addedToAccount"), "death-saved");
   // Invité : ses trophées ne sont pas perdus, ils l'attendent sur cet
   // appareil (avant, « sign in to keep your trophées » laissait croire
   // l'inverse).
-  if (s.guestSaved) {
-    return `<div class="row death-saved"><span class="label">guest</span><span>trophées kept on this device · sign in to move them to an account</span></div>`;
-  }
-  return `<div class="row death-guest"><span class="label">guest</span><span>trophées not saved · sign in to keep them</span></div>`;
+  if (s.guestSaved) return row("death.guest", t("death.guestKept"), "death-saved");
+  return row("death.guest", t("death.guestLost"), "death-guest");
 }
 
 // Conseil selon la cause et le rapport de force.
 function tipFor(s: DeathStats): string {
-  if (s.cause === "wall" || !s.killerName) {
-    return "The red edge kills, outer blades first. When the screen glows red and the alarm beeps, turn back.";
-  }
-  if (s.cause === "throw") {
-    return "Thrown blades fly straight: keep moving sideways when someone faces you, and duck into bushes to break their aim.";
-  }
-  if (s.victimBlades === 0) {
-    return "With no blades left, any contact kills. Grab loose blades before going near anyone.";
-  }
+  if (s.cause === "wall" || !s.killerName) return t("death.tipWall");
+  if (s.cause === "throw") return t("death.tipThrow");
+  if (s.victimBlades === 0) return t("death.tipNoBlades");
   if (s.killerBlades !== null && s.killerBlades > s.victimBlades) {
-    return `${s.killerName} had ${s.killerBlades} blades, you had ${s.victimBlades}. Players marked ▲ are stronger: keep your distance until you have grown.`;
+    return t("death.tipBigger", { killer: s.killerName, killerBlades: s.killerBlades, victimBlades: s.victimBlades });
   }
-  return "Blades of the same rarity break each other: win even fights with rarer blades (Epic, Legendary), or throw before you clash.";
+  return t("death.tipRarity");
 }
 
 function formatDuration(seconds: number): string {

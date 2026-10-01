@@ -73,6 +73,7 @@ import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
 import { applyThemeCss, getActiveTheme } from "./themes";
+import { I18nKey, applyI18n, t } from "./i18n";
 import { Boutique } from "./boutique/Boutique";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
@@ -504,9 +505,9 @@ class Game {
     } catch (e) {
       console.error("could not join", e);
       if (e instanceof RoomNotFoundError) {
-        alert(`Aucune room avec le code "${e.code}" — vérifie le code ou demande à l'hôte d'en créer une.`);
+        alert(t("net.noRoom", { code: e.code }));
       } else if (String((e as any)?.message ?? e).includes("server_restarting")) {
-        alert("The server is restarting for an update. Try again in a minute.");
+        alert(t("net.restarting"));
       }
       this.login.show();
       this.hud.hide();
@@ -756,8 +757,8 @@ class Game {
       if (msg.playerId === this.myId) {
         this.scorePop(msg.x, msg.y, SCORE_POWERUP, "small");
         const durMs = POWERUP_DURATION[msg.rarity as BladeRarity] * 1000;
-        const label = powerUpTypeLabel(msg.type as PowerUpType);
-        this.effectDurations.set(label, Math.max(durMs, this.effectDurations.get(label) ?? 0));
+        const key = powerUpEffectKey(msg.type as PowerUpType);
+        if (key) this.effectDurations.set(key, Math.max(durMs, this.effectDurations.get(key) ?? 0));
         this.camera.shake.add(0.08);
       }
     });
@@ -891,7 +892,7 @@ class Game {
       // de toute façon), et on dit pourquoi. L'alerte passe avant le retour
       // au menu, qui peut recharger la page (preset abaissé en partie).
       if (code === CLOSE_CODE_INPUT_FLOOD) {
-        alert("Déconnecté par le serveur : trop d'inputs envoyés par seconde.");
+        alert(t("net.inputFlood"));
         this.returnToMenu();
         return;
       }
@@ -1153,20 +1154,20 @@ class Game {
     const name = el.querySelector(".kc-name") as HTMLElement;
     const skip = el.querySelector(".kc-skip") as HTMLElement;
     if (d.cause === "wall" || !d.killerName) {
-      label.textContent = "OUT OF BOUNDS";
-      name.textContent = "THE RED EDGE";
+      label.textContent = t("killcam.outOfBounds");
+      name.textContent = t("killcam.redEdge");
     } else {
-      label.textContent = d.cause === "throw" ? "HIT BY A THROW FROM" : "ELIMINATED BY";
+      label.textContent = t(d.cause === "throw" ? "killcam.throwBy" : "killcam.killedBy");
       name.textContent = d.killerName;
     }
     this.setKillCamBlades(d.killerBlades);
-    skip.textContent = this.input.isTouch ? "TAP TO SKIP" : "CLICK OR SPACE TO SKIP";
+    skip.textContent = t(this.input.isTouch ? "killcam.skipTouch" : "killcam.skipDesktop");
     el.classList.remove("hidden");
   }
 
   private setKillCamBlades(n: number | null): void {
     const el = document.querySelector("#killcam .kc-blades") as HTMLElement | null;
-    if (el) el.textContent = n === null ? "" : `${n} ${n === 1 ? "BLADE" : "BLADES"}`;
+    if (el) el.textContent = n === null ? "" : n === 1 ? t("common.oneBlade") : t("common.nBlades", { n });
   }
 
   // Caméra sur le tueur : elle glisse vers lui puis le suit, tant qu'il
@@ -1454,7 +1455,7 @@ class Game {
     const el = document.getElementById("restart-banner");
     if (!el) return;
     if (this.restartWaiting) {
-      el.textContent = "SERVER UPDATING · back in a few seconds, your trophées are saved";
+      el.textContent = t("net.updating");
       el.classList.remove("hidden");
       return;
     }
@@ -1463,7 +1464,7 @@ class Game {
       return;
     }
     const left = Math.max(0, Math.ceil((this.restartAt - this.serverNow()) / 1000));
-    el.textContent = `SERVER RESTART IN ${left} s · update incoming, your trophées are saved`;
+    el.textContent = t("net.restartIn", { s: left });
     el.classList.remove("hidden");
   }
 
@@ -1486,7 +1487,7 @@ class Game {
     }
     this.restartWaiting = false;
     if (this.room !== room) return;
-    alert("The server was updated. Your trophées were saved: jump back in!");
+    alert(t("net.updated"));
     void this.returnToMenu();
   }
 
@@ -1590,19 +1591,19 @@ class Game {
     // les badges HUD avec leur temps restant. Durée base conservée dans
     // effectDurations pour normaliser la barre.
     const dnow = this.serverNow();
-    const updateFx = (label: string, color: number, until: number) => {
+    const updateFx = (key: I18nKey, color: number, until: number) => {
       if (until <= dnow) {
-        this.hud.updateEffect(label, label, "#" + color.toString(16).padStart(6, "0"), 0, 1, dnow);
-        this.effectDurations.delete(label);
+        this.hud.updateEffect(key, "", "#" + color.toString(16).padStart(6, "0"), 0, 1, dnow);
+        this.effectDurations.delete(key);
       } else {
-        let dur = this.effectDurations.get(label);
+        let dur = this.effectDurations.get(key);
         if (dur === undefined) {
           dur = until - dnow;
-          this.effectDurations.set(label, dur);
+          this.effectDurations.set(key, dur);
         }
         this.hud.updateEffect(
-          label,
-          label,
+          key,
+          t(key),
           "#" + color.toString(16).padStart(6, "0"),
           until,
           dur,
@@ -1610,10 +1611,10 @@ class Game {
         );
       }
     };
-    updateFx("SPEED", this.theme.palette.powerUpColor[PowerUpType.Speed], me.speedUntil ?? 0);
-    updateFx("SPIN", this.theme.palette.powerUpColor[PowerUpType.Spin], me.spinUntil ?? 0);
-    updateFx("MAGNET", this.theme.palette.powerUpColor[PowerUpType.Magnet], me.magnetUntil ?? 0);
-    updateFx("SHIELD", this.theme.palette.powerUpColor[PowerUpType.Shield], me.shieldUntil ?? 0);
+    updateFx("hud.fxSpeed", this.theme.palette.powerUpColor[PowerUpType.Speed], me.speedUntil ?? 0);
+    updateFx("hud.fxSpin", this.theme.palette.powerUpColor[PowerUpType.Spin], me.spinUntil ?? 0);
+    updateFx("hud.fxMagnet", this.theme.palette.powerUpColor[PowerUpType.Magnet], me.magnetUntil ?? 0);
+    updateFx("hud.fxShield", this.theme.palette.powerUpColor[PowerUpType.Shield], me.shieldUntil ?? 0);
 
     const now = performance.now();
     if (now - this.lastHudUpdate < 100) return;
@@ -1904,19 +1905,22 @@ class Game {
 
 // Applique les variables CSS du thème actif AVANT d'instancier le jeu :
 // les UIs créés ensuite (LoginScreen, Hud, etc.) prennent les bonnes
-// couleurs dès leur premier render.
+// couleurs dès leur premier render. De même pour la langue du texte fixe.
 applyThemeCss();
+applyI18n();
 // Boutique instanciée tôt pour brancher le bouton "BOUTIQUE" du login
 // screen + écouter Échap. Reste cachée tant que l'user ne l'ouvre pas.
 new Boutique();
 new Game();
 
-function powerUpTypeLabel(t: PowerUpType): string {
+// Badge d'effet d'un power-up (aucun pour Blades, instantané) : la clé de
+// son libellé sert aussi d'identifiant du badge.
+function powerUpEffectKey(t: PowerUpType): I18nKey | null {
   switch (t) {
-    case PowerUpType.Speed: return "SPEED";
-    case PowerUpType.Spin: return "SPIN";
-    case PowerUpType.Magnet: return "MAGNET";
-    case PowerUpType.Shield: return "SHIELD";
-    case PowerUpType.Blades: return "BLADES";
+    case PowerUpType.Speed: return "hud.fxSpeed";
+    case PowerUpType.Spin: return "hud.fxSpin";
+    case PowerUpType.Magnet: return "hud.fxMagnet";
+    case PowerUpType.Shield: return "hud.fxShield";
+    case PowerUpType.Blades: return null;
   }
 }

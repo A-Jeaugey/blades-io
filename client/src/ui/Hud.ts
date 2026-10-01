@@ -1,4 +1,5 @@
 import { BOOST_DRAIN_INTERVAL } from "@bladeio/shared";
+import { formatNumber, onLangChange, t } from "../i18n";
 
 // Bloc d'état du joueur local (tâche 3.4) : rang, lames, score de la vie et
 // record, coût du boost. En haut à gauche : en bas au centre, il masquait la
@@ -37,9 +38,21 @@ export class Hud {
     this.roomBadge.addEventListener("click", () => this.copyInviteLink());
     this.effects = document.getElementById("effects")!;
     this.rankBadge = document.getElementById("rank-badge")!;
-    // Tactile : le coût du boost est écrit sous le libellé du bouton.
+    this.writeBoostButton();
+    // Langue changée : tout le texte affiché est réécrit à la prochaine
+    // mise à jour, badges d'effet compris (recréés).
+    onLangChange(() => {
+      this.shown = { blades: -1, rank: -1, score: -1, best: -1, newBest: false, boost: "", net: "" };
+      for (const node of this.effectNodes.values()) node.root.remove();
+      this.effectNodes.clear();
+      this.writeBoostButton();
+    });
+  }
+
+  // Tactile : le coût du boost est écrit sous le libellé du bouton.
+  private writeBoostButton(): void {
     const sub = document.querySelector("#boost-btn .btn-sub");
-    if (sub) sub.textContent = `−${BOOST_PER_SECOND} blades/s`;
+    if (sub) sub.textContent = t("hud.boostSub", { n: BOOST_PER_SECOND });
   }
 
   // Met à jour un badge d'effet actif (SPEED, SPIN, MAGNET, SHIELD).
@@ -95,7 +108,7 @@ export class Hud {
     if (n === this.shown.blades) return;
     this.shown.blades = n;
     this.bladeCount.textContent = String(n);
-    this.bladeLabel.textContent = n === 1 ? "BLADE" : "BLADES";
+    this.bladeLabel.textContent = t(n === 1 ? "common.blade" : "common.blades");
   }
 
   // Score de la vie en cours et record personnel (null : room privée, où le
@@ -111,7 +124,7 @@ export class Hud {
     if (bestKey !== this.shown.best || newBest !== this.shown.newBest) {
       this.shown.best = bestKey;
       this.shown.newBest = newBest;
-      this.bestVal.textContent = best === null ? "" : newBest ? "NEW BEST" : best > 0 ? `BEST ${best}` : "BEST —";
+      this.bestVal.textContent = best === null ? "" : newBest ? t("hud.newBest") : best > 0 ? t("hud.best", { n: best }) : t("hud.bestNone");
       this.bestVal.classList.toggle("new", newBest);
     }
   }
@@ -120,8 +133,8 @@ export class Hud {
   // pendant qu'on boost.
   setBoost(boosting: boolean, bladeCount: number): void {
     const text = boosting
-      ? `BOOST −${BOOST_PER_SECOND}/s · ${(bladeCount * BOOST_DRAIN_INTERVAL).toFixed(1)} s left`
-      : `BOOST −${BOOST_PER_SECOND} blades/s`;
+      ? t("hud.boostLeft", { n: BOOST_PER_SECOND, s: formatNumber(bladeCount * BOOST_DRAIN_INTERVAL, 1) })
+      : t("hud.boostCost", { n: BOOST_PER_SECOND });
     if (text === this.shown.boost) return;
     this.shown.boost = text;
     this.boostInfo.textContent = text;

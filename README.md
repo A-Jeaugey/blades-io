@@ -73,6 +73,7 @@ Each client only receives what is near it (interest management with Colyseus `St
 - **Spatial hash** (5-unit cells) for pickup and broad-phase collisions
 - **Owner-bucket broad phase** for blade-vs-blade — pairs of players are tested by center distance before touching individual blades
 - **InstancedMesh** rendering — one mesh per (rarity × tier), growing as needed (no cap), O(1) removal; round additive particles (point-sprite shader) and a time-sampled ribbon trail
+- **French and English** — the language follows the browser (English otherwise) and can be changed live in the settings; all UI text lives in `client/src/i18n/`
 - **Quality presets** (high/medium/low/ultra, auto-detected; `ultra` is the lightest) — bloom, particles and decor density adapt. An FPS monitor lowers the resolution first, then the preset; a lower preset picked mid-match applies back at the menu, never during a game
 - **Anti-cheat** — server clamps `|dx|, |dy| ≤ 1`, ignores inputs above 80/s and disconnects a client that stays above that cap for 3 consecutive seconds
 
@@ -332,6 +333,7 @@ client/src/
   fx/                  # particles, screen shake
   input/               # keyboard, mouse (projected on the ground), touch joystick + throw button with drag aim
   ui/                  # HUD, login, death, leaderboard, minimap, settings, chat, combat feedback, onboarding
+  i18n/                # French and English dictionaries, t(), data-i18n attributes
   themes/              # cosmetic themes (palette, ground shader, decor, music)
   boutique/            # theme shop
   audio/SoundManager   # Tone.js procedural SFX + music player

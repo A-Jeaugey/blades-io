@@ -1,51 +1,32 @@
+import { I18nKey, t } from "../i18n";
+
 // Onboarding (tâche 3.1) : carte des contrôles à la première entrée en jeu,
 // indications contextuelles uniques pendant les premières parties, page
 // « How to play » depuis le lobby. Tout est mémorisé localement : une
 // indication déjà vue ne revient pas (sauf remise à zéro depuis la page).
-//
-// Textes en anglais, comme le reste de l'interface en jeu, et regroupés ici
-// pour l'internationalisation (tâche 3.7).
+// Textes : dictionnaires de i18n/ (tâche 3.7).
 
 export type HintId = "throw" | "boost" | "border" | "bush";
 
-const TEXT = {
-  cardTitle: "HOW TO PLAY",
-  gotIt: "GOT IT",
+const CARD_ROWS: Record<"desktop" | "touch", Array<[I18nKey, I18nKey]>> = {
   desktop: [
-    ["MOVE", "Mouse, or WASD"],
-    ["AIM", "Cursor (also with WASD)"],
-    ["THROW", "Right-click or SPACE"],
-    ["BOOST", "Left-click or SHIFT · burns blades"],
+    ["onboard.keyMove", "onboard.desktopMove"],
+    ["onboard.keyAim", "onboard.desktopAim"],
+    ["onboard.keyThrow", "onboard.desktopThrow"],
+    ["onboard.keyBoost", "onboard.desktopBoost"],
   ],
   touch: [
-    ["MOVE", "Left stick"],
-    ["THROW", "Tap THROW · drag from it to aim"],
-    ["BOOST", "Hold BOOST · burns blades"],
+    ["onboard.keyMove", "onboard.touchMove"],
+    ["onboard.keyThrow", "onboard.touchThrow"],
+    ["onboard.keyBoost", "onboard.touchBoost"],
   ],
-  rules: [
-    "Your blades break enemy blades. A blade touching a body kills.",
-    "Grab loose blades to grow. Throwing and boosting spend them.",
-    "The red edge of the arena is deadly.",
-  ],
-  hints: {
-    throw: {
-      desktop: "Enemy in range! THROW with right-click or SPACE: the blade flies toward your cursor.",
-      touch: "Enemy in range! Tap THROW, or drag from it to aim.",
-    },
-    boost: {
-      desktop: "Hold left-click or SHIFT to BOOST. It burns 1 blade every 0.5 s.",
-      touch: "Hold BOOST to sprint. It burns 1 blade every 0.5 s.",
-    },
-    border: {
-      desktop: "The red edge kills. Turn back!",
-      touch: "The red edge kills. Turn back!",
-    },
-    bush: {
-      desktop: "Inside a bush, other players can't see you.",
-      touch: "Inside a bush, other players can't see you.",
-    },
-  } as Record<HintId, { desktop: string; touch: string }>,
-  tipsReset: "Tips will show again in your next game.",
+};
+const CARD_RULES: I18nKey[] = ["onboard.rule1", "onboard.rule2", "onboard.rule3"];
+const HINTS: Record<HintId, { desktop: I18nKey; touch: I18nKey }> = {
+  throw: { desktop: "onboard.hintThrowDesktop", touch: "onboard.hintThrowTouch" },
+  boost: { desktop: "onboard.hintBoostDesktop", touch: "onboard.hintBoostTouch" },
+  border: { desktop: "onboard.hintBorder", touch: "onboard.hintBorder" },
+  bush: { desktop: "onboard.hintBush", touch: "onboard.hintBush" },
 };
 
 const STORAGE_KEY = "blade.onboarding";
@@ -109,7 +90,7 @@ export class Onboarding {
       this.stored = { controls: false, hints: [] };
       save(this.stored);
       const msg = document.getElementById("howto-reset-msg");
-      if (msg) msg.textContent = TEXT.tipsReset;
+      if (msg) msg.textContent = t("onboard.tipsReset");
     });
   }
 
@@ -155,7 +136,7 @@ export class Onboarding {
     save(this.stored);
     this.current = id;
     this.shownAt = now;
-    this.hintEl.textContent = TEXT.hints[id][this.isTouch() ? "touch" : "desktop"];
+    this.hintEl.textContent = t(HINTS[id][this.isTouch() ? "touch" : "desktop"]);
     this.hintEl.classList.add("show");
     this.hintUntil = now + HINT_MS;
   }
@@ -184,13 +165,13 @@ export class Onboarding {
 
   // Contenu de la carte selon l'appareil du moment (tactile ou non).
   private renderCard(): void {
-    const rows = (this.isTouch() ? TEXT.touch : TEXT.desktop)
-      .map(([k, v]) => `<div class="onboard-row"><span class="onboard-key">${k}</span><span>${v}</span></div>`)
+    const rows = CARD_ROWS[this.isTouch() ? "touch" : "desktop"]
+      .map(([k, v]) => `<div class="onboard-row"><span class="onboard-key">${t(k)}</span><span>${t(v)}</span></div>`)
       .join("");
-    const rules = TEXT.rules.map((r) => `<li>${r}</li>`).join("");
+    const rules = CARD_RULES.map((r) => `<li>${t(r)}</li>`).join("");
     this.card.innerHTML =
-      `<div class="onboard-title">${TEXT.cardTitle}</div>${rows}<ul class="onboard-rules">${rules}</ul>` +
-      `<button type="button" class="onboard-ok">${TEXT.gotIt}</button>`;
+      `<div class="onboard-title">${t("onboard.title")}</div>${rows}<ul class="onboard-rules">${rules}</ul>` +
+      `<button type="button" class="onboard-ok">${t("onboard.gotIt")}</button>`;
     this.card.querySelector(".onboard-ok")?.addEventListener("click", () => this.closeCard());
   }
 

@@ -3,6 +3,7 @@ import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
 import { fetchGuestWallet } from "../auth/guestToken";
+import { I18nKey, onLangChange, t } from "../i18n";
 
 // Identifiant de build (date + commit) injecté par Vite (cf. vite.config.ts).
 declare const __BUILD_ID__: string;
@@ -63,6 +64,7 @@ export class LoginScreen {
   private onlineEl: HTMLElement | null;
   private taglineEl: HTMLElement | null;
   private nameLabel: HTMLElement | null;
+  private nameLabelKey: I18nKey = "lobby.callsign";
   private authPanel: AuthPanel | null = null;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private statsInterval: ReturnType<typeof setInterval> | null = null;
@@ -195,10 +197,15 @@ export class LoginScreen {
     const buildEl = document.getElementById("bio2-build");
     if (buildEl) buildEl.textContent = __BUILD_ID__;
     this.startReadouts();
-    if (this.taglineEl) runGlitchReveal(this.taglineEl, "SPIN TO SURVIVE");
+    if (this.taglineEl) runGlitchReveal(this.taglineEl, t("lobby.tagline"));
     this.applyAuthState();
     this.refreshTopOps();
     this.refreshWallet();
+    onLangChange(() => {
+      if (this.taglineEl) this.taglineEl.textContent = t("lobby.tagline");
+      this.renderNameLabel();
+      this.refreshTopOps();
+    });
   }
 
   // Met à jour le badge "TROPHÉES" avec le solde courant. Pour un user
@@ -234,13 +241,13 @@ export class LoginScreen {
     try {
       const r = await fetch("/api/leaderboard?limit=10");
       if (!r.ok) {
-        this.setTopOpsMessage(list, "leaderboard offline");
+        this.setTopOpsMessage(list, t("lobby.leaderboardOffline"));
         return;
       }
       const j = await r.json();
       const entries: Array<{ user_id: string; username: string; score: number }> = j.entries ?? [];
       if (entries.length === 0) {
-        list.innerHTML = `<li class="bio2-lb-row"><span class="bio2-lb-rank">--</span><span class="bio2-lb-name">no scores yet</span><span class="bio2-lb-score"></span></li>`;
+        this.setTopOpsMessage(list, t("lobby.noScores"));
         return;
       }
       list.innerHTML = entries
@@ -256,8 +263,12 @@ export class LoginScreen {
         .join("");
     } catch (e) {
       console.warn("[blade.io] top ops fetch failed", e);
-      this.setTopOpsMessage(list, "leaderboard offline");
+      this.setTopOpsMessage(list, t("lobby.leaderboardOffline"));
     }
+  }
+
+  private renderNameLabel(): void {
+    if (this.nameLabel) this.nameLabel.textContent = t(this.nameLabelKey);
   }
 
   // Ligne unique du panneau classement (chargement, API indisponible).
@@ -283,7 +294,8 @@ export class LoginScreen {
         this.input.value = username;
         this.input.readOnly = true;
         this.input.classList.add("bio2-input-locked");
-        if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN (FROM PROFILE)";
+        this.nameLabelKey = "lobby.callsignProfile";
+        this.renderNameLabel();
       }
       // Affiche les boutons rename (état idle ou éditable selon this.renaming).
       this.renameActions?.classList.remove("hidden");
@@ -293,7 +305,8 @@ export class LoginScreen {
       this.clearRenameMessage();
       this.input.readOnly = false;
       this.input.classList.remove("bio2-input-locked");
-      if (this.nameLabel) this.nameLabel.textContent = "CALLSIGN";
+      this.nameLabelKey = "lobby.callsign";
+      this.renderNameLabel();
       const saved = localStorage.getItem("blade.name");
       if (saved && this.input.value === "") this.input.value = saved;
       this.renameActions?.classList.add("hidden");
@@ -347,7 +360,7 @@ export class LoginScreen {
     // strict, donc tout pseudo avec accents était rejeté côté client mais
     // accepté côté serveur — incohérent.
     if (!/^[\p{L}\p{N}_.\-]{3,16}$/u.test(next)) {
-      this.setRenameMessage("3–16 chars (lettres, chiffres, _ . -).");
+      this.setRenameMessage(t("lobby.nameRule"));
       return;
     }
     if (next === this.renameOriginal) {

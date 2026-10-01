@@ -1,9 +1,9 @@
 import { KillCause } from "@bladeio/shared";
+import { t } from "../i18n";
 
 // Fil des éliminations (tâche 3.4) : les dernières morts de la room, quatre
 // lignes au plus, chacune 4 s. Les lignes qui concernent le joueur local
-// (il a tué, il est mort) ressortent en couleur. Textes en anglais, comme
-// le reste de l'interface en jeu (traduction : tâche 3.7).
+// (il a tué, il est mort) ressortent en couleur.
 
 const MAX_LINES = 4;
 const LINE_MS = 4000;
@@ -14,7 +14,6 @@ const ICON: Record<KillCause, string> = {
   throw: "➶",
   wall: "⚡",
 };
-const BORDER_LABEL = "BORDER";
 
 export interface KillFeedEntry {
   killerName: string | null;
@@ -52,11 +51,11 @@ export class KillFeed {
     el.className = e.mine ? `kf-line kf-${e.mine}` : "kf-line";
     // Noms en textContent : ce sont des pseudos de joueurs.
     if (e.cause === "wall" || !e.killerName) {
-      el.append(span("kf-name", e.victimName), span("kf-icon", ICON.wall), span("kf-border", BORDER_LABEL));
+      el.append(span("kf-name", e.victimName), span("kf-icon", ICON.wall), span("kf-border", t("feed.border")));
     } else {
       el.append(span("kf-name", e.killerName), span("kf-icon", ICON[e.cause] ?? ICON.blades), span("kf-name", e.victimName));
       if (e.bounty) el.append(span("kf-bounty", `👑 +${e.bounty}`));
-      if (e.underdog) el.append(span("kf-underdog", "UNDERDOG"));
+      if (e.underdog) el.append(span("kf-underdog", t("feed.underdog")));
     }
     this.root.appendChild(el);
     this.lines.push({ el, until: now + LINE_MS });

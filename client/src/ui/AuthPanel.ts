@@ -1,4 +1,5 @@
 import { auth, AuthState } from "../auth/supabase";
+import { onLangChange, t } from "../i18n";
 
 const USERNAME_RE = /^[A-Za-z0-9_.\-]{3,16}$/;
 
@@ -29,7 +30,12 @@ export class AuthPanel {
       this.unsubscribe = () => {};
       return;
     }
-    this.unsubscribe = auth.subscribe((state) => this.render(state));
+    const unsubAuth = auth.subscribe((state) => this.render(state));
+    const unsubLang = onLangChange(() => this.render(auth.getState()));
+    this.unsubscribe = () => {
+      unsubAuth();
+      unsubLang();
+    };
   }
 
   destroy(): void {
@@ -103,8 +109,8 @@ export class AuthPanel {
     this.root.innerHTML = `
       <button type="button" class="bio2-auth-trigger" data-action="expand">
         <span class="bio2-auth-trigger-arrow">▸</span>
-        <span class="bio2-auth-trigger-label">SIGN IN OR CREATE ACCOUNT</span>
-        <span class="bio2-auth-trigger-hint">save your scores</span>
+        <span class="bio2-auth-trigger-label">${t("auth.expand")}</span>
+        <span class="bio2-auth-trigger-hint">${t("auth.expandHint")}</span>
       </button>
     `;
     this.root.querySelector<HTMLButtonElement>("[data-action=expand]")?.addEventListener("click", () => {
@@ -120,11 +126,11 @@ export class AuthPanel {
     this.root.innerHTML = `
       <div class="bio2-auth-summary">
         <div class="bio2-auth-summary-l">
-          <span class="bio2-auth-status bio2-auth-on">SIGNED IN</span>
+          <span class="bio2-auth-status bio2-auth-on">${t("auth.signedIn")}</span>
           <span class="bio2-auth-user">${escapeHtml(username)}</span>
           ${email ? `<span class="bio2-auth-email">${escapeHtml(email)}</span>` : ""}
         </div>
-        <button type="button" class="bio2-auth-link" data-action="signout">SIGN OUT</button>
+        <button type="button" class="bio2-auth-link" data-action="signout">${t("auth.signOut")}</button>
       </div>
     `;
     this.bindSignedIn();
@@ -136,16 +142,16 @@ export class AuthPanel {
     this.root.innerHTML = `
       <div class="bio2-auth-head">
         <span class="bio2-auth-tag">// AUTH</span>
-        <span class="bio2-auth-title">CHOOSE&nbsp;USERNAME</span>
+        <span class="bio2-auth-title">${t("auth.chooseUsername")}</span>
       </div>
       <div class="bio2-auth-body">
-        <p class="bio2-auth-hint">Required to track your scores. 3–16 chars · letters, digits, _ . -</p>
+        <p class="bio2-auth-hint">${t("auth.usernameHint")}</p>
         <div class="bio2-field">
-          <label class="bio2-field-label" for="auth-username">USERNAME</label>
+          <label class="bio2-field-label" for="auth-username">${t("auth.username")}</label>
           <input id="auth-username" class="bio2-input" type="text" maxlength="16" autocomplete="off" />
         </div>
-        <button type="button" class="bio2-auth-cta" data-action="save-username">SAVE</button>
-        <button type="button" class="bio2-auth-link" data-action="signout">SIGN OUT</button>
+        <button type="button" class="bio2-auth-cta" data-action="save-username">${t("auth.save")}</button>
+        <button type="button" class="bio2-auth-link" data-action="signout">${t("auth.signOut")}</button>
         <div class="bio2-auth-msg hidden"></div>
       </div>
     `;
@@ -160,13 +166,13 @@ export class AuthPanel {
     this.root.innerHTML = `
       <div class="bio2-auth-head">
         <span class="bio2-auth-tag">// AUTH</span>
-        <span class="bio2-auth-title">${isSignup ? "CREATE&nbsp;ACCOUNT" : "SIGN&nbsp;IN"}</span>
+        <span class="bio2-auth-title">${t(isSignup ? "auth.createAccount" : "auth.signIn")}</span>
         <span class="bio2-auth-spacer"></span>
         <span class="bio2-auth-tabs">
-          <button type="button" class="bio2-auth-tab ${!isSignup ? "active" : ""}" data-mode="signin">SIGN&nbsp;IN</button>
-          <button type="button" class="bio2-auth-tab ${isSignup ? "active" : ""}" data-mode="signup">SIGN&nbsp;UP</button>
+          <button type="button" class="bio2-auth-tab ${!isSignup ? "active" : ""}" data-mode="signin">${t("auth.signIn")}</button>
+          <button type="button" class="bio2-auth-tab ${isSignup ? "active" : ""}" data-mode="signup">${t("auth.signUp")}</button>
         </span>
-        <button type="button" class="bio2-auth-close" data-action="collapse" title="Hide">×</button>
+        <button type="button" class="bio2-auth-close" data-action="collapse" title="${t("auth.hide")}">×</button>
       </div>
       <div class="bio2-auth-body">
         <div class="bio2-auth-providers">
@@ -304,29 +310,29 @@ export class AuthPanel {
             <span>Continue with Google</span>
           </button>
         </div>
-        <div class="bio2-auth-sep"><span>or with email</span></div>
+        <div class="bio2-auth-sep"><span>${t("auth.orEmail")}</span></div>
         <div class="bio2-field">
-          <label class="bio2-field-label" for="auth-email">EMAIL</label>
+          <label class="bio2-field-label" for="auth-email">${t("auth.email")}</label>
           <input id="auth-email" class="bio2-input" type="email" autocomplete="email" />
         </div>
         <div class="bio2-field">
-          <label class="bio2-field-label" for="auth-password">PASSWORD</label>
+          <label class="bio2-field-label" for="auth-password">${t("auth.password")}</label>
           <input id="auth-password" class="bio2-input" type="password" autocomplete="${isSignup ? "new-password" : "current-password"}" />
         </div>
         ${
           isSignup
             ? `
           <div class="bio2-field">
-            <label class="bio2-field-label" for="auth-username">USERNAME</label>
+            <label class="bio2-field-label" for="auth-username">${t("auth.username")}</label>
             <input id="auth-username" class="bio2-input" type="text" maxlength="16" autocomplete="off" />
           </div>`
             : ""
         }
         <button type="button" class="bio2-auth-cta" data-action="${isSignup ? "signup" : "signin"}">
-          ${isSignup ? "CREATE ACCOUNT" : "SIGN IN"}
+          ${t(isSignup ? "auth.ctaCreate" : "auth.ctaSignIn")}
         </button>
         <p class="bio2-auth-foot">
-          You can also <button type="button" class="bio2-auth-link bio2-auth-inline" data-action="play-guest">play as guest</button>
+          ${t("auth.guestFoot", { guest: `<button type="button" class="bio2-auth-link bio2-auth-inline" data-action="play-guest">${t("auth.playGuest")}</button>` })}
           — your score won't be saved.
         </p>
         <div class="bio2-auth-msg hidden"></div>
@@ -350,7 +356,7 @@ export class AuthPanel {
       if (this.busy || !input) return;
       const u = input.value.trim();
       if (!USERNAME_RE.test(u)) {
-        this.setMessage("error", "3–16 chars (letters, digits, _ . -).");
+        this.setMessage("error", t("auth.errUsername"));
         return;
       }
       this.clearMessage();
@@ -404,7 +410,7 @@ export class AuthPanel {
       const email = (this.root.querySelector<HTMLInputElement>("#auth-email")?.value ?? "").trim();
       const password = this.root.querySelector<HTMLInputElement>("#auth-password")?.value ?? "";
       if (!email || !password) {
-        this.setMessage("error", "Email and password are required.");
+        this.setMessage("error", t("auth.errRequired"));
         return;
       }
       this.clearMessage();
@@ -413,7 +419,7 @@ export class AuthPanel {
         const username = (this.root.querySelector<HTMLInputElement>("#auth-username")?.value ?? "").trim();
         if (!USERNAME_RE.test(username)) {
           this.setBusy(false);
-          this.setMessage("error", "Username: 3–16 chars (letters, digits, _ . -).");
+          this.setMessage("error", t("auth.errUsername"));
           return;
         }
         const { error, needsVerification } = await auth.signUpWithEmail(email, password, username);
@@ -423,7 +429,7 @@ export class AuthPanel {
           return;
         }
         if (needsVerification) {
-          this.setMessage("info", "Check your inbox to confirm your email, then sign in.");
+          this.setMessage("info", t("auth.checkInbox"));
           this.mode = "signin";
           this.render(auth.getState());
         }

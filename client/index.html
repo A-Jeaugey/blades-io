@@ -39,22 +39,21 @@
               class="chat-input"
               type="text"
               maxlength="200"
-              placeholder="Tapez votre message…"
+              placeholder="Type your message…"
+              data-i18n-attr="placeholder:chat.placeholder"
               autocomplete="off"
               spellcheck="false"
               enterkeyhint="send"
             />
-            <button id="chat-send" class="chat-send" type="button" aria-label="Envoyer">↵</button>
+            <button id="chat-send" class="chat-send" type="button" aria-label="Send" data-i18n-attr="aria-label:chat.send">↵</button>
             <span class="chat-cnt" id="chat-cnt">0/200</span>
           </div>
-          <div id="chat-hint" class="chat-hint">
-            <kbd>Entrée</kbd> pour discuter
-          </div>
+          <div id="chat-hint" class="chat-hint"><kbd>Enter</kbd> to chat</div>
         </div>
         <!-- Bouton chat flottant mobile : visible uniquement sur écran touch.
              Tap → ouvre l'input chat. Évite d'avoir à appuyer Entrée
              (inexistant sur clavier virtuel). -->
-        <button id="chat-fab" class="chat-fab hidden" type="button" aria-label="Ouvrir le chat">💬</button>
+        <button id="chat-fab" class="chat-fab hidden" type="button" aria-label="Open chat" data-i18n-attr="aria-label:chat.open">💬</button>
         <div id="top-right">
           <canvas id="minimap" width="170" height="170"></canvas>
           <div id="leaderboard"></div>
@@ -71,8 +70,8 @@
             <div class="st-score"><span id="score-val">🏆 0</span><span id="best-val"></span></div>
             <div id="boost-info"></div>
           </div>
-          <div id="room-badge" class="hidden" title="Click to copy invite link">
-            <span class="room-label">ROOM</span>
+          <div id="room-badge" class="hidden" title="Click to copy invite link" data-i18n-attr="title:hud.roomTitle">
+            <span class="room-label" data-i18n="hud.room">ROOM</span>
             <span id="room-code">—</span>
           </div>
           <div id="effects"></div>
@@ -80,9 +79,9 @@
         <div id="joystick" class="hidden">
           <div id="joystick-base"><div id="joystick-thumb"></div></div>
         </div>
-        <div id="boost-btn" class="hidden">BOOST<span class="btn-sub"></span></div>
-        <div id="throw-btn" class="hidden">THROW</div>
-        <div id="settings-icon" role="button" tabindex="0" aria-label="Settings">⚙</div>
+        <div id="boost-btn" class="hidden"><span data-i18n="hud.boost">BOOST</span><span class="btn-sub"></span></div>
+        <div id="throw-btn" class="hidden" data-i18n="hud.throw">THROW</div>
+        <div id="settings-icon" role="button" tabindex="0" aria-label="Settings" data-i18n-attr="aria-label:common.settings">⚙</div>
         <div id="fps"></div>
         <!-- Onboarding (cf. ui/Onboarding.ts) : carte des contrôles à la
              première partie, puis indications uniques. -->
@@ -119,26 +118,26 @@
             <span class="bio2-tb-val" id="bio2-ping">—</span>
           </div>
           <div class="bio2-tb-right">
-            <span class="bio2-tb-key">IN GAME</span>
+            <span class="bio2-tb-key" data-i18n="lobby.inGame">IN GAME</span>
             <span class="bio2-tb-val bio2-tb-online" id="bio2-online">—</span>
             <span class="bio2-pulse"></span>
-            <button type="button" id="login-settings-icon" class="bio2-tb-settings" title="Settings" aria-label="Settings">⚙</button>
+            <button type="button" id="login-settings-icon" class="bio2-tb-settings" title="Settings" aria-label="Settings" data-i18n-attr="title:common.settings;aria-label:common.settings">⚙</button>
           </div>
         </div>
 
         <aside class="bio2-rail bio2-rail-l">
           <div class="bio2-rail-head">
             <span class="bio2-rail-tag">// 02</span>
-            <span class="bio2-rail-title">PATCH&nbsp;NOTES</span>
+            <span class="bio2-rail-title" data-i18n="lobby.patchNotes">PATCH NOTES</span>
           </div>
           <ul class="bio2-rail-list">
-            <li><b>NEW</b> in-match chat · press Enter</li>
-            <li><b>NEW</b> shop · map themes</li>
-            <li><b>TUNE</b> 60 Hz server · snappier movement</li>
-            <li><b>TUNE</b> private rooms · 2.5× loot, unranked</li>
+            <li data-i18n-html="lobby.patch1"><b>NEW</b> French and English</li>
+            <li data-i18n-html="lobby.patch2"><b>NEW</b> bots: easy, normal, hard</li>
+            <li data-i18n-html="lobby.patch3"><b>NEW</b> leader bounty · underdog kills pay double</li>
+            <li data-i18n-html="lobby.patch4"><b>NEW</b> six tiers · a blade shape for each</li>
           </ul>
           <div class="bio2-rail-foot">
-            <span class="bio2-tb-key">BUILD</span>
+            <span class="bio2-tb-key" data-i18n="lobby.build">BUILD</span>
             <span class="bio2-tb-val" id="bio2-build">—</span>
           </div>
         </aside>
@@ -146,14 +145,14 @@
         <aside class="bio2-rail bio2-rail-r">
           <div class="bio2-rail-head">
             <span class="bio2-rail-tag">// 03</span>
-            <span class="bio2-rail-title">TOP&nbsp;TROPHÉES</span>
+            <span class="bio2-rail-title" data-i18n="lobby.topTrophies">TOP TROPHIES</span>
           </div>
           <ol class="bio2-lb">
-            <li class="bio2-lb-row"><span class="bio2-lb-rank">--</span><span class="bio2-lb-name">loading…</span><span class="bio2-lb-score"></span></li>
+            <li class="bio2-lb-row"><span class="bio2-lb-rank">--</span><span class="bio2-lb-name" data-i18n="lobby.loading">loading…</span><span class="bio2-lb-score"></span></li>
           </ol>
           <div class="bio2-rail-foot">
-            <span class="bio2-tb-key">RANKING</span>
-            <span class="bio2-tb-val">ALL-TIME · PUBLIC</span>
+            <span class="bio2-tb-key" data-i18n="lobby.ranking">RANKING</span>
+            <span class="bio2-tb-val" data-i18n="lobby.allTimePublic">ALL-TIME · PUBLIC</span>
           </div>
         </aside>
 
@@ -180,13 +179,13 @@
             <span class="bio2-rarity-dot" data-r="rare"></span>
             <span class="bio2-rarity-dot" data-r="epic"></span>
             <span class="bio2-rarity-dot" data-r="legendary"></span>
-            <span class="bio2-rarity-label">COMMON · RARE · EPIC · LEGENDARY</span>
+            <span class="bio2-rarity-label" data-i18n="lobby.rarities">COMMON · RARE · EPIC · LEGENDARY</span>
           </div>
 
           <section class="bio2-console">
             <header class="bio2-console-head">
               <span class="bio2-led"></span>
-              <span class="bio2-console-tag">// 01 · OPERATOR&nbsp;ID</span>
+              <span class="bio2-console-tag" data-i18n="lobby.operatorId">// 01 · OPERATOR ID</span>
               <span class="bio2-console-spacer"></span>
               <span class="bio2-console-meta" id="bio2-tick">0000</span>
             </header>
@@ -194,7 +193,7 @@
             <div id="auth-panel" class="bio2-auth"></div>
 
             <div id="wallet-badge" class="bio2-wallet hidden">
-              <span class="bio2-wallet-label">TROPHÉES</span>
+              <span class="bio2-wallet-label" data-i18n="lobby.trophies">TROPHIES</span>
               <span class="bio2-wallet-val" id="wallet-balance">0</span>
             </div>
 
@@ -206,13 +205,14 @@
                   class="bio2-input"
                   type="text"
                   placeholder="ENTER NAME"
+                  data-i18n-attr="placeholder:lobby.namePlaceholder"
                   maxlength="16"
                   autocomplete="off"
                 />
                 <div class="bio2-rename-actions hidden" id="rename-actions">
-                  <button type="button" class="bio2-rename-btn" id="rename-btn" title="Rename">RENAME</button>
-                  <button type="button" class="bio2-rename-btn bio2-rename-save hidden" id="rename-save" title="Save">✓</button>
-                  <button type="button" class="bio2-rename-btn bio2-rename-cancel hidden" id="rename-cancel" title="Cancel">✗</button>
+                  <button type="button" class="bio2-rename-btn" id="rename-btn" title="Rename" data-i18n="lobby.rename" data-i18n-attr="title:lobby.renameTitle">RENAME</button>
+                  <button type="button" class="bio2-rename-btn bio2-rename-save hidden" id="rename-save" title="Save" data-i18n-attr="title:common.save">✓</button>
+                  <button type="button" class="bio2-rename-btn bio2-rename-cancel hidden" id="rename-cancel" title="Cancel" data-i18n-attr="title:common.cancel">✗</button>
                 </div>
               </div>
               <span class="bio2-field-cnt" id="bio2-name-cnt">0/16</span>
@@ -220,22 +220,22 @@
             </div>
 
             <div class="bio2-field">
-              <label class="bio2-field-label">DEPLOY MODE</label>
+              <label class="bio2-field-label" data-i18n="lobby.deployMode">DEPLOY MODE</label>
               <div id="mode-tabs" class="bio2-modes">
                 <button class="bio2-mode mode-tab bio2-mode-on active" data-mode="public">
                   <span class="bio2-mode-arrow">▸</span>
-                  <span class="bio2-mode-label">QUICK PLAY</span>
-                  <span class="bio2-mode-hint">open arena · bots fill</span>
+                  <span class="bio2-mode-label" data-i18n="lobby.quickPlay">QUICK PLAY</span>
+                  <span class="bio2-mode-hint" data-i18n="lobby.quickPlayHint">open arena · bots fill</span>
                 </button>
                 <button class="bio2-mode mode-tab" data-mode="create">
                   <span class="bio2-mode-arrow">·</span>
-                  <span class="bio2-mode-label">CREATE ROOM</span>
-                  <span class="bio2-mode-hint">private lobby + invite</span>
+                  <span class="bio2-mode-label" data-i18n="lobby.createRoom">CREATE ROOM</span>
+                  <span class="bio2-mode-hint" data-i18n="lobby.createRoomHint">private lobby + invite</span>
                 </button>
                 <button class="bio2-mode mode-tab" data-mode="join">
                   <span class="bio2-mode-arrow">·</span>
-                  <span class="bio2-mode-label">JOIN CODE</span>
-                  <span class="bio2-mode-hint">use a 5-char code</span>
+                  <span class="bio2-mode-label" data-i18n="lobby.joinCode">JOIN CODE</span>
+                  <span class="bio2-mode-hint" data-i18n="lobby.joinCodeHint">use a 5-char code</span>
                 </button>
               </div>
             </div>
@@ -245,11 +245,11 @@
               <label class="bio2-toggle">
                 <input type="checkbox" id="create-bots" />
                 <span class="bio2-toggle-track"><span class="bio2-toggle-thumb"></span></span>
-                <span>FILL WITH BOTS</span>
+                <span data-i18n="lobby.fillBots">FILL WITH BOTS</span>
               </label>
             </div>
             <div id="mode-join" class="bio2-field mode-panel hidden">
-              <label class="bio2-field-label">ROOM CODE</label>
+              <label class="bio2-field-label" data-i18n="lobby.roomCode">ROOM CODE</label>
               <div class="bio2-code-row">
                 <span class="bio2-code-cell" data-i="0"><span class="bio2-code-ph">_</span></span>
                 <span class="bio2-code-cell" data-i="1"><span class="bio2-code-ph">_</span></span>
@@ -270,26 +270,26 @@
 
             <button id="enter-btn" class="bio2-cta">
               <span class="bio2-cta-bracket">[</span>
-              <span class="bio2-cta-label">ENTER&nbsp;THE&nbsp;GRID</span>
+              <span class="bio2-cta-label" data-i18n-html="lobby.enter">ENTER&nbsp;THE&nbsp;GRID</span>
               <span class="bio2-cta-arrow">→</span>
               <span class="bio2-cta-bracket">]</span>
             </button>
             <div class="bio2-cta-row">
               <button id="open-boutique-btn" class="bio2-cta-secondary" type="button">
                 <span class="bio2-cta-secondary-icon">⌬</span>
-                <span class="bio2-cta-secondary-label">BOUTIQUE</span>
+                <span class="bio2-cta-secondary-label" data-i18n="lobby.boutique">BOUTIQUE</span>
               </button>
               <button id="open-howto-btn" class="bio2-cta-secondary" type="button">
                 <span class="bio2-cta-secondary-icon">?</span>
-                <span class="bio2-cta-secondary-label">HOW TO PLAY</span>
+                <span class="bio2-cta-secondary-label" data-i18n="lobby.howToPlay">HOW TO PLAY</span>
               </button>
             </div>
           </section>
 
           <div class="bio2-marquee">
             <div class="bio2-marquee-track">
-              <span>THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   </span>
-              <span>THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   </span>
+              <span data-i18n="lobby.marquee">THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   </span>
+              <span data-i18n="lobby.marquee">THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   </span>
             </div>
           </div>
           <div class="login-footer"><span id="login-fps"></span></div>
@@ -297,69 +297,70 @@
       </div>
 
       <!-- Comment jouer (cf. ui/Onboarding.ts) : contrôles et règles, depuis le
-           lobby. Textes en anglais comme le reste du jeu (traduction : 3.7). -->
+           lobby. -->
       <div id="howto" class="howto hidden" aria-hidden="true">
         <div class="howto-backdrop" data-close></div>
         <div class="howto-shell" role="dialog" aria-labelledby="howto-title">
           <header class="howto-head">
-            <span id="howto-title" class="howto-title">HOW TO PLAY</span>
-            <button class="howto-close" data-close aria-label="Close">✕</button>
+            <span id="howto-title" class="howto-title" data-i18n="lobby.howToPlay">HOW TO PLAY</span>
+            <button class="howto-close" data-close aria-label="Close" data-i18n-attr="aria-label:common.close">✕</button>
           </header>
           <div class="howto-body">
             <section>
-              <h3>Controls</h3>
+              <h3 data-i18n="howto.controls">Controls</h3>
               <div class="howto-cols">
                 <dl>
-                  <dt>Mouse + keyboard</dt>
-                  <dd><b>Move</b> mouse, or WASD / arrows</dd>
-                  <dd><b>Aim</b> cursor (works while moving with WASD)</dd>
-                  <dd><b>Throw</b> right-click or SPACE</dd>
-                  <dd><b>Boost</b> hold left-click or SHIFT</dd>
+                  <dt data-i18n="howto.mouseKeyboard">Mouse + keyboard</dt>
+                  <dd data-i18n-html="howto.move"><b>Move</b> mouse, or WASD / arrows</dd>
+                  <dd data-i18n-html="howto.aim"><b>Aim</b> cursor (works while moving with WASD)</dd>
+                  <dd data-i18n-html="howto.throw"><b>Throw</b> right-click or SPACE</dd>
+                  <dd data-i18n-html="howto.boost"><b>Boost</b> hold left-click or SHIFT</dd>
                 </dl>
                 <dl>
-                  <dt>Touch</dt>
-                  <dd><b>Move</b> left stick</dd>
-                  <dd><b>Throw</b> tap THROW: along your movement</dd>
-                  <dd><b>Aim</b> drag from THROW, release to throw (back to the button cancels)</dd>
-                  <dd><b>Boost</b> hold BOOST</dd>
+                  <dt data-i18n="howto.touch">Touch</dt>
+                  <dd data-i18n-html="howto.touchMove"><b>Move</b> left stick</dd>
+                  <dd data-i18n-html="howto.touchThrow"><b>Throw</b> tap THROW: along your movement</dd>
+                  <dd data-i18n-html="howto.touchAim"><b>Aim</b> drag from THROW, release to throw (back to the button cancels)</dd>
+                  <dd data-i18n-html="howto.touchBoost"><b>Boost</b> hold BOOST</dd>
                 </dl>
               </div>
             </section>
             <section>
-              <h3>Blades</h3>
+              <h3 data-i18n="howto.blades">Blades</h3>
               <ul>
-                <li>Your blades orbit around you and clash with enemy blades. Each rarity deals and withstands the same amount: <b>Common</b> 1, <b>Rare</b> 2, <b>Epic</b> 4, <b>Legendary</b> 8. Equal rarities break each other; a Legendary survives 7 Common hits.</li>
-                <li>A blade touching a player's body kills. Your orbit is your shield: keep it full.</li>
-                <li>Grab loose blades to grow. At 10, 20, 35, 55 and 80 blades you tier up: a new blade shape (dagger, sword, scythe, saw, runic blade, aura) and, up to the scythe, a bigger reach and a harder knockback.</li>
+                <li data-i18n-html="howto.blades1">Your blades orbit around you and clash with enemy blades. Each rarity deals and withstands the same amount: <b>Common</b> 1, <b>Rare</b> 2, <b>Epic</b> 4, <b>Legendary</b> 8. Equal rarities break each other; a Legendary survives 7 Common hits.</li>
+                <li data-i18n-html="howto.blades2">A blade touching a player's body kills. Your orbit is your shield: keep it full.</li>
+                <li data-i18n-html="howto.blades3">Grab loose blades to grow. At 10, 20, 35, 55 and 80 blades you tier up: a new blade shape (dagger, sword, scythe, saw, runic blade, aura) and, up to the scythe, a bigger reach and a harder knockback.</li>
               </ul>
             </section>
             <section>
-              <h3>Throw and boost</h3>
+              <h3 data-i18n="howto.throwBoost">Throw and boost</h3>
               <ul>
-                <li>Throwing launches your outermost blade (0.5 s cooldown). It can hit 1 target, 2 if Epic, 3 if Legendary, and lands after 30 u where anyone can pick it up.</li>
-                <li>Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first.</li>
+                <li data-i18n-html="howto.throw1">Throwing launches your outermost blade (0.5 s cooldown). It can hit 1 target, 2 if Epic, 3 if Legendary, and lands after 30 u where anyone can pick it up.</li>
+                <li data-i18n-html="howto.throw2">Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first.</li>
               </ul>
             </section>
             <section>
-              <h3>Arena</h3>
+              <h3 data-i18n="howto.arena">Arena</h3>
               <ul>
-                <li>The red edge kills instantly, outer blades first. A red glow and an alarm warn you.</li>
-                <li>You spawn away from bigger players, near loose blades. For 10 s, bots leave you alone, then for 40 s they only go after you up close. This ends as soon as you throw or your blades hit someone.</li>
-                <li>Bushes hide you and your blades from other players.</li>
-                <li>Break crates for loot. Power-ups: Speed, Spin, Magnet, Shield, Blades.</li>
-                <li>When you die, 70 % of your blades drop, rarest first, plus those you lost in the last 10 s.</li>
-                <li>The leader wears a crown with a bounty: take them down for bonus trophies and all of their blades. Killing a player with at least twice your blades pays double.</li>
+                <li data-i18n-html="howto.arena1">The red edge kills instantly, outer blades first. A red glow and an alarm warn you.</li>
+                <li data-i18n-html="howto.arena2">You spawn away from bigger players, near loose blades. For 10 s, bots leave you alone, then for 40 s they only go after you up close. This ends as soon as you throw or your blades hit someone.</li>
+                <li data-i18n-html="howto.arena3">Bushes hide you and your blades from other players.</li>
+                <li data-i18n-html="howto.arena4">Break crates for loot. Power-ups: Speed, Spin, Magnet, Shield, Blades.</li>
+                <li data-i18n-html="howto.arena5">When you die, 70 % of your blades drop, rarest first, plus those you lost in the last 10 s.</li>
+                <li data-i18n-html="howto.arena6">The leader wears a crown with a bounty: take them down for bonus trophies and all of their blades. Killing a player with at least twice your blades pays double.</li>
+                <li data-i18n-html="howto.arena7">Bots are marked BOT in the leaderboard. Some are easy, some hard; in your first game, they go easy on you.</li>
               </ul>
             </section>
             <section>
-              <h3>Trophies</h3>
+              <h3 data-i18n="howto.trophies">Trophies</h3>
               <ul>
-                <li>Earned at the end of each life in public rooms: kills × 15, your peak blade count, 1 per 10 s alive, crates × 3, power-ups × 2. Spend them in the BOUTIQUE.</li>
+                <li data-i18n-html="howto.trophies1">Earned at the end of each life in public rooms: kills × 15, your peak blade count, 1 per 10 s alive, crates × 3, power-ups × 2. Spend them in the BOUTIQUE.</li>
               </ul>
             </section>
           </div>
           <footer class="howto-foot">
-            <button type="button" id="howto-reset" class="howto-reset">SHOW IN-GAME TIPS AGAIN</button>
+            <button type="button" id="howto-reset" class="howto-reset" data-i18n="howto.resetTips">SHOW IN-GAME TIPS AGAIN</button>
             <span id="howto-reset-msg" class="howto-reset-msg"></span>
           </footer>
         </div>
@@ -372,7 +373,7 @@
         <div class="boutique-shell">
           <header class="boutique-head">
             <div class="boutique-head-left">
-              <span class="boutique-logo">BOUTIQUE</span>
+              <span class="boutique-logo" data-i18n="shop.title">BOUTIQUE</span>
               <span class="boutique-sub" id="boutique-active-theme">— —</span>
             </div>
             <div class="boutique-head-right">
@@ -380,7 +381,7 @@
                 <span class="boutique-wallet-icon">🏆</span>
                 <span class="boutique-wallet-val" id="boutique-balance">0</span>
               </div>
-              <button class="boutique-close" id="boutique-close" data-close aria-label="Fermer">
+              <button class="boutique-close" id="boutique-close" data-close aria-label="Close" data-i18n-attr="aria-label:common.close">
                 <span class="boutique-close-x" aria-hidden="true"></span>
               </button>
             </div>
@@ -388,16 +389,16 @@
 
           <nav class="boutique-tabs" role="tablist">
             <button class="boutique-tab active" data-tab="maps" role="tab" aria-selected="true">
-              <span class="boutique-tab-label">MAPS</span>
+              <span class="boutique-tab-label" data-i18n="shop.maps">MAPS</span>
               <span class="boutique-tab-count" id="boutique-count-maps">0/0</span>
             </button>
             <button class="boutique-tab" data-tab="skins" role="tab" aria-selected="false">
-              <span class="boutique-tab-label">SKINS</span>
-              <span class="boutique-tab-soon">BIENTÔT</span>
+              <span class="boutique-tab-label" data-i18n="shop.skins">SKINS</span>
+              <span class="boutique-tab-soon" data-i18n="shop.soon">SOON</span>
             </button>
             <button class="boutique-tab" data-tab="blades" role="tab" aria-selected="false">
-              <span class="boutique-tab-label">ÉPÉES</span>
-              <span class="boutique-tab-soon">BIENTÔT</span>
+              <span class="boutique-tab-label" data-i18n="shop.blades">BLADES</span>
+              <span class="boutique-tab-soon" data-i18n="shop.soon">SOON</span>
             </button>
           </nav>
 
@@ -411,9 +412,9 @@
             <section class="boutique-pane" data-pane="skins">
               <div class="boutique-coming">
                 <div class="boutique-coming-glyph">⚔︎</div>
-                <h2>Skins de Personnage</h2>
-                <p>Personnalise ton avatar : silhouette, couleurs, halo, trail.</p>
-                <p class="boutique-coming-eta">EN COURS DE DÉVELOPPEMENT</p>
+                <h2 data-i18n="shop.skinsTitle">Character skins</h2>
+                <p data-i18n="shop.skinsDesc">Customize your avatar: silhouette, colors, halo, trail.</p>
+                <p class="boutique-coming-eta" data-i18n="shop.inDev">IN DEVELOPMENT</p>
               </div>
             </section>
 
@@ -421,64 +422,68 @@
             <section class="boutique-pane" data-pane="blades">
               <div class="boutique-coming">
                 <div class="boutique-coming-glyph">✦</div>
-                <h2>Skins d'Épées</h2>
-                <p>Géométrie, glow, traînée — change l'identité de ton arsenal.</p>
-                <p class="boutique-coming-eta">EN COURS DE DÉVELOPPEMENT</p>
+                <h2 data-i18n="shop.bladesTitle">Blade skins</h2>
+                <p data-i18n="shop.bladesDesc">Shape, glow, trail: change the look of your arsenal.</p>
+                <p class="boutique-coming-eta" data-i18n="shop.inDev">IN DEVELOPMENT</p>
               </div>
             </section>
           </main>
 
           <footer class="boutique-foot">
-            <span class="boutique-foot-hint">
-              Gagne plus de trophées en jouant — kills et survie te rapportent à chaque match.
-            </span>
+            <span class="boutique-foot-hint" data-i18n="shop.footHint">Earn more trophies by playing: kills and survival pay out every match.</span>
           </footer>
         </div>
       </div>
 
       <div id="death-screen" class="hidden">
         <div class="death-card">
-          <h2>YOU WERE SHREDDED</h2>
+          <h2 data-i18n="death.shredded">YOU WERE SHREDDED</h2>
           <div id="death-stats"></div>
           <div class="death-actions">
-            <button id="respawn-btn">RESPAWN</button>
-            <button id="back-menu-btn">BACK TO MENU</button>
+            <button id="respawn-btn" data-i18n="death.respawn">RESPAWN</button>
+            <button id="back-menu-btn" data-i18n="death.backToMenu">BACK TO MENU</button>
           </div>
         </div>
       </div>
 
       <div id="settings-panel" class="hidden">
         <div class="settings-card">
-          <h3>SETTINGS</h3>
-          <label>Master <input type="range" id="vol-master" min="0" max="1" step="0.01" value="0.7" /></label>
-          <label>Music <input type="range" id="vol-music" min="0" max="1" step="0.01" value="0.5" /></label>
-          <label>SFX <input type="range" id="vol-sfx" min="0" max="1" step="0.01" value="0.8" /></label>
-          <label>Quality
+          <h3 data-i18n="settings.title">SETTINGS</h3>
+          <label><span data-i18n="settings.master">Master</span> <input type="range" id="vol-master" min="0" max="1" step="0.01" value="0.7" /></label>
+          <label><span data-i18n="settings.music">Music</span> <input type="range" id="vol-music" min="0" max="1" step="0.01" value="0.5" /></label>
+          <label><span data-i18n="settings.sfx">SFX</span> <input type="range" id="vol-sfx" min="0" max="1" step="0.01" value="0.8" /></label>
+          <label><span data-i18n="settings.quality">Quality</span>
             <select id="quality-select">
-              <option value="auto">Auto (recommandé)</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-              <option value="ultra">Potato (max FPS)</option>
+              <option value="auto" data-i18n="settings.qualityAuto">Auto (recommended)</option>
+              <option value="high" data-i18n="settings.qualityHigh">High</option>
+              <option value="medium" data-i18n="settings.qualityMedium">Medium</option>
+              <option value="low" data-i18n="settings.qualityLow">Low</option>
+              <option value="ultra" data-i18n="settings.qualityPotato">Potato (max FPS)</option>
             </select>
           </label>
-          <label>Theme
+          <label><span data-i18n="settings.theme">Theme</span>
             <select id="theme-select">
               <!-- Options injectées dynamiquement par Settings.ts depuis themes/index.ts -->
             </select>
           </label>
-          <label>Joystick sensitivity <input type="range" id="joy-sens" min="0.5" max="2" step="0.05" value="1" /></label>
+          <label><span data-i18n="settings.language">Language</span>
+            <select id="lang-select">
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label><span data-i18n="settings.joystick">Joystick sensitivity</span> <input type="range" id="joy-sens" min="0.5" max="2" step="0.05" value="1" /></label>
           <label class="settings-toggle">
             <input type="checkbox" id="nametags-toggle" />
-            <span>Show nametags</span>
+            <span data-i18n="settings.nametags">Show nametags</span>
           </label>
           <label class="settings-toggle">
             <input type="checkbox" id="vibration-toggle" />
-            <span>Vibration</span>
+            <span data-i18n="settings.vibration">Vibration</span>
           </label>
           <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
-            <button id="close-settings">CLOSE</button>
-            <button id="quit-match-btn" class="hidden" style="border-color: var(--pink); color: var(--pink);">QUIT MATCH</button>
+            <button id="close-settings" data-i18n="common.closeCaps">CLOSE</button>
+            <button id="quit-match-btn" class="hidden" style="border-color: var(--pink); color: var(--pink);" data-i18n="settings.quitMatch">QUIT MATCH</button>
           </div>
         </div>
       </div>

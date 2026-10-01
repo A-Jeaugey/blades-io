@@ -63,6 +63,7 @@ client/src/
 │                        KillFeed (fil des éliminations), personalBest
 │                        (record local), Onboarding (carte des contrôles,
 │                        indications uniques, page « How to play »)
+├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
 
@@ -246,6 +247,9 @@ export const THEMES: Record<string, Theme> = {
 ```
 
 C'est tout. Le sélecteur de Settings le détecte automatiquement (`listThemes()`).
+Pour le nom et l'accroche affichés, ajouter `theme.<id>.name` et
+`theme.<id>.tagline` aux dictionnaires de `client/src/i18n/` (à défaut,
+`displayName` et `tagline` du thème s'affichent dans toutes les langues).
 
 ### 4. Musique
 
@@ -281,6 +285,13 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 - **Commentaires** : français, expliquent le **pourquoi** (contraintes,
   invariants, bugs résolus). Pas le **quoi** (le code l'exprime déjà). Voir
   les fichiers existants pour le ton.
+- **Textes de l'interface** : jamais en dur. Clé dans `client/src/i18n/en.ts`
+  et `fr.ts` (le compilateur exige les mêmes clés dans les deux), `t("clé")`
+  en TS, `data-i18n` / `data-i18n-html` / `data-i18n-attr` dans le HTML. Un
+  module qui garde du texte déjà rendu s'abonne à `onLangChange()` : la
+  langue change à chaud, sans rechargement. Les pseudos et autres textes de
+  joueurs s'échappent avant d'entrer dans un `data-i18n-html` ou un `t()`
+  inséré en HTML.
 - **Couleurs** : ne **jamais** hardcoder un hex en dehors de `themes/*.ts`.
   Tous les modules de rendu lisent via `getActiveTheme()`. Si vous voyez un
   `0xff2ea8` en dehors de `themes/`, c'est un bug à corriger.

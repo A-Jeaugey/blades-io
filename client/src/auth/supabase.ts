@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient, Session } from "@supabase/supabase-js";
 import { wallet } from "./wallet";
 import { mergeServerInventory } from "../boutique/owned";
+import { t } from "../i18n";
 
 // Public profile resolved from /api/auth/me (joined username, fresher than
 // the JWT user_metadata which can be stale after a username change).
@@ -170,13 +171,13 @@ class AuthService {
   }
 
   async signInWithEmail(email: string, password: string): Promise<{ error: string | null }> {
-    if (!this.client) return { error: "auth_unavailable" };
+    if (!this.client) return { error: t("auth.errUnavailable") };
     const { error } = await this.client.auth.signInWithPassword({ email, password });
     return { error: error ? humanizeAuthError(error.message) : null };
   }
 
   async signUpWithEmail(email: string, password: string, username: string): Promise<{ error: string | null; needsVerification: boolean }> {
-    if (!this.client) return { error: "auth_unavailable", needsVerification: false };
+    if (!this.client) return { error: t("auth.errUnavailable"), needsVerification: false };
     const { data, error } = await this.client.auth.signUp({
       email,
       password,
@@ -194,7 +195,7 @@ class AuthService {
   }
 
   async signInWithProvider(provider: AuthProvider): Promise<{ error: string | null }> {
-    if (!this.client) return { error: "auth_unavailable" };
+    if (!this.client) return { error: t("auth.errUnavailable") };
     const { error } = await this.client.auth.signInWithOAuth({
       provider,
       options: { redirectTo: window.location.origin },
@@ -209,7 +210,7 @@ class AuthService {
 
   async setUsername(username: string): Promise<{ error: string | null }> {
     const token = this.getAccessToken();
-    if (!token) return { error: "not_signed_in" };
+    if (!token) return { error: t("auth.errSession") };
     try {
       const r = await fetch("/api/profile", {
         method: "POST",
@@ -234,33 +235,36 @@ class AuthService {
       }
       return { error: null };
     } catch {
-      return { error: "Network error" };
+      return { error: t("auth.errNetwork") };
     }
   }
 }
 
+// Messages de Supabase (en anglais) traduits pour l'interface ; le message
+// brut reste dans la console.
 function humanizeAuthError(msg: string): string {
   const lower = msg.toLowerCase();
-  if (lower.includes("invalid login")) return "Wrong email or password.";
-  if (lower.includes("user already registered")) return "An account already exists for this email.";
-  if (lower.includes("email not confirmed")) return "Email not confirmed yet — check your inbox.";
-  if (lower.includes("rate limit")) return "Too many attempts, try again in a minute.";
-  if (lower.includes("password")) return msg;
-  return msg || "Authentication failed.";
+  if (lower.includes("invalid login")) return t("auth.errWrongLogin");
+  if (lower.includes("user already registered")) return t("auth.errExists");
+  if (lower.includes("email not confirmed")) return t("auth.errNotConfirmed");
+  if (lower.includes("rate limit")) return t("auth.errRateLimit");
+  console.warn("[blade.io] auth:", msg);
+  if (lower.includes("password")) return t("auth.errPassword");
+  return t("auth.errFailed");
 }
 
 function humanizeProfileError(code: string): string {
   switch (code) {
     case "invalid_username":
-      return "Username must be 3–16 chars (letters, digits, _ . -).";
+      return t("auth.errUsername");
     case "username_taken":
-      return "Username already taken.";
+      return t("auth.errUsernameTaken");
     case "auth_unavailable":
-      return "Auth backend unavailable.";
+      return t("auth.errBackend");
     case "unauthorized":
-      return "Session expired, please sign in again.";
+      return t("auth.errSession");
     default:
-      return "Could not save username.";
+      return t("auth.errSaveUsername");
   }
 }
 

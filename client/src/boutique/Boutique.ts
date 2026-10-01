@@ -2,6 +2,7 @@ import { shopPrice } from "@bladeio/shared";
 import { getActiveTheme, listThemes, setActiveTheme, Theme } from "../themes";
 import { wallet } from "../auth/wallet";
 import { grantOwnership, isOwned, listOwned, subscribeOwnership } from "./owned";
+import { onLangChange, t, themeName, themeTagline } from "../i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boutique — UI controller pour la modal d'achat de cosmétiques.
@@ -61,6 +62,10 @@ export class Boutique {
     this.renderMaps();
     this.refreshBalance();
     this.refreshActiveThemeBadge();
+    onLangChange(() => {
+      this.renderMaps();
+      this.refreshActiveThemeBadge();
+    });
   }
 
   open(): void {
@@ -117,7 +122,7 @@ export class Boutique {
   }
 
   private refreshActiveThemeBadge(): void {
-    this.activeThemeEl.textContent = getActiveTheme().displayName;
+    this.activeThemeEl.textContent = themeName(getActiveTheme());
   }
 
   private refreshMapsCount(): void {
@@ -181,10 +186,10 @@ export class Boutique {
     stateTag.className = "boutique-card-state";
     if (equipped) {
       stateTag.classList.add("state-equipped");
-      stateTag.textContent = "ÉQUIPÉ";
+      stateTag.textContent = t("shop.equipped");
     } else if (owned) {
       stateTag.classList.add("state-owned");
-      stateTag.textContent = "POSSÉDÉ";
+      stateTag.textContent = t("shop.owned");
     } else {
       stateTag.classList.add("state-locked");
       stateTag.textContent = "🔒";
@@ -198,13 +203,14 @@ export class Boutique {
 
     const title = document.createElement("h3");
     title.className = "boutique-card-title";
-    title.textContent = theme.displayName;
+    title.textContent = themeName(theme);
     body.appendChild(title);
 
-    if (theme.tagline) {
+    const tagline = themeTagline(theme);
+    if (tagline) {
       const tag = document.createElement("p");
       tag.className = "boutique-card-tagline";
-      tag.textContent = theme.tagline;
+      tag.textContent = tagline;
       body.appendChild(tag);
     }
 
@@ -215,12 +221,12 @@ export class Boutique {
       const btn = document.createElement("button");
       btn.className = "boutique-btn equipped";
       btn.disabled = true;
-      btn.textContent = "ACTIF";
+      btn.textContent = t("shop.active");
       action.appendChild(btn);
     } else if (owned) {
       const btn = document.createElement("button");
       btn.className = "boutique-btn primary";
-      btn.textContent = "ÉQUIPER";
+      btn.textContent = t("shop.equip");
       btn.addEventListener("click", () => this.equip(theme.id));
       action.appendChild(btn);
     } else {
@@ -234,7 +240,7 @@ export class Boutique {
       const balance = wallet.get()?.balance ?? 0;
       const canAfford = balance >= price;
       btn.disabled = !canAfford || pending;
-      btn.textContent = pending ? "..." : (canAfford ? "ACHETER" : "FONDS INSUFFISANTS");
+      btn.textContent = pending ? "..." : t(canAfford ? "shop.buy" : "shop.notEnough");
       btn.addEventListener("click", () => this.buy(theme));
       action.appendChild(btn);
     }
@@ -249,7 +255,7 @@ export class Boutique {
     setActiveTheme(themeId);
     // Reload obligatoire — le thème est résolu une fois au boot par tous
     // les modules de rendu (cf. CLAUDE.md § Système de thèmes).
-    if (confirm("Équiper ce thème nécessite un reload. Recharger maintenant ?")) {
+    if (confirm(t("shop.equipReload"))) {
       window.location.reload();
     }
   }
@@ -283,18 +289,16 @@ export class Boutique {
           grantOwnership(theme.id);
           break;
         case "insufficient_funds":
-          alert(
-            "Fonds insuffisants — ton solde a peut-être changé entre temps.",
-          );
+          alert(t("shop.errFunds"));
           break;
         case "unauthorized":
-          alert("Connecte-toi pour acheter des thèmes.");
+          alert(t("shop.errAuth"));
           break;
         case "no_wallet":
-          alert("Ton wallet n'est pas initialisé. Recharge la page et réessaie.");
+          alert(t("shop.errWallet"));
           break;
         default:
-          alert(`Achat impossible : ${result.error ?? "erreur réseau"}`);
+          alert(t("shop.errGeneric", { error: result.error ?? t("shop.errNetwork") }));
       }
     }
 

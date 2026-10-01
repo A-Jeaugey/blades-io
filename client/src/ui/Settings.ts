@@ -2,6 +2,7 @@ import { QualityPreset, detectPreset, savePresetChoice } from "../quality";
 import { getActiveTheme, listThemes, setActiveTheme } from "../themes";
 import { isOwned } from "../boutique/owned";
 import { Haptics } from "../fx/Haptics";
+import { Lang, getLang, onLangChange, setLang, t, themeName } from "../i18n";
 
 export interface SettingsState {
   master: number;
@@ -89,7 +90,7 @@ export class SettingsPanel {
         this.emit();
         // Un reload est nécessaire parce que les matériaux/shaders sont
         // construits au boot selon le preset.
-        if (confirm("Le changement de qualité nécessite un reload. Recharger maintenant ?")) {
+        if (confirm(t("settings.qualityReload"))) {
           window.location.reload();
         }
       });
@@ -101,24 +102,34 @@ export class SettingsPanel {
     // construits au boot.
     const themeSel = document.getElementById("theme-select") as HTMLSelectElement | null;
     if (themeSel) {
-      themeSel.innerHTML = "";
       const activeId = getActiveTheme().id;
-      const ownedThemes = listThemes().filter((t) => isOwned(t.id));
-      for (const t of ownedThemes) {
-        const opt = document.createElement("option");
-        opt.value = t.id;
-        opt.textContent = t.displayName;
-        if (t.id === activeId) opt.selected = true;
-        themeSel.appendChild(opt);
-      }
+      const fillThemes = () => {
+        themeSel.innerHTML = "";
+        for (const theme of listThemes().filter((th) => isOwned(th.id))) {
+          const opt = document.createElement("option");
+          opt.value = theme.id;
+          opt.textContent = themeName(theme);
+          if (theme.id === activeId) opt.selected = true;
+          themeSel.appendChild(opt);
+        }
+      };
+      fillThemes();
+      onLangChange(fillThemes);
       themeSel.addEventListener("change", () => {
         const newId = themeSel.value;
         if (newId === activeId) return;
         setActiveTheme(newId);
-        if (confirm("Le changement de thème nécessite un reload. Recharger maintenant ?")) {
+        if (confirm(t("settings.themeReload"))) {
           window.location.reload();
         }
       });
+    }
+
+    // Langue (tâche 3.7) : appliquée tout de suite, sans rechargement.
+    const langSel = document.getElementById("lang-select") as HTMLSelectElement | null;
+    if (langSel) {
+      langSel.value = getLang();
+      langSel.addEventListener("change", () => setLang(langSel.value as Lang));
     }
 
     // Toggle "afficher les nametags". Pas de reload nécessaire — main.ts
