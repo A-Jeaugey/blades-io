@@ -24,7 +24,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Clash impact** | Each clash knocks both players back (capped at a tier-2 knockback, applied in full after the freeze) and freezes their movement for 50–100 ms by tier; orbits keep spinning, and after a freeze a player gets 250 ms before the next one, so a fight never locks you in place |
 | **Power-ups** | Speed, Spin, Magnet, Shield, +Blades — duration scales with rarity |
 | **Loot crates** | Shoot or orbit them to crack them open and dump weighted-rare loot |
-| **Glitch bushes** | Step in to vanish from other players' screens and minimaps |
+| **Glitch bushes** | Step in to vanish from other players' screens, minimaps and from bots. Enforced by the server: nobody receives your position until your orbits could touch (then you see each other, so nobody fights invisible blades) |
 | **Safe spawn** | You (re)spawn within 150 u of the center, away from other players (further from bigger ones), where loose blades lie. For 10 s, bots leave you alone: they don't chase you, throw at you or farm next to you. Over the next 40 s they only go after you up close (15 u, growing back to their usual 80 u). Both end as soon as you throw or your blades hit someone (a bot hunting you doesn't count). The first 2.5 s are also invulnerable |
 | **Border** | Touching the kill zone is instant death — no clamp. Your outer blades are shredded first. The last 25 u are announced by a red vignette, an alarm and the arena edge on the minimap |
 | **Score** | kills × 15 + peak blade count of the life + 1 per 10 s alive + crates × 3 + power-ups × 2. In public rooms, it is credited as trophées at the end of each life (death or leaving) |
@@ -55,6 +55,8 @@ client/   Vite + Three.js + Colyseus.js
 ```
 
 The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends one input every 1/60 s (`dx, dy, boost, throw`, plus the aim direction of a throw); the server applies each input as one movement step, in order, and acknowledges the last one applied. The local player is predicted with input replay: on each server state, the client re-applies its unacknowledged inputs with the same step function as the server (`shared/src/movement.ts`), so it reacts instantly at any latency and is only corrected by what it cannot foresee (a clash knockback, a push from another player). Remote entities are rendered 80 ms in the past (interpolation between snapshots). Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
+
+Each client only receives what is near it (interest management with Colyseus `StateView`): players and blades within the ground area its screen actually shows (the client reports it; 50 u on a 16:9 screen, up to ~133 u for a phone in portrait), never a player hidden in a bush unless their orbits could touch. Combat events go only to the clients that can see them. The leaderboard and the minimap come from a 2 Hz room summary that leaves hidden players out. About 20 KB/s per client in a full room (95 KB/s before), and a modified client cannot see through bushes.
 
 ### Performance highlights
 
@@ -98,6 +100,7 @@ npm run build              # full prod build (shared + server + client)
 npm start                  # run the prod server (serves the built client)
 npm test                   # server system tests (node:test, simulated clock)
 node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated seconds
+BENCH_VIEWERS=60 node tools/bench-server.js 60 120   # same with 60 connected clients (per-client views)
 node tools/bench-survival.js        # newcomer survival against bots (after npm test)
 node tools/bench-survival.js first  # time before a newcomer's first death (random walker)
 ```
@@ -127,7 +130,7 @@ New players get a controls card (matching their device) when they first enter a 
 - Boost drains 1 blade every 0.5 s — costly and worth saving for closes/escapes.
 - Throwing eats your **outermost** blade, so a Legendary on the outside ring is a 3-pierce missile.
 - Shield power-up halves incoming blade damage; combine with Spin for an oppressive wall.
-- Bushes hide you AND your blades on the map for opponents — perfect for ambushes.
+- Bushes hide you AND your blades from opponents and bots until they get within orbit range — perfect for ambushes.
 
 ---
 

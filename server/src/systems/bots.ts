@@ -10,10 +10,12 @@ import {
   THROW_PROJECTILE_MAX_RANGE,
   THROW_PROJECTILE_SPEED,
   WALL_KILL_THICKNESS,
+  isHiddenFrom,
   outerOrbitRadius,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
+import { reachOf } from "./interest";
 
 // Rayon de sécurité : marge confortable pour que ni le corps, ni les lames
 // orbitantes ne touchent la zone de mort.
@@ -276,6 +278,13 @@ export class BotController {
     return false;
   }
 
+  // Un bot ne voit pas un joueur caché dans un buisson, avec la même règle
+  // que les clients (tâche 2.4) : ni fuite, ni poursuite, ni lancer.
+  // Avant, les buissons ne cachaient rien aux bots.
+  private hiddenFrom(bot: Player, other: Player): boolean {
+    return isHiddenFrom(bot.x, bot.y, reachOf(bot), other.x, other.y, reachOf(other));
+  }
+
   // Ce bot poursuit-il ce joueur (dernière décision) ? Un clash entre eux
   // est alors son attaque, pas celle du joueur.
   isChasing(botId: string, targetId: string): boolean {
@@ -362,6 +371,7 @@ export class BotController {
     arena.players.forEach((other) => {
       if (other.id === bot.id || !other.alive) return;
       if (other.bladeCount <= bot.bladeCount) return;
+      if (this.hiddenFrom(bot, other)) return;
 
       const dx = bot.x - other.x;
       const dy = bot.y - other.y;
@@ -386,6 +396,7 @@ export class BotController {
         if (perpDx !== 0 || perpDy !== 0) return;
         if (other.id === bot.id || !other.alive) return;
         if (other.bladeCount <= bot.bladeCount) return;
+        if (this.hiddenFrom(bot, other)) return;
         const dx = bot.x - other.x;
         const dy = bot.y - other.y;
         const d = Math.hypot(dx, dy);
@@ -448,6 +459,7 @@ export class BotController {
       if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
       const radius = this.chaseRadiusFor(other, nowMs);
       if (radius <= 0) return;
+      if (this.hiddenFrom(bot, other)) return;
 
       const dx = other.x - bot.x;
       const dy = other.y - bot.y;
@@ -715,7 +727,7 @@ export class BotController {
       let best = Infinity;
       arena.players.forEach((other) => {
         if (other.id === bot.id || !other.alive || other.bladeCount <= bot.bladeCount) return;
-        if (other.graceUntil > now) return;
+        if (other.graceUntil > now || this.hiddenFrom(bot, other)) return;
         const d = Math.hypot(other.x - bot.x, other.y - bot.y);
         if (d < best) { best = d; pursuer = other; }
       });
@@ -771,6 +783,7 @@ export class BotController {
     maxDist: number,
   ): { x: number; y: number } | null {
     if (!target.alive || target.spawnProtectionUntil > now || target.graceUntil > now) return null;
+    if (this.hiddenFrom(bot, target)) return null;
     const d = Math.hypot(target.x - bot.x, target.y - bot.y);
     if (d < minDist || d > maxDist) return null;
     const v = this.getVelocity(target.id);

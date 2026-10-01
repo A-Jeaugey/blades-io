@@ -24,6 +24,11 @@ export class TestRoom {
     room.broadcast = (type: string, message: any) => {
       this.events.push({ type, message });
     };
+    // Évènements ciblés (zones d'intérêt) : capturés comme les autres,
+    // quel que soit leur destinataire.
+    room.sendScoped = (type: string, message: any) => {
+      this.events.push({ type, message });
+    };
     room.onCreate({ bots: false, ...options });
     clearInterval(room._simulationInterval);
     room.patchRate = null;

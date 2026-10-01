@@ -244,6 +244,21 @@ export const SPAWN_LOOT_RADIUS = 25;
 export const SPAWN_GRACE_MS = 10000;
 export const SPAWN_GRACE_RAMP_MS = 40000;
 export const SPAWN_GRACE_CHASE_RADIUS = 15;
+// --- Zone d'intérêt (tâche 2.4) ---
+// Chaque client ne reçoit que les joueurs et les lames proches de lui.
+// Rayon : distance au point du sol visible le plus éloigné de l'écran,
+// annoncée par le client (50 u en 16:9 au plus près, ~133 u pour un
+// téléphone en portrait au recul maximal), bornée ici, plus une marge pour
+// que rien n'apparaisse au bord de l'écran. Valeur par défaut jusqu'à la
+// première annonce.
+export const VIEW_RADIUS_MIN = 50;
+export const VIEW_RADIUS_MAX = 140;
+export const VIEW_RADIUS_DEFAULT = 100;
+export const VIEW_RADIUS_MARGIN = 8;
+// Résumé de la room (classement, minimap) envoyé à tous, sans les joueurs
+// cachés dans les buissons.
+export const SUMMARY_INTERVAL_MS = 500;
+
 // Rayon de ramassage : généreux pour que ça "accroche" dès qu'on frôle.
 export const PICKUP_RADIUS = 2.8;
 // Attraction magnétique : au-delà du ramassage direct, la lame se dirige

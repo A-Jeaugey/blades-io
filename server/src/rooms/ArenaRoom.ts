@@ -1,4 +1,5 @@
 import { Room, Client } from "@colyseus/core";
+import { Encoder } from "@colyseus/schema";
 import {
   BladeRarity,
   BOT_MAX_TOTAL,
@@ -21,6 +22,10 @@ import {
   SPAWN_GRACE_MS,
   SPAWN_GRACE_RAMP_MS,
   SPAWN_PROTECTION_MS,
+  SUMMARY_INTERVAL_MS,
+  RoomSummary,
+  ViewMessage,
+  isInBush,
   GROUND_BLADE_TTL_MS,
   INITIAL_BLADE_COUNT,
   MAP_RADIUS,
@@ -60,6 +65,7 @@ import { applyWallDamage } from "../systems/wallDamage";
 import { PickupSystem, attachBladeToPlayer } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
 import { pickSpawnPoint, randomSpawnPoint } from "../systems/spawnPoint";
+import { EventScope, InterestManager } from "../systems/interest";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
 import { PowerUpSystem } from "../systems/powerups";
@@ -86,6 +92,15 @@ function sanitizeName(raw: string): string {
   if (cleaned.length < NAME_MIN_LENGTH) return "Anon" + Math.floor(Math.random() * 1000);
   return cleaned;
 }
+
+// Encodage des patchs par client (zones d'intérêt) : Colyseus 0.16 écrit
+// les vues de tous les clients à la suite dans un seul tampon partagé. Si
+// leur somme le dépasse, @colyseus/schema 3.0 réalloue un autre tampon mais
+// renvoie une tranche de l'ancien : patchs tronqués pour les clients
+// suivants (mesuré au banc avec 60 clients et le tampon par défaut de 8 Ko).
+// D'où un tampon dimensionné pour une room pleine, respawns simultanés
+// compris (une vue complète pèse moins de 20 Ko).
+Encoder.BUFFER_SIZE = 1024 * 1024;
 
 // Lames d'un joueur au début d'un échange : en orbite, plus celles perdues
 // en clash dans les FIGHT_WINDOW_MS précédentes.
@@ -118,6 +133,9 @@ export class ArenaRoom extends Room<ArenaState> {
   // Clients en mode debug hitbox (client lancé avec ?debug=hitbox) : ils
   // reçoivent chaque tick la position serveur des lames en orbite proches.
   private debugOrbitClients = new Set<string>();
+  // Zones d'intérêt des clients (tâche 2.4) et prochain résumé de la room.
+  private interest = new InterestManager();
+  private nextSummaryAt = 0;
 
   onCreate(options: { code?: string; bots?: boolean } = {}): void {
     this.roomCode = typeof options.code === "string" ? options.code.toUpperCase() : "";
@@ -150,6 +168,7 @@ export class ArenaRoom extends Room<ArenaState> {
     });
     this.onMessage<RespawnMessage>("respawn", (client, msg) => this.handleRespawn(client, msg));
     this.onMessage<ChatMessage>("chat", (client, msg) => this.handleChat(client, msg));
+    this.onMessage<ViewMessage>("view", (client, msg) => this.interest.setRadius(client.sessionId, msg?.r));
     // Ping affiché dans le HUD (tâche 3.4) : le numéro reçu est renvoyé tel
     // quel, le client mesure l'aller-retour.
     this.onMessage("ping", (client, n) => {
@@ -251,6 +270,7 @@ export class ArenaRoom extends Room<ArenaState> {
     this.startGrace(p);
     this.state.players.set(client.sessionId, p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+    this.interest.addViewer(client, p);
   }
 
   private spawnInitialBladeFor(p: Player): void {
@@ -291,7 +311,9 @@ export class ArenaRoom extends Room<ArenaState> {
     p.aimY = 0;
     p.inputQueue.length = 0;
     try {
-      await this.allowReconnection(client, 20);
+      const back = await this.allowReconnection(client, 20);
+      const again = this.state.players.get(back.sessionId);
+      if (again) this.interest.reattach(back, again);
     } catch {
       const stale = this.state.players.get(client.sessionId);
       if (stale && stale.alive) this.persistMatchIfAuthed(stale);
@@ -301,6 +323,7 @@ export class ArenaRoom extends Room<ArenaState> {
 
   private cleanupPlayer(sessionId: string): void {
     this.debugOrbitClients.delete(sessionId);
+    this.interest.removeViewer(sessionId);
     const toRemove: string[] = [];
     this.state.blades.forEach((b) => {
       if (b.ownerId === sessionId) toRemove.push(b.id);
@@ -480,7 +503,7 @@ export class ArenaRoom extends Room<ArenaState> {
       if (next > p.tier) {
         p.tier = next;
         const ev: TierUpEvent = { playerId: p.id, tier: next, x: p.x, y: p.y };
-        this.emit("tierUp", ev);
+        this.emit("tierUp", ev, { players: [p.id] });
       } else if (next < p.tier) {
         p.tier = next;
       }
@@ -509,7 +532,7 @@ export class ArenaRoom extends Room<ArenaState> {
       onBladeDestroyed: (blade) => this.handleBladeDestroyed(blade),
     });
     this.pickup.update(this.state, (player, blade) => {
-      this.emit("pickup", { playerId: player.id, rarity: blade.rarity });
+      this.emit("pickup", { playerId: player.id, rarity: blade.rarity }, { to: [player.id] });
     });
     resolveCollisions(this.state, this.orbitCache, {
       onBladeDestroyed: (blade, by) => this.handleBladeDestroyed(blade, by),
@@ -529,7 +552,7 @@ export class ArenaRoom extends Room<ArenaState> {
           tier: info.tier,
           destroyed: info.destroyed,
         };
-        this.emit("clash", ev);
+        this.emit("clash", ev, { players: [info.aOwner.id, info.bOwner.id] });
       },
     }, this.clashCooldowns);
     // Collisions des projectiles : APRÈS resolveCollisions pour que les
@@ -544,11 +567,46 @@ export class ArenaRoom extends Room<ArenaState> {
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
     this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
     this.bots.cleanupDead(this.state);
+    // Zones d'intérêt : après toute la simulation du tick, avant le patch,
+    // un tick sur deux (30 Hz). En 33 ms, rien ne parcourt la marge de la
+    // zone (8 u) ni celle des buissons (3 u) ; le calcul coûtait ~2 ms par
+    // tick à 60 clients.
+    if (this.state.tick % 2 === 0) this.interest.update(this.state);
+    const now = Date.now();
+    if (now >= this.nextSummaryAt) {
+      this.nextSummaryAt = now + SUMMARY_INTERVAL_MS;
+      this.broadcast("summary", this.buildSummary());
+    }
   }
 
-  // Diffuse un évènement de jeu estampillé du tick courant (cf. TickStamped).
-  private emit(type: string, payload: object): void {
-    this.broadcast(type, { ...payload, tick: this.state.tick });
+  // Ce que la zone d'intérêt ne donne plus : classement complet, joueurs de
+  // la minimap (hors buissons), lames légendaires au sol.
+  private buildSummary(): RoomSummary {
+    const summary: RoomSummary = { board: [], map: [], legendaries: [] };
+    this.state.players.forEach((p) => {
+      if (p.alive && !isInBush(p.x, p.y)) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
+      summary.board.push([p.id, p.name, p.score, p.bladeCount]);
+    });
+    this.state.blades.forEach((b) => {
+      if (!b.ownerId && !b.isProjectile && b.rarity === BladeRarity.Legendary) {
+        summary.legendaries.push([Math.round(b.x), Math.round(b.y)]);
+      }
+    });
+    return summary;
+  }
+
+  // Évènement de jeu estampillé du tick courant (cf. TickStamped). Avec une
+  // portée, il ne part qu'aux clients concernés (cf. EventScope) : un client
+  // ne reçoit pas la position d'un joueur qu'il ne voit pas.
+  private emit(type: string, payload: object, scope?: EventScope): void {
+    const message = { ...payload, tick: this.state.tick };
+    if (scope) this.sendScoped(type, message, scope);
+    else this.broadcast(type, message);
+  }
+
+  // Remplacé par les tests (TestRoom), qui capturent tous les évènements.
+  private sendScoped(type: string, message: object, scope: EventScope): void {
+    this.interest.send(type, message, scope);
   }
 
   // Mode debug hitbox : positions et hitbox des lames en orbite, telles que
@@ -565,6 +623,9 @@ export class ArenaRoom extends Room<ArenaState> {
       const inRing = new Map<string, number>();
       this.state.players.forEach((p) => {
         if (!p.alive) return;
+        // Seulement les joueurs que ce client voit : sinon le mode debug,
+        // que tout client peut demander, trahirait les joueurs cachés.
+        if (p.id !== sessionId && !this.interest.sees(sessionId, p.id)) return;
         const dx = p.x - me.x;
         const dy = p.y - me.y;
         if (dx * dx + dy * dy <= radiusSq) owners[p.id] = [p.x, p.y];
@@ -598,9 +659,10 @@ export class ArenaRoom extends Room<ArenaState> {
     return {
       onBladeThrown: (ev: BladeThrownEvent) => {
         this.endGrace(this.state.players.get(ev.thrownBy));
-        this.emit("bladeThrown", ev);
+        this.emit("bladeThrown", ev, { players: [ev.thrownBy], blade: ev.bladeId });
       },
-      onProjectileImpact: (ev: ProjectileImpactEvent) => this.emit("projectileImpact", ev),
+      onProjectileImpact: (ev: ProjectileImpactEvent) =>
+        this.emit("projectileImpact", ev, { blade: ev.bladeId, at: { x: ev.x, y: ev.y } }),
       onPlayerKilled: (victim: Player, killer: Player | null) =>
         this.killPlayer(victim, killer, "throw"),
       onCrateHit: (crate: Crate, attacker: Player | null) =>
@@ -620,11 +682,12 @@ export class ArenaRoom extends Room<ArenaState> {
       rarity: pu.rarity,
       x: pu.x,
       y: pu.y,
-    });
+    }, { to: [player.id], players: [player.id] });
   }
 
-  private handleCrateHit(crate: Crate, _attacker: Player | null): void {
-    this.emit("crateHit", { crateId: crate.id, x: crate.x, y: crate.y, hp: crate.hp });
+  private handleCrateHit(crate: Crate, attacker: Player | null): void {
+    this.emit("crateHit", { crateId: crate.id, x: crate.x, y: crate.y, hp: crate.hp },
+      { to: [attacker?.id], at: { x: crate.x, y: crate.y } });
   }
 
   private handleCrateDestroyed(crate: Crate, attacker: Player | null): void {
@@ -633,8 +696,10 @@ export class ArenaRoom extends Room<ArenaState> {
       updateScore(attacker);
     }
     const ev: CrateDestroyedEvent = { crateId: crate.id, x: crate.x, y: crate.y };
-    if (attacker) ev.byId = attacker.id;
-    this.emit("crateDestroyed", ev);
+    // L'auteur n'est pas nommé s'il est caché dans un buisson : l'évènement
+    // part à tous les clients proches de la caisse.
+    if (attacker && !isInBush(attacker.x, attacker.y)) ev.byId = attacker.id;
+    this.emit("crateDestroyed", ev, { to: [attacker?.id], at: { x: crate.x, y: crate.y } });
     this.crates.destroyCrate(this.state, crate);
   }
 
@@ -658,7 +723,7 @@ export class ArenaRoom extends Room<ArenaState> {
       bladeId: blade.id, x, y, rarity: blade.rarity, ownerId: blade.ownerId,
     };
     if (by) ev.byId = by.id;
-    this.emit("bladeDestroyed", ev);
+    this.emit("bladeDestroyed", ev, { blade: blade.id, to: [blade.ownerId] });
     const ownerId = blade.ownerId;
     const ring = blade.ringIndex;
     if (ownerId) {

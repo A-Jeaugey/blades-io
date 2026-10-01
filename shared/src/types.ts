@@ -181,3 +181,21 @@ export type RoomMessageType =
   | "pong";
 
 export { BladeRarity };
+
+// Client → serveur : étendue de sol visible à l'écran autour du joueur (u),
+// qui fixe le rayon de sa zone d'intérêt (tâche 2.4).
+export interface ViewMessage {
+  r: number;
+}
+
+// Serveur → tous, toutes les SUMMARY_INTERVAL_MS : ce que la zone d'intérêt
+// ne donne plus. Tableaux compacts.
+export interface RoomSummary {
+  // Classement : [id, nom, score, lames], tous les joueurs (vivants ou non).
+  board: Array<[string, string, number, number]>;
+  // Minimap : [indice dans board, x, y] des joueurs vivants hors buissons,
+  // positions arrondies au mètre.
+  map: Array<[number, number, number]>;
+  // Minimap : [x, y] des lames légendaires au sol.
+  legendaries: Array<[number, number]>;
+}

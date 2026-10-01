@@ -74,9 +74,7 @@ function generateBushes(): Bush[] {
 
 export const BUSHES: Bush[] = generateBushes();
 
-// Détecte si un point est dans un buisson. Utilisé côté client pour cacher
-// les joueurs (et leurs lames) qui s'y trouvent. Côté serveur, pourrait
-// servir à des règles d'AI plus tard. Pour l'instant : purement visuel.
+// Détecte si un point est dans un buisson.
 export function isInBush(x: number, y: number): boolean {
   for (let i = 0; i < BUSHES.length; i++) {
     const b = BUSHES[i];
@@ -85,6 +83,30 @@ export function isInBush(x: number, y: number): boolean {
     if (dx * dx + dy * dy < b.radius * b.radius) return true;
   }
   return false;
+}
+
+// Marge au-delà du contact des orbites en deçà de laquelle un joueur caché
+// est vu quand même : on ne se bat pas contre des lames invisibles.
+export const BUSH_REVEAL_MARGIN = 3;
+
+// Un joueur dans un buisson est caché à un observateur (joueur ou bot)
+// tant que leurs orbites ne peuvent pas se toucher (portées = rayon de
+// l'orbite extérieure + hitbox d'une lame). Appliqué par le serveur (tâche
+// 2.4) : ni les clients ni les bots ne reçoivent ou n'utilisent la
+// position d'un joueur caché.
+export function isHiddenFrom(
+  observerX: number,
+  observerY: number,
+  observerReach: number,
+  targetX: number,
+  targetY: number,
+  targetReach: number,
+): boolean {
+  if (!isInBush(targetX, targetY)) return false;
+  const reveal = observerReach + targetReach + BUSH_REVEAL_MARGIN;
+  const dx = targetX - observerX;
+  const dy = targetY - observerY;
+  return dx * dx + dy * dy > reveal * reveal;
 }
 
 // Les positions pour le rendu non-collidable (cubes flottants, pads).

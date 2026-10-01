@@ -77,7 +77,6 @@ export class NametagOverlay {
     localId: string,
     isAlive: (id: string) => boolean,
     nameOf: (id: string) => string,
-    isHidden: (id: string) => boolean,
     bladesOf: (id: string) => number,
     camera: THREE.PerspectiveCamera,
     width: number,
@@ -95,7 +94,7 @@ export class NametagOverlay {
     players.forEach((view, id) => {
       // Skip self.
       if (id === localId) return;
-      if (!isAlive(id) || isHidden(id)) return;
+      if (!isAlive(id)) return;
 
       stillPresent.add(id);
 

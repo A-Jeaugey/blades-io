@@ -28,6 +28,8 @@ import {
   CrateHitEvent,
   PickupEvent,
   PlayerKilledEvent,
+  RoomSummary,
+  VIEW_RADIUS_MAX,
   ProjectileImpactEvent,
   POWERUP_DURATION,
   PowerUpPickupEvent,
@@ -238,6 +240,12 @@ class Game {
   // Solde du portefeuille invité, lu à l'entrée en jeu : total affiché à la
   // mort d'un invité.
   private guestBalance: number | null = null;
+  // Résumé de la room (classement, minimap), reçu toutes les 500 ms : la
+  // zone d'intérêt ne nous envoie que les joueurs proches (tâche 2.4).
+  private summary: RoomSummary | null = null;
+  // Étendue de sol visible annoncée au serveur (rayon de notre zone).
+  private sentViewRadius = 0;
+  private nextViewCheckAt = 0;
   private onboarding!: Onboarding;
   // Intensité de l'alerte de bordure à la dernière frame (0..1).
   private borderIntensity = 0;
@@ -344,6 +352,8 @@ class Game {
         // HUD (tâche 3.4) : ligne du fil des éliminations, ping mesuré.
         feed: (e: KillFeedEntry) => this.killFeed.push(e, performance.now()),
         ping: () => this.pingMs,
+        // Zone d'intérêt (tâche 2.4) : résumé de la room (minimap, classement).
+        summary: () => this.summary,
       };
     }
     this.settings = new SettingsPanel();
@@ -519,6 +529,10 @@ class Game {
     this.killFeed.clear();
     this.pendingBlades.clear();
     this.renderAlive.clear();
+    this.summary = null;
+    this.sentViewRadius = 0;
+    this.nextViewCheckAt = 0;
+    room.onMessage("summary", (summary: RoomSummary) => { this.summary = summary; });
     this.pingMs = null;
     this.pingSamples.length = 0;
     this.pingSentAt.clear();
@@ -890,11 +904,8 @@ class Game {
       const spinPhase = p?.spinPhase ?? 0;
       const tier = p?.tier ?? 0;
       const theta = this.orbitThetaFor(id, this.renderTick);
-      // Joueur dans un buisson ET pas moi → invisible pour mon client.
-      // Le local player se voit toujours (sinon impossible à jouer).
-      const hidden = id !== this.myId && isInBush(v.renderX, v.renderY);
       const bladeCount = p?.bladeCount ?? 0;
-      return { x: v.renderX, y: v.renderY, spinPhase, theta, tier, hidden, bladeCount };
+      return { x: v.renderX, y: v.renderY, spinPhase, theta, tier, bladeCount };
     },
   };
 
@@ -1094,13 +1105,14 @@ class Game {
   }
 
   // Caméra sur le tueur : elle glisse vers lui puis le suit, tant qu'il
-  // est en vie et visible (dans un buisson, la caméra trahirait sa
-  // cachette : elle s'arrête là où elle est).
+  // est en vie et que le serveur nous l'envoie (zone d'intérêt autour du
+  // lieu de la mort, buissons : cf. tâche 2.4) ; sinon elle reste où elle
+  // est.
   private updateKillCam(now: number, dt: number): void {
     const kc = this.killCam!;
     const killerState = kc.killerId ? this.room?.state?.players?.get(kc.killerId) : undefined;
     const killerView = kc.killerId ? this.players.get(kc.killerId) : undefined;
-    if (killerState?.alive && killerView && !isInBush(killerView.renderX, killerView.renderY)) {
+    if (killerState?.alive && killerView) {
       const k = 1 - Math.exp(-dt / KILLCAM_PAN_TAU);
       kc.x += (killerView.renderX - kc.x) * k;
       kc.y += (killerView.renderY - kc.y) * k;
@@ -1145,14 +1157,32 @@ class Game {
   }
 
   private computeMyRank(): number {
-    if (!this.room?.state?.players) return 0;
-    const entries: Array<{ id: string; score: number }> = [];
-    this.room.state.players.forEach((p: any, id: string) => {
-      entries.push({ id, score: p.score });
-    });
+    const entries = this.boardEntries();
     entries.sort((a, b) => b.score - a.score);
     const idx = entries.findIndex((e) => e.id === this.myId);
     return idx >= 0 ? idx + 1 : entries.length;
+  }
+
+  // Classement de toute la room : résumé du serveur (2 Hz), avec mes
+  // propres valeurs prises dans l'état, plus frais. Avant le premier
+  // résumé : les joueurs reçus (ceux de ma zone).
+  private boardEntries(): Array<{ id: string; name: string; score: number; bladeCount: number }> {
+    const entries: Array<{ id: string; name: string; score: number; bladeCount: number }> = [];
+    const me = this.room?.state?.players?.get(this.myId);
+    if (this.summary) {
+      for (const [id, name, score, bladeCount] of this.summary.board) {
+        if (id === this.myId && me) entries.push({ id, name: me.name, score: me.score, bladeCount: me.bladeCount });
+        else entries.push({ id, name, score, bladeCount });
+      }
+      if (me && !entries.some((e) => e.id === this.myId)) {
+        entries.push({ id: this.myId, name: me.name, score: me.score, bladeCount: me.bladeCount });
+      }
+      return entries;
+    }
+    this.room?.state?.players?.forEach((p: any, id: string) => {
+      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount });
+    });
+    return entries;
   }
 
   private respawn(): void {
@@ -1351,6 +1381,17 @@ class Game {
     return me.bladeCount > 0 && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
   }
 
+  // Zone d'intérêt (tâche 2.4) : le serveur ne nous envoie que ce qui est
+  // à moins de ce rayon. On lui annonce l'étendue de sol réellement visible
+  // (format d'écran, recul selon l'orbite), à 4 u près.
+  private announceView(now: number): void {
+    this.nextViewCheckAt = now + 500;
+    const r = Math.min(VIEW_RADIUS_MAX, Math.ceil(this.camera.visibleExtent()));
+    if (Math.abs(r - this.sentViewRadius) < 4) return;
+    this.sentViewRadius = r;
+    this.room?.send("view", { r });
+  }
+
   // Ping toutes les 2 s ; une réponse perdue est oubliée au bout de 10 s.
   private sendPing(now: number): void {
     this.nextPingAt = now + 2000;
@@ -1375,7 +1416,7 @@ class Game {
       // Un ennemi visible à portée utile de lancer.
       let inRange = false;
       state.players.forEach((p: any, id: string) => {
-        if (inRange || id === this.myId || !p.alive || isInBush(p.x, p.y)) return;
+        if (inRange || id === this.myId || !p.alive) return;
         const d = Math.hypot(p.x - view.renderX, p.y - view.renderY);
         if (d > 8 && d < THROW_PROJECTILE_MAX_RANGE - 2) inRange = true;
       });
@@ -1468,28 +1509,26 @@ class Game {
     const now = performance.now();
     if (now - this.lastHudUpdate < 100) return;
     this.lastHudUpdate = now;
-    const others: Array<{ id: string; x: number; y: number; isMe: boolean }> = [];
-    const entries: Array<{ id: string; name: string; score: number; bladeCount: number }> = [];
-    this.room.state.players.forEach((p: any, id: string) => {
-      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount });
-      // Joueurs dans un buisson : pas affichés sur la minimap pour les autres.
-      // (Le buisson cache aussi sur la carte, comme demandé.)
-      if (id !== this.myId && p.alive && !isInBush(p.x, p.y)) {
-        others.push({ id, x: p.x, y: p.y, isMe: false });
-      }
-    });
+    const entries = this.boardEntries();
     this.leaderboard.update(entries, this.myId, now);
     // Rank badge live
     const sorted = [...entries].sort((a, b) => b.score - a.score);
     this.topPlayerId = sorted.length > 0 ? sorted[0].id : null;
     const myRankIdx = sorted.findIndex((e) => e.id === this.myId);
     this.hud.setRank(myRankIdx >= 0 ? myRankIdx + 1 : entries.length);
+    // Minimap : joueurs et légendaires du résumé de la room (le serveur
+    // n'envoie plus les entités lointaines ; les joueurs cachés dans un
+    // buisson n'y figurent pas).
+    const others: Array<{ id: string; x: number; y: number; isMe: boolean }> = [];
     const legendaries: Array<{ x: number; y: number; legendary: boolean }> = [];
-    this.room.state.blades.forEach((b: any) => {
-      if (!b.ownerId && b.rarity === BladeRarity.Legendary) {
-        legendaries.push({ x: b.x, y: b.y, legendary: true });
+    const summary = this.summary;
+    if (summary) {
+      for (const [i, x, y] of summary.map) {
+        const id = summary.board[i]?.[0];
+        if (id && id !== this.myId) others.push({ id, x, y, isMe: false });
       }
-    });
+      for (const [x, y] of summary.legendaries) legendaries.push({ x, y, legendary: true });
+    }
     others.sort((a, b) => {
       const da = (a.x - me.x) ** 2 + (a.y - me.y) ** 2;
       const db = (b.x - me.x) ** 2 + (b.y - me.y) ** 2;
@@ -1630,16 +1669,12 @@ class Game {
         v.setProtected(!!ps && ps.spawnProtectionUntil > (id === this.myId ? serverNowMs : serverRenderMs));
         v.animate(dt);
         v.updateTrail(dt);
-        // Hide remote players inside bushes. Le local player reste toujours
-        // visible — sinon il ne peut plus se piloter.
+        // Buissons : le serveur ne nous envoie un joueur caché qu'à portée
+        // de contact des orbites (tâche 2.4) ; reçu, il est affiché.
         const isLocal = id === this.myId;
-        const inBush = !isLocal && isInBush(v.renderX, v.renderY);
-        // Le joueur local est toujours visible à moins d'être mort.
-        // Les autres sont cachés s'ils sont dans un buisson ou morts.
         const p = this.room?.state?.players?.get(id);
-        const aliveShown = this.renderAlive.get(id) ?? !!p?.alive;
-        const shouldBeVisible = aliveShown ? !inBush : false;
-        
+        const shouldBeVisible = this.renderAlive.get(id) ?? !!p?.alive;
+
         if (v.root.visible !== shouldBeVisible) v.root.visible = shouldBeVisible;
         if (v.trail.visible !== (shouldBeVisible && isLocal)) v.trail.visible = shouldBeVisible && isLocal;
       }
@@ -1683,6 +1718,7 @@ class Game {
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
       this.killFeed.update(now);
       if (this.room && now >= this.nextPingAt) this.sendPing(now);
+      if (this.room && now >= this.nextViewCheckAt) this.announceView(now);
       if (now >= this.nextHintCheckAt) {
         this.nextHintCheckAt = now + 250;
         this.checkOnboardingHints(serverNowMs);
@@ -1703,10 +1739,6 @@ class Game {
         this.myId,
         (id) => this.renderAlive.get(id) ?? !!this.room?.state?.players?.get(id)?.alive,
         (id) => this.room?.state?.players?.get(id)?.name ?? "?",
-        (id) => {
-          const p = this.room?.state?.players?.get(id);
-          return !!p && isInBush(p.x, p.y);
-        },
         (id) => this.room?.state?.players?.get(id)?.bladeCount ?? 0,
         this.sceneStack.camera,
         window.innerWidth,
@@ -1726,18 +1758,14 @@ class Game {
         const topView = this.players.get(this.topPlayerId);
         const topState = this.room.state.players.get(this.topPlayerId);
         if (topView && topState && topState.alive) {
-          const isMe = this.topPlayerId === this.myId;
-          const inBush = !isMe && isInBush(topView.renderX, topView.renderY);
-          if (!inBush) {
-            const vec = new THREE.Vector3(topView.renderX, 3.5, topView.renderY);
-            vec.project(this.sceneStack.camera);
-            if (vec.z < 1) { // devant la caméra
-              const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
-              const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
-              crownEl.style.left = `${x}px`;
-              crownEl.style.top = `${y}px`;
-              showCrown = true;
-            }
+          const vec = new THREE.Vector3(topView.renderX, 3.5, topView.renderY);
+          vec.project(this.sceneStack.camera);
+          if (vec.z < 1) { // devant la caméra
+            const x = (vec.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vec.y * 0.5) + 0.5) * window.innerHeight;
+            crownEl.style.left = `${x}px`;
+            crownEl.style.top = `${y}px`;
+            showCrown = true;
           }
         }
       }

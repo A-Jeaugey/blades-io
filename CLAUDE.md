@@ -88,6 +88,16 @@ client/src/
   boost, Speed, recul, hitlag, décor) se change dans `stepMovement`,
   jamais d'un seul côté : sinon la prédiction se trompe à chaque pas.
   Test de référence : `server/test/prediction.test.ts`.
+- **Zone d'intérêt** (`server/src/systems/interest.ts`) : chaque client ne
+  reçoit que les joueurs et les lames proches (`@view()` sur
+  `players`/`blades`, rayon annoncé par le client via le message `view`,
+  borné par `VIEW_RADIUS_*`), et jamais un joueur caché dans un buisson
+  tant que les orbites ne peuvent pas se toucher (`isHiddenFrom`, aussi
+  appliqué aux bots). Le client ne doit donc jamais supposer qu'il a tous
+  les joueurs : classement, rang et minimap viennent du message `summary`
+  (2 Hz). Un évènement positionnel passe par `emit(type, payload, scope)`
+  pour n'aller qu'aux clients concernés : sans portée, il est diffusé à
+  tous et peut trahir un joueur caché.
 - **Mode debug** : `?debug=hitbox` dans l'URL dessine les hitbox serveur
   des lames proches et affiche l'écart client/serveur (orbites, étincelles).
 

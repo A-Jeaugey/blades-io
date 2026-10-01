@@ -1,12 +1,15 @@
-import { Schema, type, MapSchema } from "@colyseus/schema";
+import { Schema, type, view, MapSchema } from "@colyseus/schema";
 import { Player } from "./Player";
 import { Blade } from "./Blade";
 import { Crate } from "./Crate";
 import { PowerUp } from "./PowerUp";
 
 export class ArenaState extends Schema {
-  @type({ map: Player }) players = new MapSchema<Player>();
-  @type({ map: Blade }) blades = new MapSchema<Blade>();
+  // Filtrés par client (zone d'intérêt, cf. systems/interest.ts) : chacun ne
+  // reçoit que les joueurs et les lames qu'il peut voir. Caisses et
+  // power-ups, peu nombreux et sans rien à cacher, vont à tout le monde.
+  @view() @type({ map: Player }) players = new MapSchema<Player>();
+  @view() @type({ map: Blade }) blades = new MapSchema<Blade>();
   @type({ map: Crate }) crates = new MapSchema<Crate>();
   @type({ map: PowerUp }) powerups = new MapSchema<PowerUp>();
   @type("float32") mapRadius: number = 0;

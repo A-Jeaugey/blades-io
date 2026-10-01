@@ -55,11 +55,15 @@ room.patchRate = null;
 // Remplit la room de bots jusqu'à N (au lieu du cap BOT_MAX_TOTAL).
 room.bots.desiredBotCount = () => N;
 
-// Client fictif : reçoit les patchs comme un vrai client connecté.
+// Client fictif : reçoit les patchs et les évènements comme un vrai client
+// connecté. Depuis la zone d'intérêt (tâche 2.4), ce qu'il reçoit dépend de
+// sa position : c'est un joueur mort (hors simulation) qui suit un bot, et
+// voit donc ce qu'un joueur verrait au milieu des combats.
 let patchBytes = 0;
 let patchCount = 0;
 let maxPatch = 0;
-room.clients.push({
+let scopedBytes = 0;
+const observer = {
   state: 1, // ClientState.JOINED
   sessionId: "bench-observer",
   raw: (buf) => {
@@ -68,8 +72,44 @@ room.clients.push({
     if (buf.length > maxPatch) maxPatch = buf.length;
   },
   enqueueRaw: () => {},
-  send: () => {},
-});
+  send: (type, msg) => {
+    const b = pack([type, msg]).length;
+    scopedBytes += b;
+    const e = bcast.get(type) || { n: 0, bytes: 0 };
+    e.n++;
+    e.bytes += b;
+    bcast.set(type, e);
+  },
+};
+// BENCH_VIEWERS=60 : autant de clients connectés (le premier est mesuré),
+// chacun suivant un bot différent, pour le coût serveur des zones
+// d'intérêt et de l'encodage par client.
+const VIEWERS = Math.max(1, parseInt(process.env.BENCH_VIEWERS || "1", 10));
+const watchers = [];
+for (let i = 0; i < VIEWERS; i++) {
+  const client = i === 0 ? observer : {
+    state: 1, sessionId: `bench-viewer-${i}`, raw: () => {}, enqueueRaw: () => {}, send: () => {},
+  };
+  room.clients.push(client);
+  room.onJoin(client, {}, { userId: null, username: null, guestId: null, name: `viewer${i}` });
+  const p = room.state.players.get(client.sessionId);
+  p.alive = false;
+  // Étendue visible d'un écran 16:9 au recul maximal (cf. constantes VIEW_*).
+  room.interest.setRadius(client.sessionId, 70);
+  watchers.push({ p, followed: null, rank: i });
+}
+function follow() {
+  for (const w of watchers) {
+    if (!w.followed || !w.followed.alive || !room.state.players.has(w.followed.id)) {
+      w.followed = null;
+      let k = 0;
+      room.state.players.forEach((p) => {
+        if (!w.followed && p.isBot && p.alive && k++ >= w.rank % 30) w.followed = p;
+      });
+    }
+    if (w.followed) { w.p.x = w.followed.x; w.p.y = w.followed.y; }
+  }
+}
 
 let killsTotal = 0;
 const origKill = room.killPlayer.bind(room);
@@ -79,17 +119,21 @@ room.killPlayer = (v, k, r) => {
 };
 
 const tickTimes = [];
+const patchTimes = [];
 const samples = [];
 const totalTicks = Math.round(SIM_SECONDS / DT);
 let windowPatchBytes = 0;
 let windowStart = 0;
 for (let i = 0; i < totalTicks; i++) {
   simNow += DT * 1000;
+  follow();
   const t0 = performance.now();
   room.tick(DT);
   tickTimes.push(performance.now() - t0);
   const before = patchBytes;
+  const p0 = performance.now();
   room.broadcastPatch();
+  patchTimes.push(performance.now() - p0);
   windowPatchBytes += patchBytes - before;
   if ((i + 1) % (60 * 30) === 0) {
     let alive = 0, ground = 0, orbit = 0, proj = 0, maxBlades = 0;
@@ -122,13 +166,16 @@ console.log(JSON.stringify({
   simSeconds: SIM_SECONDS,
   private: PRIVATE,
   tickMs: { mean: round(mean), p50: round(pct(0.5)), p95: round(pct(0.95)), p99: round(pct(0.99)), max: round(sorted[sorted.length - 1]) },
+  patchEncodeMs: round(patchTimes.reduce((a, b) => a + b, 0) / patchTimes.length),
+  viewers: VIEWERS,
   budgetMs: round(1000 / 60),
   patch: {
     avgBytes: Math.round(patchBytes / Math.max(1, patchCount)),
     maxBytes: maxPatch,
     kbPerSecPerClient: round(patchBytes / SIM_SECONDS / 1024, 1),
   },
-  broadcastKBsPerClient: round(bcastBytes / SIM_SECONDS / 1024, 1),
+  eventsKBsPerClient: round((bcastBytes + scopedBytes) / SIM_SECONDS / 1024, 1),
+  totalKBsPerClient: round((patchBytes + bcastBytes + scopedBytes) / SIM_SECONDS / 1024, 1),
   broadcastPerSec: Object.fromEntries([...bcast.entries()].map(([k, v]) => [k, round(v.n / SIM_SECONDS, 1)])),
   killsPerMin: round(killsTotal / (SIM_SECONDS / 60), 1),
   samples,

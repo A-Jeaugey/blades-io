@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  BUSHES,
   BladeThrownEvent,
   MAP_RADIUS,
   SPAWN_GRACE_CHASE_RADIUS,
@@ -261,4 +262,18 @@ test("grâce : un bot ne va pas récolter au contact d'un joueur en grâce", () 
   newcomer.graceUntil = 0;
   rethink(bot);
   assert.equal(decision(bot), "farm_blade");
+});
+
+test("buissons : un bot ne poursuit ni ne vise un joueur caché hors de portée de contact", () => {
+  const bush = BUSHES[2];
+  const bot = addPlayer(state, { x: bush.x, y: bush.y + 16, blades: 10, isBot: true });
+  const prey = addPlayer(state, { x: bush.x, y: bush.y, blades: 3 });
+  setPersonality(bot, BotPersonality.Hunter);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
+  assert.equal(bot.inputThrow, false);
+  // Sorti du buisson : une proie comme une autre.
+  prey.x = bush.x + bush.radius + 2;
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
 });

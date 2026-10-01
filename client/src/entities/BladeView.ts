@@ -116,10 +116,6 @@ export interface PlayerPositionProvider {
     theta: number;
     // Tier 0..2 du joueur, pilote l'échelle et le glow visuels.
     tier: number;
-    // Vrai si le joueur est dans un buisson ET n'est pas le joueur local
-    // (ce qui veut dire : invisible pour nous). On skip alors le rendu
-    // de ses lames pour ne pas trahir sa présence.
-    hidden: boolean;
     // Nombre total de lames du joueur, utilisé pour le rotMult dynamique.
     bladeCount: number;
   } | undefined;
@@ -442,19 +438,6 @@ export class BladeRenderer {
       if (e.ownerId) {
         const owner = players.getRenderPosition(e.ownerId);
         if (!owner) return;
-        // Owner caché (dans un buisson, vu d'un autre joueur) : on collapse
-        // l'instance à scale 0 plutôt que de la skip — sinon la matrice
-        // précédente reste affichée à la position d'avant.
-        if (owner.hidden) {
-          this.tmpScale.set(0, 0, 0);
-          this.tmpPos.set(0, -100, 0);
-          this.tmpEuler.set(0, 0, 0);
-          this.tmpQuat.setFromEuler(this.tmpEuler);
-          this.tmpMat.compose(this.tmpPos, this.tmpQuat, this.tmpScale);
-          mesh.setMatrixAt(ref.index, this.tmpMat);
-          dirtyBuckets.add(bucketKey(ref.rarity, ref.tier));
-          return;
-        }
         const rings = this.perOwnerRingCount.get(e.ownerId);
         const nInRing = rings?.get(e.ringIndex) ?? 1;
         // Même formule que le serveur, à l'horloge d'orbite du tick de rendu :

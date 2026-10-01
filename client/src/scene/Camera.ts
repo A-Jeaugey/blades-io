@@ -105,6 +105,22 @@ export class CameraRig {
     return p ? { x: p.x, y: p.z } : null;
   }
 
+  // Distance entre le point suivi et le point du sol visible le plus
+  // éloigné (coins et milieux des bords de l'écran) : rayon de la zone
+  // d'intérêt demandée au serveur (tâche 2.4). Infinity si un bord de
+  // l'écran passe au-dessus de l'horizon.
+  visibleExtent(): number {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    let max = 0;
+    for (const [sx, sy] of [[0, 0], [w / 2, 0], [w, 0], [0, h / 2], [w, h / 2], [0, h], [w / 2, h], [w, h]]) {
+      const p = this.groundAt(sx, sy);
+      if (!p) return Infinity;
+      max = Math.max(max, Math.hypot(p.x - this.target.x, p.y - this.target.z));
+    }
+    return max;
+  }
+
   // Position à l'écran (pixels client) d'un point du sol.
   screenOf(x: number, y: number): { x: number; y: number } {
     this.projected.set(x, 0, y).project(this.steady);
