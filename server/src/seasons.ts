@@ -3,6 +3,7 @@ import {
   LeaderboardPeriod,
   LeaderboardResponse,
   SEASON_REWARDS,
+  nameProblem,
   periodBounds,
   seasonAt,
   seasonInfo,
@@ -17,6 +18,12 @@ function warn(message: string): void {
   if (now - lastWarnAt < 60_000) return;
   lastWarnAt = now;
   console.warn("[blade.io] leaderboard:", message);
+}
+
+// Pseudo insultant ou réservé (tâche 5.6) : masqué à l'affichage. Le
+// client les refuse, mais un compte créé à côté de lui reste possible.
+function maskNames(entries: LeaderboardEntry[]): LeaderboardEntry[] {
+  return entries.map((e) => (e.username && nameProblem(e.username) !== null ? { ...e, username: "***" } : e));
 }
 
 // Classement d'une période, et le rang du joueur connecté s'il y a joué.
@@ -36,7 +43,7 @@ export async function getLeaderboard(period: LeaderboardPeriod, limit: number, u
       const range = { p_since: bounds.since.toISOString(), p_until: bounds.until.toISOString() };
       const { data, error } = await admin.rpc("leaderboard_since", { ...range, p_limit: limit });
       if (error) throw new Error(error.message);
-      res.entries = (data as LeaderboardEntry[] | null) ?? [];
+      res.entries = maskNames((data as LeaderboardEntry[] | null) ?? []);
       if (userId) {
         const rank = await admin.rpc("player_rank_since", { p_user: userId, ...range });
         const row = (rank.data as Array<{ rank: number; score: number }> | null)?.[0];
@@ -48,7 +55,7 @@ export async function getLeaderboard(period: LeaderboardPeriod, limit: number, u
         .select("user_id, username, score, kills, max_blades, survival_seconds, games_played")
         .limit(limit);
       if (error) throw new Error(error.message);
-      res.entries = (data as LeaderboardEntry[] | null) ?? [];
+      res.entries = maskNames((data as LeaderboardEntry[] | null) ?? []);
       if (userId) {
         const mine = await admin.from("leaderboard_top").select("score").eq("user_id", userId).maybeSingle();
         const best = (mine.data as { score: number } | null)?.score;

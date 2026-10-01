@@ -1,4 +1,4 @@
-import { NAME_MAX_LENGTH, NAME_MIN_LENGTH, USERNAME_RE } from "@bladeio/shared";
+import { NAME_MAX_LENGTH, NAME_MIN_LENGTH, USERNAME_RE, nameProblem } from "@bladeio/shared";
 import { AuthPanel } from "./AuthPanel";
 import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
@@ -175,7 +175,10 @@ export class LoginScreen {
       document.getElementById("join-invite")?.classList.toggle("hidden", this.inviteRoomId === null);
     }
 
-    this.input.addEventListener("input", () => this.updateNameCount());
+    this.input.addEventListener("input", () => {
+      this.updateNameCount();
+      if (!this.renaming) this.clearRenameMessage();
+    });
 
     this.codeInput.addEventListener("input", () => {
       this.codeInput.value = sanitizeCode(this.codeInput.value);
@@ -188,6 +191,13 @@ export class LoginScreen {
       // on lit la valeur tapée (mode invité).
       const lockedName = this.authPanel?.isLockedToUsername() ? this.authPanel?.getDisplayName() ?? "" : "";
       let name = lockedName ? lockedName : this.input.value.trim();
+      // Insulte, nom réservé, écritures mêlées (tâche 5.6) : refusé ici
+      // plutôt que remplacé en silence par le serveur.
+      if (!lockedName && name.length >= NAME_MIN_LENGTH && nameProblem(name) !== null) {
+        this.setRenameMessage(t("lobby.nameRefused"));
+        this.input.focus();
+        return;
+      }
       if (name.length < NAME_MIN_LENGTH) name = "Anon" + Math.floor(Math.random() * 1000);
       if (name.length > NAME_MAX_LENGTH) name = name.slice(0, NAME_MAX_LENGTH);
       if (!lockedName) localStorage.setItem("blade.name", name);
@@ -360,6 +370,10 @@ export class LoginScreen {
     // ensuite avec un message qui ne disait pas pourquoi.
     if (!USERNAME_RE.test(next)) {
       this.setRenameMessage(t("lobby.nameRule"));
+      return;
+    }
+    if (nameProblem(next) !== null) {
+      this.setRenameMessage(t("auth.errUsernameRefused"));
       return;
     }
     if (next === this.renameOriginal) {

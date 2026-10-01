@@ -17,6 +17,8 @@ import {
   TIER_UP_SHAKE,
   ChallengeDoneEvent,
   ChatEvent,
+  ChatMutedEvent,
+  ReportAck,
   InputMessage,
   TierUpEvent,
   WALL_KILL_THICKNESS,
@@ -405,11 +407,17 @@ class Game {
     }
     this.settings = new SettingsPanel();
     this.chat = new ChatPanel();
-    this.chat.setSendCallback((text) => {
+    this.chat.setSendCallback((text, action) => {
       // L'envoi traverse Colyseus comme tous les autres messages. Le
-      // serveur valide longueur + rate limit, puis rebroadcaste un
-      // ChatEvent à toute la room.
-      try { this.room?.send("chat", { text }); } catch { /* noop */ }
+      // serveur valide longueur + rate limit, masque les insultes (tâche
+      // 5.6), puis rebroadcaste un ChatEvent à toute la room.
+      try { this.room?.send("chat", action ? { text, action: true } : { text }); } catch { /* noop */ }
+    });
+    // Commandes /mute et /report : tous les joueurs de la room, d'après le
+    // résumé du serveur (la vue locale ne voit que les proches).
+    this.chat.setPlayerSource(() => (this.summary?.board ?? []).map(([id, name, , , bot]) => ({ id, name, bot })));
+    this.chat.setReportCallback((targetId, reason) => {
+      try { this.room?.send("report", { targetId, reason }); } catch { /* noop */ }
     });
     this.login = new LoginScreen((res) => this.start(res));
     this.death = new DeathScreen(() => this.respawn(), () => this.returnToMenu(), () => void this.shareScore());
@@ -913,6 +921,8 @@ class Game {
     room.onMessage("chat", (msg: ChatEvent) => {
       this.chat.onChatEvent(msg);
     });
+    room.onMessage("reportAck", (msg: ReportAck) => this.chat.onReportAck(msg.status));
+    room.onMessage("chatMuted", (msg: ChatMutedEvent) => this.chat.onMuted(msg.seconds));
     room.onLeave((code: number) => {
       // Ignorer cet événement s'il provient d'une ancienne room (ex: on a 
       // cliqué sur "Back to menu" puis "Enter" très vite, et le onLeave de

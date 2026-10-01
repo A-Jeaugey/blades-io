@@ -259,6 +259,8 @@ function humanizeProfileError(code: string): string {
       return t("auth.errUsername");
     case "username_taken":
       return t("auth.errUsernameTaken");
+    case "username_refused":
+      return t("auth.errUsernameRefused");
     case "auth_unavailable":
       return t("auth.errBackend");
     case "unauthorized":

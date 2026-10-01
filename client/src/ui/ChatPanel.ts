@@ -1,5 +1,5 @@
-import { CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent } from "@bladeio/shared";
-import { onLangChange, t } from "../i18n";
+import { CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent, ReportAck } from "@bladeio/shared";
+import { I18nKey, onLangChange, t } from "../i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ChatPanel — overlay bas-gauche, gestion ouverture/saisie/envoi.
@@ -28,7 +28,16 @@ const FADE_DELAY_MS = 6000;
 const MESSAGE_DISPLAY_MS = 7000;
 const MESSAGE_FADE_MS = 400;
 
-type SendFn = (text: string) => void;
+type SendFn = (text: string, action: boolean) => void;
+
+// Joueur de la room (résumé du serveur), pour les commandes qui en visent un.
+export interface ChatPlayer {
+  id: string;
+  name: string;
+  bot: boolean;
+}
+
+const HELP: I18nKey[] = ["chat.help1", "chat.help2", "chat.help3", "chat.help4"];
 
 export class ChatPanel {
   private root: HTMLElement;
@@ -41,6 +50,11 @@ export class ChatPanel {
   private fab: HTMLButtonElement;
   private localPlayerId = "";
   private send: SendFn = () => {};
+  // Commandes (tâche 5.6) : joueurs de la room, envoi d'un signalement, et
+  // joueurs masqués pour cette partie (id → pseudo), côté client seulement.
+  private players: () => ChatPlayer[] = () => [];
+  private report: (targetId: string, reason: string) => void = () => {};
+  private muted = new Map<string, string>();
   private fadeTimer: number | null = null;
   private isOpenFlag = false;
   // Mobile = pas de touche Entrée, on s'appuie sur le FAB + bouton send
@@ -145,6 +159,14 @@ export class ChatPanel {
     this.send = fn;
   }
 
+  setPlayerSource(fn: () => ChatPlayer[]): void {
+    this.players = fn;
+  }
+
+  setReportCallback(fn: (targetId: string, reason: string) => void): void {
+    this.report = fn;
+  }
+
   // Affiche le panel + focus l'input. Appelé par le keydown global Entrée
   // ou potentiellement par un bouton mobile (à brancher plus tard).
   open(): void {
@@ -199,14 +221,88 @@ export class ChatPanel {
 
   private submit(): void {
     const text = this.input.value.trim();
-    if (text.length > 0) {
-      try { this.send(text); } catch { /* noop */ }
+    if (text.startsWith("/")) this.runCommand(text);
+    else if (text.length > 0) {
+      try { this.send(text, false); } catch { /* noop */ }
     }
     this.close();
   }
 
+  // Commandes, interprétées ici : rien de ce qui commence par « / » ne part
+  // tel quel dans le chat.
+  private runCommand(text: string): void {
+    const [head, name = "", ...rest] = text.slice(1).split(/\s+/);
+    const cmd = head.toLowerCase();
+    if (cmd === "help" || cmd === "aide") {
+      for (const key of HELP) this.system(t(key));
+    } else if (cmd === "me") {
+      const action = text.slice(1 + head.length).trim();
+      if (!action) this.system(t("chat.usageMe"));
+      else try { this.send(action, true); } catch { /* noop */ }
+    } else if (cmd === "mute") {
+      if (!name) return this.system(t("chat.usageMute"));
+      const p = this.findPlayer(name);
+      if (!p) return;
+      this.muted.set(p.id, p.name);
+      this.system(t("chat.muted", { name: p.name }));
+    } else if (cmd === "unmute") {
+      if (!name) {
+        this.muted.clear();
+        return this.system(t("chat.unmutedAll"));
+      }
+      const q = name.toLowerCase();
+      const hit = [...this.muted].find(([, n]) => n.toLowerCase() === q) ?? [...this.muted].find(([, n]) => n.toLowerCase().startsWith(q));
+      if (!hit) return this.system(t("chat.notMuted", { name }));
+      this.muted.delete(hit[0]);
+      this.system(t("chat.unmuted", { name: hit[1] }));
+    } else if (cmd === "report") {
+      if (!name) return this.system(t("chat.usageReport"));
+      const p = this.findPlayer(name);
+      if (!p) return;
+      if (p.bot) return this.system(t("chat.botReport"));
+      try { this.report(p.id, rest.join(" ")); } catch { /* noop */ }
+    } else {
+      this.system(t("chat.unknownCommand", { cmd: head }));
+    }
+  }
+
+  // Pseudo exact (sans casse), sinon début de pseudo s'il est unique.
+  // Échec : la raison s'affiche dans le chat.
+  private findPlayer(name: string): ChatPlayer | null {
+    const q = name.toLowerCase();
+    const all = this.players();
+    const exact = all.filter((p) => p.name.toLowerCase() === q);
+    const found = exact.length > 0 ? exact : all.filter((p) => p.name.toLowerCase().startsWith(q));
+    if (found.length === 0) this.system(t("chat.notFound", { name }));
+    else if (found.length > 1) this.system(t("chat.ambiguous", { name }));
+    else if (found[0].id === this.localPlayerId) this.system(t("chat.notSelf"));
+    else return found[0];
+    return null;
+  }
+
+  // Ligne d'information locale (aide, confirmation, refus).
+  private system(text: string): void {
+    this.onChatEvent({ playerId: "", playerName: "", text, ts: Date.now(), system: true });
+  }
+
+  onReportAck(status: ReportAck["status"]): void {
+    const key: Record<ReportAck["status"], I18nKey> = {
+      ok: "chat.reportOk",
+      duplicate: "chat.reportDuplicate",
+      limited: "chat.reportLimited",
+      unknown: "chat.reportUnknown",
+    };
+    this.system(t(key[status]));
+  }
+
+  // Silence imposé par le serveur (messages masqués répétés).
+  onMuted(seconds: number): void {
+    this.system(t("chat.mutedServer", { s: seconds }));
+  }
+
   // Reçoit un ChatEvent du serveur (broadcast à toute la room).
   onChatEvent(ev: ChatEvent): void {
+    if (!ev.system && this.muted.has(ev.playerId)) return;
     this.appendMessage(ev);
     // Auto-show le panel : un message qui arrive doit être visible.
     this.root.classList.remove("hidden");
@@ -221,12 +317,13 @@ export class ChatPanel {
     const row = document.createElement("div");
     row.className = "chat-row";
     if (ev.system) row.classList.add("chat-row-system");
+    if (ev.action) row.classList.add("chat-row-action");
     if (ev.playerId === this.localPlayerId) row.classList.add("chat-row-self");
 
     if (!ev.system) {
       const name = document.createElement("span");
       name.className = "chat-name";
-      name.textContent = ev.playerName + " ";
+      name.textContent = (ev.action ? "* " : "") + ev.playerName + " ";
       row.appendChild(name);
     }
     const text = document.createElement("span");
@@ -259,6 +356,7 @@ export class ChatPanel {
   // Cache complètement le panel (sortie de match). Reset state interne.
   hide(): void {
     this.close();
+    this.muted.clear();
     this.root.classList.add("hidden");
     this.root.classList.remove("active");
     if (this.isTouch) this.fab.classList.add("hidden");

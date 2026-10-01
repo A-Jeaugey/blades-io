@@ -2750,6 +2750,8 @@ button:hover {
   margin-right: 2px;
 }
 .chat-row-self .chat-name { color: var(--pink); }
+/* /me (tâche 5.6) : « * Alpha danse », en italique. */
+.chat-row-action .chat-text { font-style: italic; }
 .chat-text {
   color: var(--fg-bright);
 }

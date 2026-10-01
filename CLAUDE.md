@@ -355,6 +355,14 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   (`seasons_closed` sert de verrou). Changer `SEASON_WEEKS` ou
   `SEASON_ONE_START` renumérote les saisons passées : à ne faire qu'avant
   la première clôture.
+- **Modération (tâche 5.6)** : le filtre de mots vit dans
+  `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
+  serveur (chat masqué, pseudos remplacés, classements) et par le client
+  (refus dès le lobby). Pas de recherche de sous-chaîne aveugle : mots
+  entiers, plus quelques racines sans faux positif connu ; un mot ajouté
+  se vérifie contre la liste de faux positifs de
+  `server/test/moderation.test.ts`. Signalements : `handleReport` dans
+  `ArenaRoom`, table `reports` (migration 0010).
 - **Partage (tâche 5.5)** : les balises d'aperçu des liens (Open Graph)
   sont écrites par le serveur à chaque requête de page, entre
   `<!-- og:start -->` et `<!-- og:end -->` dans `client/index.html`

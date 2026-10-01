@@ -52,6 +52,18 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   CHAT_RATE_LIMIT_COUNT,
   CHAT_RATE_LIMIT_WINDOW_MS,
+  CHAT_AUTO_MUTE_MS,
+  CHAT_RECENT_KEPT,
+  CHAT_STRIKES_TO_MUTE,
+  CHAT_STRIKE_WINDOW_MS,
+  ChatMutedEvent,
+  REPORT_LIMIT_COUNT,
+  REPORT_LIMIT_WINDOW_MS,
+  REPORT_REASON_MAX_LENGTH,
+  ReportAck,
+  ReportMessage,
+  censorChat,
+  nameProblem,
   tierBladeHitbox,
   tierFromBladeCount,
 } from "@bladeio/shared";
@@ -90,13 +102,18 @@ import { verifyAccessToken } from "../auth/supabase";
 import { recordMatch } from "../auth/matches";
 import { creditGuestWallet, creditWallet, getGuestWalletBalance, getWallet } from "../auth/wallet";
 import { verifyGuestToken } from "../auth/guestToken";
+import { logReport } from "../moderation";
 
+// Pseudo affiché en jeu. NFKC d'abord (lettres pleine chasse, ligatures
+// ramenées à leur forme simple), puis le filtre de modération (tâche 5.6) :
+// insulte, nom réservé ou mélange d'écritures donnent un pseudo anonyme.
 function sanitizeName(raw: string): string {
   const cleaned = (raw ?? "")
+    .normalize("NFKC")
     .replace(/[^\p{L}\p{N}_\-\.]/gu, "")
     .trim()
     .slice(0, NAME_MAX_LENGTH);
-  if (cleaned.length < NAME_MIN_LENGTH) return "Anon" + Math.floor(Math.random() * 1000);
+  if (cleaned.length < NAME_MIN_LENGTH || nameProblem(cleaned) !== null) return "Anon" + Math.floor(Math.random() * 1000);
   return cleaned;
 }
 
@@ -180,6 +197,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     });
     this.onMessage<RespawnMessage>("respawn", (client, msg) => this.handleRespawn(client, msg));
     this.onMessage<ChatMessage>("chat", (client, msg) => this.handleChat(client, msg));
+    this.onMessage<ReportMessage>("report", (client, msg) => this.handleReport(client, msg));
     this.onMessage<ViewMessage>("view", (client, msg) => this.interest.setRadius(client.sessionId, msg?.r));
     // Ping affiché dans le HUD (tâche 3.4) : le numéro reçu est renvoyé tel
     // quel, le client mesure l'aller-retour.
@@ -192,13 +210,15 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     });
   }
 
-  // Validation + rate limit + broadcast d'un message chat.
-  // Tout est silencieusement rejeté en cas de violation (pas de réponse
-  // d'erreur au sender) — évite de signaler aux spammers que leur
-  // payload a été détecté.
+  // Validation + rate limit + modération + broadcast d'un message chat.
+  // Message vide ou débit dépassé : rejet silencieux (pas de réponse
+  // d'erreur au sender, ça renseignerait les spammers). Le silence imposé
+  // (tâche 5.6), lui, est annoncé au joueur.
   private handleChat(client: Client, msg: ChatMessage): void {
+    // Mort, on parle encore (« gg », se plaindre d'une insulte) : tant
+    // qu'on est dans la room.
     const p = this.state.players.get(client.sessionId);
-    if (!p || !p.alive) return;
+    if (!p) return;
     const raw = (msg?.text ?? "").toString();
     // Trim + collapse whitespace (newlines / tabs deviennent espaces, pas
     // de pavé multiligne dans un overlay 1-line).
@@ -215,13 +235,64 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     if (p.chatTimestamps.length >= CHAT_RATE_LIMIT_COUNT) return;
     p.chatTimestamps.push(now);
 
+    // Silence imposé (tâche 5.6) : le joueur, lui, est prévenu.
+    if (now < p.chatMutedUntil) {
+      const muted: ChatMutedEvent = { seconds: Math.ceil((p.chatMutedUntil - now) / 1000) };
+      client.send("chatMuted", muted);
+      return;
+    }
+    // Texte d'origine gardé pour un éventuel signalement ; les autres
+    // reçoivent la version masquée.
+    p.recentChat.push({ text, ts: now });
+    if (p.recentChat.length > CHAT_RECENT_KEPT) p.recentChat.shift();
+    const censored = censorChat(text);
+    if (censored.hits > 0) {
+      p.chatStrikes = p.chatStrikes.filter((ts) => ts > now - CHAT_STRIKE_WINDOW_MS);
+      p.chatStrikes.push(now);
+      if (p.chatStrikes.length >= CHAT_STRIKES_TO_MUTE) {
+        p.chatStrikes = [];
+        p.chatMutedUntil = now + CHAT_AUTO_MUTE_MS;
+        const muted: ChatMutedEvent = { seconds: Math.ceil(CHAT_AUTO_MUTE_MS / 1000) };
+        client.send("chatMuted", muted);
+      }
+    }
+
     const event: ChatEvent = {
       playerId: p.id,
       playerName: p.name,
-      text,
+      text: censored.text,
       ts: now,
     };
+    if (msg?.action === true) event.action = true;
     this.broadcast("chat", event);
+  }
+
+  // Signalement d'un joueur (tâche 5.6) : journalisé avec ses derniers
+  // messages. Un par joueur visé et par partie, quelques-uns par tranche de
+  // dix minutes ; les bots ne se signalent pas (ils ne parlent pas, leurs
+  // noms sont fixes).
+  private handleReport(client: Client, msg: ReportMessage): void {
+    const reporter = this.state.players.get(client.sessionId);
+    if (!reporter) return;
+    const ack = (status: ReportAck["status"]) => client.send("reportAck", { status } satisfies ReportAck);
+    const target = typeof msg?.targetId === "string" ? this.state.players.get(msg.targetId) : undefined;
+    if (!target || target === reporter || target.isBot) return ack("unknown");
+    if (reporter.reportedIds.has(target.id)) return ack("duplicate");
+    const now = Date.now();
+    reporter.reportTimes = reporter.reportTimes.filter((ts) => ts > now - REPORT_LIMIT_WINDOW_MS);
+    if (reporter.reportTimes.length >= REPORT_LIMIT_COUNT) return ack("limited");
+    reporter.reportedIds.add(target.id);
+    reporter.reportTimes.push(now);
+    const reason = typeof msg?.reason === "string" ? msg.reason.replace(/\s+/g, " ").trim().slice(0, REPORT_REASON_MAX_LENGTH) : "";
+    trackWrite(logReport({
+      roomId: this.roomId,
+      roomPrivate: this.isPrivate,
+      reporter: { name: reporter.name, userId: reporter.userId, guestId: reporter.guestId },
+      target: { name: target.name, userId: target.userId, guestId: target.guestId },
+      reason: reason || null,
+      recentMessages: [...target.recentChat],
+    }));
+    ack("ok");
   }
 
   // Hook officiel Colyseus : exécuté AVANT onJoin. Si on rejette ici, le

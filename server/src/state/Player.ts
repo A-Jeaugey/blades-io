@@ -127,6 +127,14 @@ export class Player extends Schema {
   // < (now - CHAT_RATE_LIMIT_WINDOW_MS), si le tableau a déjà
   // CHAT_RATE_LIMIT_COUNT entrées le message est rejeté silencieusement.
   chatTimestamps: number[] = [];
+  // Modération (tâche 5.6) : messages masqués récents (récidive), silence
+  // imposé jusqu'à, derniers messages (joints à un signalement, texte
+  // d'origine), joueurs déjà signalés et heures des signalements envoyés.
+  chatStrikes: number[] = [];
+  chatMutedUntil: number = 0;
+  recentChat: Array<{ text: string; ts: number }> = [];
+  reportedIds: Set<string> = new Set();
+  reportTimes: number[] = [];
   // Télémétrie (tâche 4.8, cf. telemetry.ts) : rang de la vie dans la
   // session (1 = première), première partie sur l'appareil (déclarée par le
   // client), et compteurs de la vie en cours, remis à zéro au respawn.

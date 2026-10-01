@@ -1,4 +1,4 @@
-import { USERNAME_RE } from "@bladeio/shared";
+import { USERNAME_RE, nameProblem } from "@bladeio/shared";
 import { auth, AuthState } from "../auth/supabase";
 import { onLangChange, t } from "../i18n";
 
@@ -360,6 +360,10 @@ export class AuthPanel {
         this.setMessage("error", t("auth.errUsername"));
         return;
       }
+      if (nameProblem(u) !== null) {
+        this.setMessage("error", t("auth.errUsernameRefused"));
+        return;
+      }
       this.clearMessage();
       this.setBusy(true);
       const { error } = await auth.setUsername(u);
@@ -421,6 +425,11 @@ export class AuthPanel {
         if (!USERNAME_RE.test(username)) {
           this.setBusy(false);
           this.setMessage("error", t("auth.errUsername"));
+          return;
+        }
+        if (nameProblem(username) !== null) {
+          this.setBusy(false);
+          this.setMessage("error", t("auth.errUsernameRefused"));
           return;
         }
         const { error, needsVerification } = await auth.signUpWithEmail(email, password, username);

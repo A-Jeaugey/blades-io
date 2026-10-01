@@ -560,6 +560,18 @@ export const CHAT_RATE_LIMIT_WINDOW_MS = 5000;
 // Plafond de messages côté client. Au-delà, on drop les plus anciens
 // (FIFO). Évite que la log grossisse indéfiniment en mémoire / DOM.
 export const CHAT_LOG_CAP = 50;
+// Modération (tâche 5.6). Trois messages masqués en deux minutes : deux
+// minutes de silence imposé par le serveur.
+export const CHAT_STRIKES_TO_MUTE = 3;
+export const CHAT_STRIKE_WINDOW_MS = 120_000;
+export const CHAT_AUTO_MUTE_MS = 120_000;
+// Derniers messages d'un joueur gardés en mémoire, joints à un signalement.
+export const CHAT_RECENT_KEPT = 5;
+// Signalements : un par joueur visé et par partie, cinq par tranche de
+// dix minutes ; motif facultatif, tronqué.
+export const REPORT_LIMIT_COUNT = 5;
+export const REPORT_LIMIT_WINDOW_MS = 600_000;
+export const REPORT_REASON_MAX_LENGTH = 120;
 
 // --- Divers ---
 export const NAME_MIN_LENGTH = 3;

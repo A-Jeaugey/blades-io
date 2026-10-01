@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, getShopItem, seasonAt } from "@bladeio/shared";
+import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, getShopItem, nameProblem, seasonAt } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import { getProfileStats } from "./profileStats";
@@ -54,6 +54,11 @@ export function buildAuthRouter(): Router {
     const username = raw.trim();
     if (!USERNAME_RE.test(username)) {
       res.status(400).json({ error: "invalid_username" });
+      return;
+    }
+    // Insulte ou nom réservé (tâche 5.6).
+    if (nameProblem(username) !== null) {
+      res.status(400).json({ error: "username_refused" });
       return;
     }
     const admin = getAdminClient();

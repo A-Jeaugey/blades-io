@@ -149,6 +149,8 @@ export interface ProjectileImpactEvent extends TickStamped {
 // un ChatEvent à toute la room (avec sender info enrichi).
 export interface ChatMessage {
   text: string;
+  // /me : une action décrite à la troisième personne (tâche 5.6).
+  action?: boolean;
 }
 
 // Server → Clients : message broadcasté à toute la room après qu'un joueur
@@ -163,6 +165,26 @@ export interface ChatEvent {
   // utilisé côté serveur pour l'instant, l'option est ouverte pour de
   // futures notifs.
   system?: boolean;
+  // /me : « * Alpha danse ».
+  action?: boolean;
+}
+
+// Client → Server : signalement d'un joueur (tâche 5.6), journalisé par le
+// serveur avec ses derniers messages.
+export interface ReportMessage {
+  targetId: string;
+  reason?: string;
+}
+
+// Server → Client : suite donnée au signalement.
+export interface ReportAck {
+  status: "ok" | "duplicate" | "limited" | "unknown";
+}
+
+// Server → Client : le joueur est réduit au silence (propos masqués
+// répétés) ; ses messages ne partent plus pendant `seconds`.
+export interface ChatMutedEvent {
+  seconds: number;
 }
 
 
