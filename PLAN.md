@@ -14,6 +14,7 @@ Il découle de l'audit du 2026-09-24 : [`docs/AUDIT-2026-09.md`](docs/AUDIT-2026
 - [ ] **Vérifier que le proxy de production transmet l'IP du joueur** avant de déployer la phase 0 (tâche 0.3). Le serveur en ligne répond `server: nginx`, alors que le repo contient un `Caddyfile` : le proxy doit envoyer `X-Forwarded-For` (sous nginx : `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`). Sinon, tous les joueurs partagent un seul compteur de limitation de débit : le lobby affiche « — » et les nouveaux invités n'ont plus de wallet dès qu'il y a du monde. Si nginx et Caddy sont chaînés, régler `TRUST_PROXY` (et `trusted_proxies` côté Caddy) pour que le serveur voie l'IP du joueur.
 - [ ] **Fusionner `claude/great-shannon-itw2b2` dans `main`** une fois les deux points ci-dessus faits. La fusion déclenche le déploiement.
 - [ ] **Playtest de la phase 1** (non bloquant, impossible sans jouer vraiment) : distinguer à l'oreille les six sons de combat (1.5) ; poids des impacts et recul en combat prolongé (1.6) ; taille des personnages en portrait sur un vrai téléphone, réglable par `CAMERA_MIN_VIEW_WIDTH` (1.7) ; sensation de la prédiction avec un vrai ping (1.2).
+- [ ] **Playtest de la semaine 5** (non bloquant) : un vrai débutant comprend-il la carte des contrôles et les indications (3.1) ; la première minute est-elle encore trop dure ou devenue trop facile (3.2 : grâce de 10 s puis rampe de 40 s, réglables par `SPAWN_GRACE_MS`, `SPAWN_GRACE_RAMP_MS` et `SPAWN_GRACE_CHASE_RADIUS`) ; lisibilité du HUD sur un vrai téléphone (3.4) ; la caméra sur le tueur gêne-t-elle ceux qui veulent respawner vite (3.5, `KILLCAM_MS` dans `client/src/main.ts`).
 
 ---
 
@@ -281,10 +282,11 @@ Objectif : un nouveau joueur comprend le jeu, survit à sa première minute et s
   - Avancement : nametags actifs par défaut (migration des réglages v1), avec nombre de lames et menace (couleur + ▲/▼) · 2026-09-25 · `d3b93a1`.
   - Réalisé : bloc d'état en haut à gauche (rang, lames, score de la vie, record, coût du boost) à la place du compteur du bas, qui masquait la zone sous le joueur ; « BOOST −2 blades/s » avec l'autonomie restante pendant le boost, et coût écrit sur le bouton BOOST en tactile. Fil des éliminations sous le classement (4 lignes, 4 s, cause : lames, lancer, bordure ; le serveur ajoute `cause` à `playerKilled` et `byId` à `crateDestroyed`). Gains flottants « +15 🏆 », « +3 🏆 », « +2 🏆 » (sans 🏆 en privé). Record personnel local, rooms publiques seulement (`client/src/ui/personalBest.ts`, repris en 3.5). Classement : 5 premiers et soi, score et lames (10 lignes à 3 colonnes avant). Ping par écho serveur, médiane des 5 dernières mesures. HUD au-dessus des nametags. Comparé aux captures 06 et 08 de l'audit : bas de l'écran dégagé, classement deux fois plus court ; vérifié en 1280×720 et 390×844 sans chevauchement ni débordement.
 
-- [ ] **3.5 — Mort et respawn** · M · `UX-09`
+- [x] **3.5 — Mort et respawn** · M · `UX-09` · 2026-10-01 · `4d4c6cf`
   - Quoi : 2 à 3 s de caméra sur le tueur (avec son nombre de lames), puis la carte récapitulative : score, record personnel, trophées, cause de la mort et un conseil adapté (bordure, lancer, joueur plus gros) ; texte invité corrigé.
   - Fichiers : `client/src/ui/DeathScreen.ts`, `client/src/main.ts`, `client/src/scene/Camera.ts`.
   - Acceptation : la cause de la mort est toujours compréhensible ; le texte invité ne laisse pas croire que les trophées sont perdus.
+  - Réalisé : 2,5 s de caméra qui glisse vers le tueur et le suit (1,2 s sur place pour la bordure), bandeau avec son nom et ses lames en direct, passable d'un clic, d'un tap ou d'Espace ; pas de suivi d'un tueur caché dans un buisson. `Camera.ts` inchangé : le glissement est piloté depuis `main.ts` (`updateKillCam`). Carte : score, temps de vie, cause en clair (lames, lancer, contact sans lame, bordure) avec les lames du tueur, record (battu ou non, rooms publiques), rang, total de trophées (invités compris), conseil selon la cause et le rapport de force. Le serveur ajoute à `playerKilled` les lames des deux joueurs au début de l'échange (en orbite + perdues en clash dans les 3 s d'avant) : au coup fatal, la victime a souvent déjà tout perdu, et passait pour « sans lame ». Texte invité : trophées gardés sur l'appareil et transférés à la connexion. Vérifié au navigateur (bordure, duel à deux pages, passage par Espace, 390×844).
 
 - [ ] **3.6 — Mobile** · M · `UX-04`
   - Quoi : lobby responsive (onglets de mode sur deux lignes ou empilés sous 480 px), HUD portrait (classement repliable), zones de sécurité (`env(safe-area-inset-*)`), cibles tactiles d'au moins 44 px, vibration courte au coup et à l'élimination quand c'est supporté.
@@ -452,17 +454,17 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 
 ## Indicateurs de réussite
 
-| Indicateur | Audit (2026-09) | Actuel (2026-09-25) | Cible | Mesuré par |
+| Indicateur | Audit (2026-09) | Actuel (2026-10-01) | Cible | Mesuré par |
 |---|---|---|---|---|
-| Tick serveur moyen, 60 joueurs | 10,6 ms | 1,6 ms | < 4 ms | `tools/bench-server.js 60 120` |
-| Tick serveur p99, 60 joueurs | 17,5 ms | 4,0 ms | < 8 ms | idem |
+| Tick serveur moyen, 60 joueurs | 10,6 ms | 1,6 ms (25/09) ; 3,0 ms le 01/10 sur une machine plus lente, identique avant et après la phase 3 (mesure appariée) | < 4 ms | `tools/bench-server.js 60 120` |
+| Tick serveur p99, 60 joueurs | 17,5 ms | 4,0 ms (25/09) ; 7,4 ms le 01/10, même remarque | < 8 ms | idem |
 | Données reçues par client, 60 joueurs | 93 Ko/s | 94 Ko/s | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem |
 | Écart angulaire rendu / serveur des lames | arbitraire | ≤ 1e-7 rad | < 0,1 rad | mode debug de 1.1 |
-| Temps médian avant la première mort (session scriptée) | ~10 s | non remesuré | > 45 s | banc de sessions de 3.2 |
+| Temps médian avant la première mort (session scriptée) | ~10 s | 62 s (16 s juste avant 3.2) | > 45 s | `tools/bench-survival.js first` |
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | inconnu | < 15 % | télémétrie 4.8 |
 | JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 102 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 115 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
