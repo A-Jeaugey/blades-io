@@ -1114,8 +1114,15 @@ class Game {
     // parallèle ; on rafraîchit en arrière-plan pour reconverger.
     const cached = wallet.get();
     let total: number | null = null;
-    if (isAuthed && !isPrivate && cached) total = cached.balance + earned;
+    // XP d'avant cette vie (tâche 5.2) : trophées gagnés du compte, ou
+    // solde invité (un invité ne dépense rien).
+    let xpBefore: number | null = null;
+    if (isAuthed && !isPrivate && cached) {
+      total = cached.balance + earned;
+      xpBefore = cached.total_earned;
+    }
     if (guestSaved && this.guestBalance !== null) {
+      xpBefore = this.guestBalance;
       this.guestBalance += earned;
       total = this.guestBalance;
     }
@@ -1140,6 +1147,7 @@ class Game {
       guestSaved,
       walletTotal: total,
       privateRoom: isPrivate,
+      xp: xpBefore === null ? null : { before: xpBefore, gained: earned },
     };
     // Caméra sur le tueur, puis la carte ; mort à la bordure : un temps
     // pour voir les lames se désintégrer.
@@ -1876,6 +1884,7 @@ class Game {
         (id) => this.renderAlive.get(id) ?? !!this.room?.state?.players?.get(id)?.alive,
         (id) => this.room?.state?.players?.get(id)?.name ?? "?",
         (id) => this.room?.state?.players?.get(id)?.bladeCount ?? 0,
+        (id) => this.room?.state?.players?.get(id)?.level ?? 0,
         this.sceneStack.camera,
         window.innerWidth,
         window.innerHeight,

@@ -4,6 +4,7 @@ import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
 import { fetchGuestWallet } from "../auth/guestToken";
 import { I18nKey, onLangChange, t } from "../i18n";
+import { levelText } from "./level";
 
 // Identifiant de build (date + commit) injecté par Vite (cf. vite.config.ts).
 declare const __BUILD_ID__: string;
@@ -71,6 +72,8 @@ export class LoginScreen {
   private mode: LoginMode = "public";
   private walletBadge: HTMLElement | null = null;
   private walletValue: HTMLElement | null = null;
+  // XP du niveau affiché (tâche 5.2), gardée pour la bascule de langue.
+  private shownXp: number | null = null;
   private renameActions: HTMLElement | null = null;
   private renameBtn: HTMLButtonElement | null = null;
   private renameSaveBtn: HTMLButtonElement | null = null;
@@ -114,6 +117,7 @@ export class LoginScreen {
       if (w && this.walletBadge && this.walletValue) {
         this.walletValue.textContent = String(w.balance);
         this.walletBadge.classList.remove("hidden");
+        this.setLevel(w.total_earned);
       }
     });
 
@@ -205,6 +209,7 @@ export class LoginScreen {
       if (this.taglineEl) this.taglineEl.textContent = t("lobby.tagline");
       this.renderNameLabel();
       this.refreshTopOps();
+      if (this.shownXp !== null) this.setLevel(this.shownXp);
     });
   }
 
@@ -218,6 +223,7 @@ export class LoginScreen {
       if (w) {
         this.walletValue.textContent = String(w.balance);
         this.walletBadge.classList.remove("hidden");
+        this.setLevel(w.total_earned);
       } else {
         this.walletBadge.classList.add("hidden");
       }
@@ -227,9 +233,29 @@ export class LoginScreen {
     if (g && !g.claimed) {
       this.walletValue.textContent = String(g.balance);
       this.walletBadge.classList.remove("hidden");
+      // Un invité ne dépense rien : son solde est son XP.
+      this.setLevel(g.balance);
     } else {
       this.walletBadge.classList.add("hidden");
     }
+  }
+
+  // Niveau de compte à côté des trophées (tâche 5.2) : « NIV. 12 » et la
+  // progression dans le niveau ; le détail en infobulle.
+  private setLevel(xp: number | null): void {
+    this.shownXp = xp;
+    const el = document.getElementById("wallet-level");
+    if (!el) return;
+    if (xp === null) {
+      el.classList.add("hidden");
+      return;
+    }
+    const lv = levelText(xp);
+    (el.querySelector("b") as HTMLElement).textContent = lv.short;
+    (el.querySelector("i") as HTMLElement).style.setProperty("--p", lv.fraction.toFixed(3));
+    el.title = `${lv.full} · ${lv.xp}`;
+    el.setAttribute("aria-label", el.title);
+    el.classList.remove("hidden");
   }
 
   // Fetch /api/leaderboard et remplit le panneau de droite "TOP OPS". On

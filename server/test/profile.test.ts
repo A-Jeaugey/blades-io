@@ -42,6 +42,11 @@ test("profil : cumuls, survie moyenne arrondie, rang", () => {
   assert.deepEqual(s.recent[0], { score: 101, kills: 1, maxBlades: 21, survivalSeconds: 61, at: "2026-10-01T11:00:00Z" });
 });
 
+test("profil : XP du niveau transmise telle quelle, inconnue sinon", () => {
+  assert.equal(toProfileStats(row, [], 6, 900).xp, 900);
+  assert.equal(toProfileStats(row, [], 6).xp, null);
+});
+
 test("profil : compte sans partie publique", () => {
   const s = toProfileStats(null, [], null);
   assert.equal(s.games, 0);

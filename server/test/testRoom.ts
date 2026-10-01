@@ -48,7 +48,7 @@ export class TestRoom {
 
   join(
     sessionId: string,
-    auth: { userId?: string | null; guestId?: string | null } = {},
+    auth: { userId?: string | null; guestId?: string | null; xp?: number } = {},
     opts: { protected?: boolean; newcomer?: boolean } = {},
   ): Player {
     this.room.onJoin({ sessionId }, { newcomer: opts.newcomer }, {
@@ -56,6 +56,7 @@ export class TestRoom {
       username: null,
       guestId: auth.guestId ?? null,
       name: sessionId,
+      xp: auth.xp,
     });
     const p = this.state.players.get(sessionId)!;
     // Les tests placent les joueurs eux-mêmes : ni invulnérabilité, ni

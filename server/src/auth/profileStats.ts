@@ -31,7 +31,7 @@ const num = (v: unknown): number => {
 
 // Réponse de GET /api/profile/stats. betterPlayers : nombre de joueurs au
 // meilleur score strictement supérieur (null si inconnu).
-export function toProfileStats(row: PlayerStatsRow | null, recent: MatchRow[], betterPlayers: number | null): ProfileStats {
+export function toProfileStats(row: PlayerStatsRow | null, recent: MatchRow[], betterPlayers: number | null, xp: number | null = null): ProfileStats {
   const games = num(row?.games);
   const recentGames: ProfileGame[] = recent.slice(0, PROFILE_RECENT_GAMES).map((m) => ({
     score: num(m.score),
@@ -52,6 +52,7 @@ export function toProfileStats(row: PlayerStatsRow | null, recent: MatchRow[], b
     powerups: num(row?.powerups),
     firstPlayedAt: games > 0 ? row?.first_played_at ?? null : null,
     rank: games > 0 && betterPlayers !== null ? betterPlayers + 1 : null,
+    xp: xp === null ? null : num(xp),
     recent: recentGames,
   };
 }
@@ -62,7 +63,7 @@ export async function getProfileStats(userId: string): Promise<ProfileStats | nu
   const admin = getAdminClient();
   if (!admin) return null;
   try {
-    const [statsRes, recentRes] = await Promise.all([
+    const [statsRes, recentRes, walletRes] = await Promise.all([
       admin.from("player_stats").select("*").eq("user_id", userId).maybeSingle(),
       admin
         .from("matches")
@@ -71,6 +72,8 @@ export async function getProfileStats(userId: string): Promise<ProfileStats | nu
         .is("room_code", null)
         .order("created_at", { ascending: false })
         .limit(PROFILE_RECENT_GAMES),
+      // XP du niveau (tâche 5.2) : trophées gagnés, achats non déduits.
+      admin.from("wallets").select("total_earned").eq("user_id", userId).maybeSingle(),
     ]);
     if (statsRes.error || recentRes.error) {
       console.warn("[blade.io] profile stats failed", (statsRes.error ?? recentRes.error)?.message);
@@ -86,7 +89,8 @@ export async function getProfileStats(userId: string): Promise<ProfileStats | nu
         .gt("score", num(row.best_score));
       if (!rankRes.error && rankRes.count !== null) better = rankRes.count;
     }
-    return toProfileStats(row, (recentRes.data as MatchRow[] | null) ?? [], better);
+    const xp = walletRes.error ? null : Number((walletRes.data as { total_earned?: number } | null)?.total_earned ?? 0);
+    return toProfileStats(row, (recentRes.data as MatchRow[] | null) ?? [], better, xp);
   } catch (e) {
     console.warn("[blade.io] profile stats threw", (e as Error).message);
     return null;

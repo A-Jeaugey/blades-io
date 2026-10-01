@@ -81,13 +81,13 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ProjectileImpactEvent } from "@bladeio/shared";
+import { BladeThrownEvent, ProjectileImpactEvent, levelForXp } from "@bladeio/shared";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
 import { verifyAccessToken } from "../auth/supabase";
 import { recordMatch } from "../auth/matches";
-import { creditGuestWallet, creditWallet } from "../auth/wallet";
+import { creditGuestWallet, creditWallet, getGuestWalletBalance, getWallet } from "../auth/wallet";
 import { verifyGuestToken } from "../auth/guestToken";
 
 function sanitizeName(raw: string): string {
@@ -233,6 +233,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     username: string | null;
     guestId: string | null;
     name: string;
+    xp: number;
   }> {
     // Redémarrage annoncé (cf. shutdown.ts) : plus personne n'entre.
     if (restartDeadline() > 0) throw new ServerError(503, "server_restarting");
@@ -245,7 +246,9 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
         // Authed : un user authentifié n'a pas besoin de guest token, ses
         // trophées vont directement dans wallets.
         const finalName = user.username && user.username.length > 0 ? user.username : requestedName;
-        return { userId: user.id, username: user.username, guestId: null, name: finalName };
+        // XP du niveau (tâche 5.2) : trophées gagnés, achats non déduits.
+        const w = await getWallet(user.id);
+        return { userId: user.id, username: user.username, guestId: null, name: finalName, xp: w?.total_earned ?? 0 };
       }
       // Token présent mais invalide/expiré → on dégrade en invité plutôt que
       // de refuser l'accès (l'UX côté client reflasher le token est plus
@@ -255,18 +258,22 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // créditer les trophées dans guest_wallets ; sinon le joueur joue mais
     // ses trophées ne sont pas trackés.
     const guestId = guestTok ? verifyGuestToken(guestTok) : null;
-    return { userId: null, username: null, guestId, name: requestedName };
+    // Invité : son solde est toute son XP (il ne peut rien acheter).
+    const g = guestId ? await getGuestWalletBalance(guestId) : null;
+    return { userId: null, username: null, guestId, name: requestedName, xp: g && !g.claimed ? g.balance : 0 };
   }
 
   onJoin(
     client: Client,
     options: { name?: string; token?: string; guestToken?: string; newcomer?: boolean },
-    auth: { userId: string | null; username: string | null; guestId: string | null; name: string },
+    auth: { userId: string | null; username: string | null; guestId: string | null; name: string; xp?: number },
   ): void {
     const p = new Player();
     p.id = client.sessionId;
     p.userId = auth?.userId ?? null;
     p.guestId = auth?.guestId ?? null;
+    p.xp = Math.max(0, Math.floor(auth?.xp ?? 0));
+    p.level = levelForXp(p.xp);
     // Première partie sur l'appareil, selon le client : sert seulement à la
     // télémétrie.
     p.newcomer = options?.newcomer === true;
@@ -467,12 +474,23 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
         powerupsCollected: p.powerupsCollected,
         roomCode: this.roomCode || undefined,
       }));
-      if (trophies > 0) trackWrite(creditWallet(p.userId, trophies));
+      if (trophies > 0) {
+        trackWrite(creditWallet(p.userId, trophies));
+        this.gainXp(p, trophies);
+      }
       return;
     }
     if (p.guestId && trophies > 0) {
       trackWrite(creditGuestWallet(p.guestId, trophies));
+      this.gainXp(p, trophies);
     }
+  }
+
+  // Trophées crédités = XP (tâche 5.2) : le niveau affiché suit sans
+  // attendre le prochain join.
+  private gainXp(p: Player, amount: number): void {
+    p.xp += amount;
+    p.level = levelForXp(p.xp);
   }
 
   private handleInput(client: Client, msg: InputMessage): void {

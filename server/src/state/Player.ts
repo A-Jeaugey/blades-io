@@ -63,6 +63,9 @@ export class Player extends Schema {
   // Fin du cooldown de lancer (timestamp ms). Synchronisé pour que le
   // client puisse afficher l'état "ready" du bouton THROW.
   @type("float64") throwCooldownUntil: number = 0;
+  // Niveau de compte (tâche 5.2), affiché dans les nametags ; 0 pour un bot
+  // (pas de niveau inventé, cf. décision D8).
+  @type("uint16") level: number = 0;
 
   // Champs non synchronisés (gestion serveur)
   // ID Supabase auth.users du joueur authentifié ; null pour les invités et
@@ -74,6 +77,9 @@ export class Player extends Schema {
   // joueurs authentifiés. À la mort, on credit guest_wallets au lieu de
   // matches.
   guestId: string | null = null;
+  // XP du compte ou du portefeuille invité, lue au join et augmentée des
+  // trophées crédités à chaque fin de vie (cf. levelForXp).
+  xp: number = 0;
   // Input courant : celui des bots, ou le dernier appliqué pour un humain.
   inputDx: number = 0;
   inputDy: number = 0;

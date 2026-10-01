@@ -128,6 +128,8 @@ export function getLocalStats(): ProfileStats {
     powerups: s.powerups,
     firstPlayedAt: s.firstPlayedAt,
     rank: null,
+    // Solde invité, lu à part (cf. ProfilePanel).
+    xp: null,
     recent: s.recent.slice(),
   };
 }

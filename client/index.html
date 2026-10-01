@@ -193,6 +193,7 @@
             <div id="auth-panel" class="bio2-auth"></div>
 
             <div id="wallet-badge" class="bio2-wallet hidden">
+              <span id="wallet-level" class="bio2-level hidden"><b></b><i></i></span>
               <span class="bio2-wallet-label" data-i18n="lobby.trophies">TROPHIES</span>
               <span class="bio2-wallet-val" id="wallet-balance">0</span>
             </div>
@@ -360,6 +361,7 @@
               <h3 data-i18n="howto.trophies">Trophies</h3>
               <ul>
                 <li data-i18n-html="howto.trophies1">Earned at the end of each life in public rooms: kills × 15, your peak blade count, 1 per 10 s alive, crates × 3, power-ups × 2. Spend them in the BOUTIQUE.</li>
+                <li data-i18n-html="howto.trophies2">They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.</li>
               </ul>
             </section>
           </div>
@@ -381,6 +383,11 @@
           </header>
           <div class="howto-body">
             <p id="profile-who" class="profile-who"></p>
+            <div id="profile-level" class="profile-level hidden">
+              <span class="profile-level-name"></span>
+              <span class="profile-level-xp"></span>
+              <i class="profile-level-bar"></i>
+            </div>
             <div id="profile-grid" class="profile-grid"></div>
             <h3 data-i18n="profile.recent">Recent games</h3>
             <div id="profile-recent"></div>

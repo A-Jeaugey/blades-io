@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { PlayerView } from "../entities/PlayerView";
+import { onLangChange, t } from "../i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NametagOverlay — étiquettes 2D positionnées en screen-space au-dessus
@@ -22,8 +23,10 @@ import { PlayerView } from "../entities/PlayerView";
 
 interface TagEntry {
   el: HTMLDivElement;
+  levelEl: HTMLSpanElement;
   nameEl: HTMLSpanElement;
   bladesEl: HTMLSpanElement;
+  lastLevel: number;
   lastName: string;
   lastBlades: number;
   lastThreat: Threat;
@@ -58,6 +61,10 @@ export class NametagOverlay {
 
   constructor() {
     this.container = document.getElementById("nametag-layer")!;
+    // « NIV. » / « LV » : réécrit à la frame suivante.
+    onLangChange(() => {
+      for (const tag of this.tags.values()) tag.lastLevel = -1;
+    });
   }
 
   setEnabled(on: boolean): void {
@@ -81,6 +88,8 @@ export class NametagOverlay {
     isAlive: (id: string) => boolean,
     nameOf: (id: string) => string,
     bladesOf: (id: string) => number,
+    // Niveau de compte (tâche 5.2), 0 pour un bot : pas de badge.
+    levelOf: (id: string) => number,
     camera: THREE.PerspectiveCamera,
     width: number,
     height: number,
@@ -145,6 +154,12 @@ export class NametagOverlay {
         tag.nameEl.textContent = name;
         tag.lastName = name;
       }
+      const level = levelOf(id);
+      if (level !== tag.lastLevel) {
+        tag.levelEl.textContent = level > 0 ? t("level.short", { n: level }) : "";
+        tag.levelEl.classList.toggle("hidden", level <= 0);
+        tag.lastLevel = level;
+      }
       const blades = bladesOf(id);
       if (blades !== tag.lastBlades) {
         tag.bladesEl.textContent = String(blades);
@@ -178,13 +193,15 @@ export class NametagOverlay {
     if (!tag) {
       const el = document.createElement("div");
       el.className = "nametag threat-even";
+      const levelEl = document.createElement("span");
+      levelEl.className = "nametag-level hidden";
       const nameEl = document.createElement("span");
       nameEl.className = "nametag-name";
       const bladesEl = document.createElement("span");
       bladesEl.className = "nametag-blades";
-      el.append(nameEl, bladesEl);
+      el.append(levelEl, nameEl, bladesEl);
       this.container.appendChild(el);
-      tag = { el, nameEl, bladesEl, lastName: "", lastBlades: -1, lastThreat: "even" };
+      tag = { el, levelEl, nameEl, bladesEl, lastLevel: -1, lastName: "", lastBlades: -1, lastThreat: "even" };
       this.tags.set(id, tag);
     }
     return tag;

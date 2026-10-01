@@ -1,5 +1,6 @@
 import { KillCause } from "@bladeio/shared";
 import { I18nKey, t } from "../i18n";
+import { levelText, titleName } from "./level";
 
 // Carte de fin de vie (tâche 3.5) : score, record, trophées, cause de la
 // mort en clair et un conseil adapté.
@@ -30,6 +31,9 @@ export interface DeathStats {
   // Room privée : aucun trophée, partie non classée. On affiche le score
   // brut, sans le « 🏆 +N » qui laisserait croire à un gain.
   privateRoom?: boolean;
+  // XP du compte ou du portefeuille invité avant cette vie, et le gain
+  // (tâche 5.2) ; null si inconnue (pas de portefeuille, room privée).
+  xp?: { before: number; gained: number } | null;
 }
 
 export class DeathScreen {
@@ -81,6 +85,7 @@ export class DeathScreen {
       ${best}
       ${row("death.rank", `#${s.rank}`, "rank-row")}
       ${total}
+      ${levelRow(s)}
       ${accountRow(s)}
       <div class="death-tip">${escapeHtml(tipFor(s))}</div>
     `;
@@ -105,6 +110,23 @@ function causeText(s: DeathStats): string {
   if (s.cause === "throw") return t("death.causeThrow", { who, blades });
   if (s.victimBlades === 0) return t("death.causeNoBlades", { who, blades });
   return t("death.causeBlades", { who, blades });
+}
+
+// Niveau après cette vie, avec le gain d'XP ; passage de niveau et nouveau
+// titre mis en avant.
+function levelRow(s: DeathStats): string {
+  if (!s.xp || s.privateRoom) return "";
+  const before = levelText(s.xp.before);
+  const after = levelText(s.xp.before + s.xp.gained);
+  const bar = `<i class="death-level-bar" style="--p:${after.fraction.toFixed(3)}"></i>`;
+  const gain = t("death.xpGain", { xp: s.xp.gained });
+  if (after.level > before.level) {
+    const title = titleName(after.level) !== titleName(before.level)
+      ? `<span class="death-title">${escapeHtml(t("death.newTitle", { title: titleName(after.level) }))}</span>`
+      : "";
+    return row("death.level", `<b>${escapeHtml(t("death.levelUp", { n: after.level }))}</b> ${gain} ${bar}${title}`, "death-level up");
+  }
+  return row("death.level", `${escapeHtml(after.short)} ${gain} ${bar}`, "death-level");
 }
 
 function accountRow(s: DeathStats): string {

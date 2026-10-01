@@ -2,6 +2,9 @@ import { ProfileGame, ProfileStats } from "@bladeio/shared";
 import { auth } from "../auth/supabase";
 import { I18nKey, formatNumber, getLang, onLangChange, t } from "../i18n";
 import { getLocalStats } from "./localStats";
+import { levelText } from "./level";
+import { fetchGuestWallet } from "../auth/guestToken";
+import { wallet } from "../auth/wallet";
 
 // Profil joueur (tâche 5.1), depuis le lobby. Compte : statistiques du
 // serveur (GET /api/profile/stats). Invité, ou serveur injoignable :
@@ -74,6 +77,13 @@ export class ProfilePanel {
       this.stats = getLocalStats();
       this.loading = false;
       this.render();
+      // Niveau d'un invité : son solde de trophées (il ne dépense rien).
+      const g = await fetchGuestWallet();
+      if (id !== this.request || !this.stats) return;
+      if (g && !g.claimed) {
+        this.stats = { ...this.stats, xp: g.balance };
+        this.render();
+      }
       return;
     }
     this.loading = true;
@@ -86,13 +96,15 @@ export class ProfilePanel {
     if (id !== this.request) return;
     this.loading = false;
     this.source = stats ? "account" : "fallback";
-    this.stats = stats ?? getLocalStats();
+    // Repli : l'XP du compte reste connue par le portefeuille, s'il a répondu.
+    this.stats = stats ?? { ...getLocalStats(), xp: wallet.get()?.total_earned ?? null };
     this.render();
   }
 
   private render(): void {
     const who = this.root.querySelector("#profile-who") as HTMLElement;
     const grid = this.root.querySelector("#profile-grid") as HTMLElement;
+    const level = this.root.querySelector("#profile-level") as HTMLElement;
     const recent = this.root.querySelector("#profile-recent") as HTMLElement;
     const note = this.root.querySelector("#profile-note") as HTMLElement;
     // Connecté, le pseudo, même si le serveur ne répond pas (la note dit
@@ -100,11 +112,19 @@ export class ProfilePanel {
     who.textContent = auth.getUsername() ?? t("profile.guest");
     grid.innerHTML = "";
     recent.innerHTML = "";
+    level.classList.add("hidden");
     if (this.loading || !this.stats) {
       note.textContent = t("profile.loading");
       return;
     }
     const s = this.stats;
+    if (s.xp !== null) {
+      const lv = levelText(s.xp);
+      (level.querySelector(".profile-level-name") as HTMLElement).textContent = lv.full;
+      (level.querySelector(".profile-level-xp") as HTMLElement).textContent = lv.xp;
+      (level.querySelector(".profile-level-bar") as HTMLElement).style.setProperty("--p", lv.fraction.toFixed(3));
+      level.classList.remove("hidden");
+    }
     const tiles: Array<[I18nKey, string, string?]> = [
       ["profile.games", count(s.games)],
       ["profile.kills", count(s.kills)],

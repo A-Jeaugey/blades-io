@@ -26,6 +26,8 @@ export interface ProfileStats {
   // Rang au classement de tous les temps (meilleur score), null hors compte
   // ou sans partie.
   rank: number | null;
+  // XP du niveau (tâche 5.2) : trophées gagnés ; null si inconnue.
+  xp: number | null;
   // Dernières parties, la plus récente d'abord.
   recent: ProfileGame[];
 }
