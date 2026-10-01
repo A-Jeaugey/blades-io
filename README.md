@@ -36,6 +36,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Challenges** | Three daily challenges (easy, medium, hard: throw 20 blades, reach 40 blades in one life, take down the leader…) and one weekly, the same for everyone, renewed at midnight Paris time (Monday for the weekly). Every life in a public room counts, for accounts and guests with a trophy wallet; rewards are trophées (so XP). They show in PROFILE (with the count done today on its button) and a banner pops in game when one is completed |
 | **Leaderboards & seasons** | Best score per account over the day, the week, the season and all time (public rooms only), in the lobby's right rail and in PROFILE (the rail is hidden on phones), with your own rank when signed in. A season lasts six weeks, from Monday midnight Paris time (season 1 starts on 28 September 2026); when it ends, the top 10 earn trophées, so XP: 1,000, 750, 500, then 250 |
 | **Levels** | Trophées earned in public rooms are also XP (spending them does not lower it): your level shows next to your name in other players' nametags, in the lobby, on the death card (with level-ups) and in your profile. Level 2 after a life or two, 10 after ~2 000, 50 after ~30 000; titles at levels 5, 10, 20, 30, 50, 75 and 100. Bots have no level |
+| **Cosmetics** | Seen by everyone, and never changing what you see or what hits: 9 character skins (colors, head shape and an accessory: headband, visor, antenna, hood, horns, ears or crest), 5 blade styles (a light pattern that leaves rarity colors and tier shapes alone), 4 trails and 3 elimination effects. Half unlock with your level (2 to 30, announced on the death card), the rest are sold for trophées in the BOUTIQUE (SKINS, BLADES and EFFECTS tabs, signed-in players). Equipped items apply from your next game, without reloading; the server checks each one when you join. Your ground ring and spawn shield never change |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
 | **Camera** | Same framing for every theme (a cosmetic never changes what you see). It pulls back smoothly as your orbit grows, and narrow screens get pulled back until they show at least ~80 % of a 16:9 screen's width (portrait phones see more depth, at a smaller scale) |
@@ -326,6 +327,7 @@ shared/src/
   tiers.ts             # tier-derived multipliers (hitbox, rotation, scale)
   decor.ts             # static decor colliders
   shop.ts              # shop catalogue — the only source of item prices
+  cosmetics.ts         # cosmetics: slots, level unlocks, loadout validation
 
 server/src/
   index.ts             # Express + Colyseus bootstrap, /api/stats, static client
@@ -348,7 +350,8 @@ client/src/
   ui/                  # HUD, login, death, leaderboard, minimap, settings, chat, combat feedback, onboarding
   i18n/                # French and English dictionaries, t(), data-i18n attributes
   themes/              # cosmetic themes (palette, ground shader, decor, music)
-  boutique/            # theme shop
+  cosmetics/           # cosmetic looks (data) and the device's loadout
+  boutique/            # shop: map themes, skins, blade styles, trails, elimination effects
   audio/SoundManager   # Tone.js procedural SFX + music player
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)

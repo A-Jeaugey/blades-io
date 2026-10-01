@@ -89,8 +89,30 @@ const STYLE_GLSL = /* glsl */ `
 float bladeStyle(float s, vec3 p) {
   if (s < 0.5) return 1.0;
   // 1. Pulse : une vague lumineuse remonte vers la pointe.
-  float w = sin(p.x * 7.0 - uBladeTime * 7.0) * 0.5 + 0.5;
-  return 0.85 + 0.55 * smoothstep(0.55, 1.0, w);
+  if (s < 1.5) {
+    float w = sin(p.x * 7.0 - uBladeTime * 7.0) * 0.5 + 0.5;
+    return 0.85 + 0.55 * smoothstep(0.55, 1.0, w);
+  }
+  // 2. Stries : bandes claires obliques qui défilent.
+  if (s < 2.5) {
+    float b = fract(p.x * 2.5 + p.z * 4.0 - uBladeTime * 1.5);
+    return 0.85 + 0.5 * smoothstep(0.75, 0.95, b);
+  }
+  // 3. Étincelles : des points de la lame scintillent.
+  if (s < 3.5) {
+    vec3 c = floor(p * 18.0);
+    float h = fract(sin(dot(c, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float tw = sin(uBladeTime * 6.0 + h * 40.0) * 0.5 + 0.5;
+    return 0.9 + 0.9 * step(0.92, h) * tw;
+  }
+  // 4. Noyau : arête centrale vive, bords assombris.
+  if (s < 4.5) {
+    float edge = clamp(abs(p.z) * 7.0 + abs(p.y) * 7.0, 0.0, 1.0);
+    return mix(1.45, 0.7, edge);
+  }
+  // 5. Glitch : de brefs décrochages de luminosité, par tranches.
+  float g = fract(sin(floor(p.x * 6.0) * 91.7 + floor(uBladeTime * 8.0) * 13.1) * 4375.85);
+  return g > 0.85 ? 1.5 : (g < 0.1 ? 0.6 : 1.0);
 }
 `;
 

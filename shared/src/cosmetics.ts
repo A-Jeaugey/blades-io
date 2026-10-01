@@ -22,15 +22,54 @@ export interface CosmeticDef {
 export type Loadout = Record<CosmeticSlot, string>;
 export const DEFAULT_LOADOUT: Readonly<Loadout> = { skin: "", bladeSkin: "", trail: "", killFx: "" };
 
-const defs: CosmeticDef[] = [
+// Premiers cosmétiques (tâche 6.2) : la moitié se débloque en jouant (les
+// récompenses de niveau promises en 5.2), l'autre s'achète. Prix dans
+// SHOP_ITEMS (shop.ts), seule source de vérité.
+const DEFS = [
+  // Skins du personnage.
   { id: "recrue", slot: "skin", level: 2 },
+  { id: "sentinelle", slot: "skin", level: 5 },
+  { id: "ninja", slot: "skin", level: 10 },
+  { id: "astronaute", slot: "skin", level: 20 },
+  { id: "spectre", slot: "skin", level: 30 },
   { id: "robot", slot: "skin" },
+  { id: "renard", slot: "skin" },
+  { id: "chevalier", slot: "skin" },
+  { id: "demon", slot: "skin" },
+  // Styles de lames.
   { id: "pulse", slot: "bladeSkin", level: 2 },
+  { id: "stries", slot: "bladeSkin", level: 8 },
+  { id: "etincelles", slot: "bladeSkin", level: 15 },
+  { id: "noyau", slot: "bladeSkin" },
+  { id: "glitch", slot: "bladeSkin" },
+  // Traînées.
   { id: "comete", slot: "trail", level: 2 },
+  { id: "aurore", slot: "trail", level: 12 },
+  { id: "plasma", slot: "trail" },
+  { id: "braise", slot: "trail" },
+  // Effets d'élimination.
   { id: "confettis", slot: "killFx", level: 2 },
-];
+  { id: "ames", slot: "killFx", level: 25 },
+  { id: "nova", slot: "killFx" },
+] as const satisfies readonly CosmeticDef[];
 
-export const COSMETICS: Readonly<Record<string, CosmeticDef>> = Object.fromEntries(defs.map((d) => [d.id, d]));
+// Identifiants d'un emplacement : le client s'en sert pour exiger une
+// apparence par item (cosmetics/looks.ts ne compile pas s'il en manque).
+export type CosmeticId<S extends CosmeticSlot = CosmeticSlot> = Extract<(typeof DEFS)[number], { slot: S }>["id"];
+
+export const COSMETICS: Readonly<Record<string, CosmeticDef>> = Object.fromEntries(DEFS.map((d) => [d.id, d]));
+
+// Ordre d'affichage d'un emplacement (débloqués par niveau croissant, puis
+// les items vendus).
+export function cosmeticsOf(slot: CosmeticSlot): CosmeticDef[] {
+  return DEFS.filter((d) => d.slot === slot);
+}
+
+// Items débloqués en passant du niveau `from` au niveau `to` (carte de fin
+// de vie).
+export function cosmeticsUnlocked(from: number, to: number): CosmeticDef[] {
+  return DEFS.filter((d: CosmeticDef) => d.level !== undefined && d.level > from && d.level <= to);
+}
 
 // hasOwnProperty : l'id vient du client (cf. getShopItem).
 export function getCosmetic(id: string): CosmeticDef | undefined {

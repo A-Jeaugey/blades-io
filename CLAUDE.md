@@ -59,6 +59,8 @@ client/src/
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── cosmetics/           Cosmétiques visibles par tous (looks.ts : apparence,
 │                        loadout.ts : équipement de l'appareil)
+├── boutique/            Boutique : thèmes de carte (Boutique.ts) et onglets
+│                        SKINS, LAMES, EFFETS (cosmeticsShop.ts, aperçus CSS)
 ├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks
 ├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
 │                        CombatFeedback (repères de perte, gains « +N 🏆 »),
@@ -376,6 +378,16 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   sol (soi / les autres) ni le halo de protection ; un style de lame
   (attribut d'instance `aStyle`, `STYLE_GLSL` dans `BladeView.ts`) module
   la luminosité, jamais la teinte de rareté ni la forme du palier.
+  Ajouter un cosmétique (tâche 6.2) : son entrée dans `DEFS`
+  (`shared/src/cosmetics.ts`) avec un niveau, ou un prix dans `SHOP_ITEMS`
+  (jamais les deux, `server/test/cosmetics.test.ts` le vérifie) ; son
+  apparence dans `looks.ts` et son nom et sa description (`cos.<id>`,
+  `cos.<id>.desc`) dans `en.ts` et `fr.ts`, que le compilateur exige. Un
+  nouvel accessoire ou style de lame demande aussi sa géométrie
+  (`PlayerView.ts`) ou son motif (`STYLE_GLSL`), et son aperçu de boutique
+  en CSS (`.cos-acc-<accessoire>`, `.cos-style-<n>` dans `styles.css`).
+  Le client ne montre comme possédés que les items que le serveur
+  accepterait : un invité n'a que ceux de son niveau.
 - **Partage (tâche 5.5)** : les balises d'aperçu des liens (Open Graph)
   sont écrites par le serveur à chaque requête de page, entre
   `<!-- og:start -->` et `<!-- og:end -->` dans `client/index.html`

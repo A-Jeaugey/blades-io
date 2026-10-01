@@ -2,7 +2,9 @@ import { shopPrice } from "@bladeio/shared";
 import { getActiveTheme, listThemes, setActiveTheme, Theme } from "../themes";
 import { wallet } from "../auth/wallet";
 import { grantOwnership, isOwned, listOwned, subscribeOwnership } from "./owned";
-import { onLangChange, t, themeName, themeTagline } from "../i18n";
+import { CosmeticTab, CosmeticsShop } from "./cosmeticsShop";
+import { subscribeLoadout } from "../cosmetics/loadout";
+import { I18nKey, formatNumber, onLangChange, t, themeName, themeTagline } from "../i18n";
 import { showAlert, showConfirm } from "../ui/Dialog";
 import { reloadAtMenu } from "../ui/pendingReload";
 
@@ -11,11 +13,14 @@ import { reloadAtMenu } from "../ui/pendingReload";
 //
 // - Maps (= thèmes) : achat via /api/wallet/purchase (le serveur débite le
 //   prix du catalogue partagé SHOP_ITEMS), équipement = reload
-// - Skins / Épées : placeholder "Bientôt" (système d'assets pas encore prêt)
+// - Skins / Lames / Effets : cosmétiques visibles par tous (cosmeticsShop.ts),
+//   même route d'achat, équipés sans rechargement
 //
 // Les prix affichés viennent du même catalogue que celui qui fait foi côté
 // serveur : pas de divergence possible entre le prix vu et le prix débité.
 // ─────────────────────────────────────────────────────────────────────────────
+
+type Tab = "maps" | CosmeticTab;
 
 export class Boutique {
   private root: HTMLElement;
@@ -23,9 +28,12 @@ export class Boutique {
   private balanceEl: HTMLElement;
   private activeThemeEl: HTMLElement;
   private mapsCountEl: HTMLElement;
-  private currentTab: "maps" | "skins" | "blades" = "maps";
+  private footHint: HTMLElement | null;
+  private cosmetics: CosmeticsShop;
+  private currentTab: Tab = "maps";
   private unsubWallet: (() => void) | null = null;
   private unsubOwned: (() => void) | null = null;
+  private unsubLoadout: (() => void) | null = null;
   // État de "purchase pending" : empêche les double-clics + montre un état
   // visuel sur la carte. Stocké par theme id.
   private pendingPurchase = new Set<string>();
@@ -36,11 +44,13 @@ export class Boutique {
     this.balanceEl = document.getElementById("boutique-balance")!;
     this.activeThemeEl = document.getElementById("boutique-active-theme")!;
     this.mapsCountEl = document.getElementById("boutique-count-maps")!;
+    this.footHint = this.root.querySelector<HTMLElement>(".boutique-foot-hint");
+    this.cosmetics = new CosmeticsShop(() => this.close());
 
     // Tab switching.
     this.root.querySelectorAll<HTMLElement>(".boutique-tab").forEach((tab) => {
       tab.addEventListener("click", () => {
-        const which = tab.dataset.tab as "maps" | "skins" | "blades";
+        const which = tab.dataset.tab as Tab;
         if (!which) return;
         this.switchTab(which);
       });
@@ -62,10 +72,12 @@ export class Boutique {
     openBtn?.addEventListener("click", () => this.open());
 
     this.renderMaps();
+    this.cosmetics.render();
     this.refreshBalance();
     this.refreshActiveThemeBadge();
     onLangChange(() => {
       this.renderMaps();
+      this.cosmetics.render();
       this.refreshActiveThemeBadge();
     });
   }
@@ -84,12 +96,18 @@ export class Boutique {
     this.unsubWallet = wallet.subscribe(() => {
       this.refreshBalance();
       this.renderMaps();
+      // Le niveau suit l'XP du portefeuille (total gagné) ; l'appel
+      // immédiat de subscribe le charge à l'ouverture.
+      void this.cosmetics.refreshLevel();
     });
     this.unsubOwned?.();
     this.unsubOwned = subscribeOwnership(() => {
       this.renderMaps();
       this.refreshMapsCount();
+      this.cosmetics.render();
     });
+    this.unsubLoadout?.();
+    this.unsubLoadout = subscribeLoadout(() => this.cosmetics.render());
     // Tente un refresh wallet (peut échouer silencieusement si pas authed).
     void wallet.refresh();
     this.refreshMapsCount();
@@ -103,9 +121,11 @@ export class Boutique {
     this.unsubWallet = null;
     this.unsubOwned?.();
     this.unsubOwned = null;
+    this.unsubLoadout?.();
+    this.unsubLoadout = null;
   }
 
-  private switchTab(name: "maps" | "skins" | "blades"): void {
+  private switchTab(name: Tab): void {
     this.currentTab = name;
     this.root.querySelectorAll<HTMLElement>(".boutique-tab").forEach((t) => {
       const on = t.dataset.tab === name;
@@ -115,6 +135,14 @@ export class Boutique {
     this.root.querySelectorAll<HTMLElement>(".boutique-pane").forEach((p) => {
       p.classList.toggle("active", p.dataset.pane === name);
     });
+    // Pied : comment gagner des trophées (cartes), ou qui voit les
+    // cosmétiques et quand ils s'appliquent. data-i18n suit, pour qu'un
+    // changement de langue garde le bon texte.
+    if (this.footHint) {
+      const key: I18nKey = name === "maps" ? "shop.footHint" : "shop.cosHint";
+      this.footHint.dataset.i18n = key;
+      this.footHint.textContent = t(key);
+    }
   }
 
   private refreshBalance(): void {
@@ -234,7 +262,7 @@ export class Boutique {
     } else {
       const priceTag = document.createElement("span");
       priceTag.className = "boutique-card-price";
-      priceTag.innerHTML = `<span class="boutique-card-price-icon">🏆</span><span class="boutique-card-price-val">${price}</span>`;
+      priceTag.innerHTML = `<span class="boutique-card-price-icon">🏆</span><span class="boutique-card-price-val">${formatNumber(price, 0)}</span>`;
       action.appendChild(priceTag);
 
       const btn = document.createElement("button");

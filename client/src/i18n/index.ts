@@ -1,3 +1,4 @@
+import type { CosmeticId, CosmeticSlot } from "@bladeio/shared";
 import { en } from "./en";
 import { fr } from "./fr";
 
@@ -75,6 +76,17 @@ export function themeName(theme: { id: string; displayName: string }): string {
 }
 export function themeTagline(theme: { id: string; tagline?: string }): string {
   return tOr(`theme.${theme.id}.tagline`, theme.tagline ?? "");
+}
+
+// Nom et description d'un cosmétique (tâche 6.2) ; id "" = l'apparence de
+// base de l'emplacement. Le compilateur exige ces clés dans en.ts pour tout
+// le catalogue partagé.
+type CosmeticKey = `cos.${CosmeticId | `base.${CosmeticSlot}`}`;
+export function cosmeticName(slot: CosmeticSlot, id: string): string {
+  return t(`cos.${id || `base.${slot}`}` as CosmeticKey);
+}
+export function cosmeticDesc(slot: CosmeticSlot, id: string): string {
+  return t(`cos.${id || `base.${slot}`}.desc` as `${CosmeticKey}.desc`);
 }
 
 export function applyI18n(root: ParentNode = document): void {

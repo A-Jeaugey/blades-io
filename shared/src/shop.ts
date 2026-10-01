@@ -25,7 +25,16 @@ export const SHOP_ITEMS: Readonly<Record<string, ShopItem>> = {
   sanctuaire: { id: "sanctuaire", kind: "theme", price: 1500 },
   "forge-vermeille": { id: "forge-vermeille", kind: "theme", price: 3500 },
   "profondeurs-glacees": { id: "profondeurs-glacees", kind: "theme", price: 6000 },
+  // Cosmétiques visibles par tous (tâche 6.2, cf. cosmetics.ts).
   robot: { id: "robot", kind: "skin", price: 1500 },
+  renard: { id: "renard", kind: "skin", price: 2000 },
+  chevalier: { id: "chevalier", kind: "skin", price: 2500 },
+  demon: { id: "demon", kind: "skin", price: 3500 },
+  noyau: { id: "noyau", kind: "bladeSkin", price: 1200 },
+  glitch: { id: "glitch", kind: "bladeSkin", price: 2500 },
+  plasma: { id: "plasma", kind: "trail", price: 1500 },
+  braise: { id: "braise", kind: "trail", price: 2500 },
+  nova: { id: "nova", kind: "killFx", price: 3000 },
 };
 
 // hasOwnProperty et non SHOP_ITEMS[id] seul : l'id vient d'une requête HTTP,

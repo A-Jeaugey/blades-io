@@ -1,5 +1,5 @@
-import { KillCause } from "@bladeio/shared";
-import { I18nKey, t } from "../i18n";
+import { KillCause, cosmeticsUnlocked } from "@bladeio/shared";
+import { I18nKey, cosmeticName, t } from "../i18n";
 import { levelText, titleName } from "./level";
 import { ShareResult } from "./share";
 
@@ -140,8 +140,8 @@ function causeText(s: DeathStats): string {
   return t("death.causeBlades", { who, blades });
 }
 
-// Niveau après cette vie, avec le gain d'XP ; passage de niveau et nouveau
-// titre mis en avant.
+// Niveau après cette vie, avec le gain d'XP ; passage de niveau, nouveau
+// titre et cosmétiques débloqués mis en avant.
 function levelRow(s: DeathStats): string {
   if (!s.xp || s.privateRoom) return "";
   const before = levelText(s.xp.before);
@@ -152,7 +152,11 @@ function levelRow(s: DeathStats): string {
     const title = titleName(after.level) !== titleName(before.level)
       ? `<span class="death-title">${escapeHtml(t("death.newTitle", { title: titleName(after.level) }))}</span>`
       : "";
-    return row("death.level", `<b>${escapeHtml(t("death.levelUp", { n: after.level }))}</b> ${gain} ${bar}${title}`, "death-level up");
+    const items = cosmeticsUnlocked(before.level, after.level).map((d) => cosmeticName(d.slot, d.id));
+    const unlocked = items.length
+      ? `<span class="death-title">${escapeHtml(t("death.unlocked", { items: items.join(", ") }))}</span>`
+      : "";
+    return row("death.level", `<b>${escapeHtml(t("death.levelUp", { n: after.level }))}</b> ${gain} ${bar}${title}${unlocked}`, "death-level up");
   }
   return row("death.level", `${escapeHtml(after.short)} ${gain} ${bar}`, "death-level");
 }
