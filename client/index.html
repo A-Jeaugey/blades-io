@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>Blade.io</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230a0e1a'/%3E%3Ccircle cx='32' cy='32' r='20' fill='none' stroke='%2300eaff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23ff2bd6'/%3E%3C/svg%3E" />
@@ -82,7 +82,7 @@
         </div>
         <div id="boost-btn" class="hidden">BOOST<span class="btn-sub"></span></div>
         <div id="throw-btn" class="hidden">THROW</div>
-        <div id="settings-icon">⚙</div>
+        <div id="settings-icon" role="button" tabindex="0" aria-label="Settings">⚙</div>
         <div id="fps"></div>
         <!-- Onboarding (cf. ui/Onboarding.ts) : carte des contrôles à la
              première partie, puis indications uniques. -->
@@ -97,8 +97,10 @@
           <div class="kc-blades"></div>
           <div class="kc-skip"></div>
         </div>
-        <div id="king-crown" class="hidden">👑</div>
       </div>
+      <!-- Couronne du premier, placée aux coordonnées écran du canvas : hors
+           du HUD, qui s'écarte des encoches (zones de sécurité). -->
+      <div id="king-crown" class="hidden" aria-hidden="true">👑</div>
 
       <div id="login-screen" class="bio2-screen">
         <div class="bio2-scan"></div>
@@ -120,7 +122,7 @@
             <span class="bio2-tb-key">IN GAME</span>
             <span class="bio2-tb-val bio2-tb-online" id="bio2-online">—</span>
             <span class="bio2-pulse"></span>
-            <span id="login-settings-icon" style="cursor: pointer; font-size: 16px; margin-left: 10px; color: #89bacf;" title="Settings">⚙</span>
+            <button type="button" id="login-settings-icon" class="bio2-tb-settings" title="Settings" aria-label="Settings">⚙</button>
           </div>
         </div>
 
@@ -272,14 +274,16 @@
               <span class="bio2-cta-arrow">→</span>
               <span class="bio2-cta-bracket">]</span>
             </button>
-            <button id="open-boutique-btn" class="bio2-cta-secondary" type="button">
-              <span class="bio2-cta-secondary-icon">⌬</span>
-              <span class="bio2-cta-secondary-label">BOUTIQUE</span>
-            </button>
-            <button id="open-howto-btn" class="bio2-cta-secondary" type="button">
-              <span class="bio2-cta-secondary-icon">?</span>
-              <span class="bio2-cta-secondary-label">HOW TO PLAY</span>
-            </button>
+            <div class="bio2-cta-row">
+              <button id="open-boutique-btn" class="bio2-cta-secondary" type="button">
+                <span class="bio2-cta-secondary-icon">⌬</span>
+                <span class="bio2-cta-secondary-label">BOUTIQUE</span>
+              </button>
+              <button id="open-howto-btn" class="bio2-cta-secondary" type="button">
+                <span class="bio2-cta-secondary-icon">?</span>
+                <span class="bio2-cta-secondary-label">HOW TO PLAY</span>
+              </button>
+            </div>
           </section>
 
           <div class="bio2-marquee">
@@ -435,8 +439,10 @@
         <div class="death-card">
           <h2>YOU WERE SHREDDED</h2>
           <div id="death-stats"></div>
-          <button id="respawn-btn">RESPAWN</button>
-          <button id="back-menu-btn">BACK TO MENU</button>
+          <div class="death-actions">
+            <button id="respawn-btn">RESPAWN</button>
+            <button id="back-menu-btn">BACK TO MENU</button>
+          </div>
         </div>
       </div>
 
@@ -464,6 +470,10 @@
           <label class="settings-toggle">
             <input type="checkbox" id="nametags-toggle" />
             <span>Show nametags</span>
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" id="vibration-toggle" />
+            <span>Vibration</span>
           </label>
           <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
             <button id="close-settings">CLOSE</button>

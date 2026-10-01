@@ -1,6 +1,7 @@
 import { QualityPreset, detectPreset, savePresetChoice } from "../quality";
 import { getActiveTheme, listThemes, setActiveTheme } from "../themes";
 import { isOwned } from "../boutique/owned";
+import { Haptics } from "../fx/Haptics";
 
 export interface SettingsState {
   master: number;
@@ -12,6 +13,9 @@ export interface SettingsState {
   // joueur local n'en a pas). Actifs par défaut : le nombre de lames et la
   // couleur de menace aident à décider qui attaquer ou fuir.
   showNametags: boolean;
+  // Vibrations au coup et à l'élimination (tactile, si le navigateur les
+  // permet).
+  vibration: boolean;
   // Version du format enregistré, pour les migrations de valeurs par défaut.
   settingsVersion: number;
 }
@@ -31,6 +35,7 @@ export class SettingsPanel {
     qualityChoice: "auto",
     joystickSens: 1,
     showNametags: true,
+    vibration: true,
     settingsVersion: SETTINGS_VERSION,
   };
   private listeners: Array<(s: SettingsState) => void> = [];
@@ -123,6 +128,18 @@ export class SettingsPanel {
       nametagsToggle.checked = this.state.showNametags;
       nametagsToggle.addEventListener("change", () => {
         this.state.showNametags = nametagsToggle.checked;
+        this.persist();
+        this.emit();
+      });
+    }
+
+    // Vibrations : la ligne n'apparaît que si le navigateur sait vibrer.
+    const vibrationToggle = document.getElementById("vibration-toggle") as HTMLInputElement | null;
+    if (vibrationToggle) {
+      vibrationToggle.closest("label")?.classList.toggle("hidden", !Haptics.available);
+      vibrationToggle.checked = this.state.vibration;
+      vibrationToggle.addEventListener("change", () => {
+        this.state.vibration = vibrationToggle.checked;
         this.persist();
         this.emit();
       });

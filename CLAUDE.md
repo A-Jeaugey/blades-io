@@ -114,6 +114,19 @@ jamais de rechargement pendant un match).
 **Conséquence** : tout nouveau code de rendu doit gérer **les 3 niveaux de
 détail** (`rich`, `simple`, `minimal`) ou au moins ne pas casser les low/ultra.
 
+### Mobile — important
+
+- La page couvre tout l'écran (`viewport-fit=cover`) : `#hud` est décalé
+  dans la zone sûre (variables `--safe-*` en fin de `styles.css`) et sert
+  de référence à ses éléments, `fixed` compris. Un nouvel élément du HUD
+  va dans `#hud` ; un élément placé aux coordonnées écran du canvas
+  (nametags, couronne, repères de combat) reste **hors** du HUD, sinon il
+  se décale de l'encoche.
+- Cibles tactiles d'au moins 44 px (`@media (pointer: coarse)`), champs de
+  texte en 16 px (en dessous, iOS zoome au focus).
+- Formats vérifiés : 360×640, 390×844, 640×360, 844×390 (petits écrans :
+  `max-width: 480px` pour le lobby, `max-height: 500px` pour le paysage).
+
 ---
 
 ## ★ Système de thèmes — `client/src/themes/`

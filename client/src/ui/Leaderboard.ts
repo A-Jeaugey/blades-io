@@ -5,13 +5,42 @@ export interface LeaderboardEntry {
   bladeCount: number;
 }
 
+// Repliable (tâche 3.6) : sur téléphone, le classement cachait le haut de
+// l'écran, d'où arrivent les menaces ; replié par défaut sur les petits
+// écrans (le rang et les trophées restent dans le bloc d'état). Le choix du
+// joueur est retenu.
+const COLLAPSED_KEY = "blade.lbCollapsed";
+const SMALL_SCREEN = "(max-width: 600px), (max-height: 500px)";
+
 export class Leaderboard {
   private root: HTMLElement;
+  private toggle: HTMLButtonElement;
   private lastUpdate = 0;
+  private collapsed = false;
 
   constructor() {
     this.root = document.getElementById("leaderboard")!;
-    this.root.innerHTML = `<h4>TROPHÉES</h4><div id="lb-rows"></div>`;
+    this.root.innerHTML = `<button type="button" id="lb-toggle" class="lb-head" aria-controls="lb-rows">
+      <span>TROPHÉES</span><span class="lb-caret" aria-hidden="true">▾</span>
+    </button><div id="lb-rows"></div>`;
+    this.toggle = this.root.querySelector<HTMLButtonElement>("#lb-toggle")!;
+    this.setCollapsed(initiallyCollapsed());
+    // Tout le panneau bascule (cible tactile plus grande que l'en-tête) ;
+    // le bouton reste pour le clavier, son clic remonte jusqu'ici.
+    this.root.addEventListener("click", () => {
+      this.setCollapsed(!this.collapsed);
+      try {
+        localStorage.setItem(COLLAPSED_KEY, this.collapsed ? "1" : "0");
+      } catch {
+        // Stockage indisponible : le choix vaut pour la session.
+      }
+    });
+  }
+
+  private setCollapsed(collapsed: boolean): void {
+    this.collapsed = collapsed;
+    this.root.classList.toggle("collapsed", collapsed);
+    this.toggle.setAttribute("aria-expanded", String(!collapsed));
   }
 
   // Classement compact (tâche 3.4) : les cinq premiers et soi, avec score et
@@ -32,6 +61,16 @@ export class Leaderboard {
 }
 
 const TOP_ROWS = 5;
+
+function initiallyCollapsed(): boolean {
+  try {
+    const saved = localStorage.getItem(COLLAPSED_KEY);
+    if (saved !== null) return saved === "1";
+  } catch {
+    // Stockage indisponible : défaut selon l'écran.
+  }
+  return window.matchMedia(SMALL_SCREEN).matches;
+}
 
 function row(e: LeaderboardEntry, rank: number, me: boolean): string {
   const crown = rank === 0 ? " 👑" : "";

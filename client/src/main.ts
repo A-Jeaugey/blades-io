@@ -52,6 +52,7 @@ import { BladeRenderer, PlayerPositionProvider } from "./entities/BladeView";
 import { CrateRenderer } from "./entities/CrateView";
 import { PowerUpRenderer } from "./entities/PowerUpView";
 import { ParticlePool } from "./fx/Particles";
+import { Haptics } from "./fx/Haptics";
 import { AmbientWisps } from "./scene/AmbientWisps";
 import { InputManager } from "./input/InputManager";
 import { Hud } from "./ui/Hud";
@@ -253,6 +254,7 @@ class Game {
   private sentViewRadius = 0;
   private nextViewCheckAt = 0;
   private onboarding!: Onboarding;
+  private haptics!: Haptics;
   // Intensité de l'alerte de bordure à la dernière frame (0..1).
   private borderIntensity = 0;
   private nextHintCheckAt = 0;
@@ -403,6 +405,7 @@ class Game {
     });
     this.throwBtn = document.getElementById("throw-btn");
     this.onboarding = new Onboarding(() => this.input.isTouch);
+    this.haptics = new Haptics(() => this.input.isTouch);
     // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
     // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
     this.input.onModeChange((touch) => {
@@ -415,6 +418,7 @@ class Game {
       this.sound.setVolumes(s.master, s.music, s.sfx);
       this.input.setSensitivity(s.joystickSens);
       this.nametags.setEnabled(s.showNametags);
+      this.haptics.enabled = s.vibration;
     });
     this.settings.onQuit(() => {
       this.returnToMenu();
@@ -665,7 +669,10 @@ class Game {
       if (Math.hypot(msg.x, msg.y) >= WALL_ZAP_RADIUS) {
         this.particles.spawnSparks(msg.x, 1.4, msg.y, this.theme.palette.boundary, 30, 9);
         this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 10, 4);
-        if (msg.ownerId === this.myId) this.camera.shake.add(0.3);
+        if (msg.ownerId === this.myId) {
+          this.camera.shake.add(0.3);
+          this.haptics.play("hitTaken");
+        }
         this.sound.wallZap(msg.ownerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y));
         return;
       }
@@ -673,6 +680,7 @@ class Game {
       if (msg.ownerId === this.myId) {
         this.camera.shake.add(0.18);
         this.sound.bladeLost();
+        this.haptics.play("hitTaken");
         // Repère au bord de l'écran, du côté de l'attaquant (lame adverse ou
         // lanceur du projectile) ; à défaut, du point de rupture. Le point de
         // rupture seul trompe quand les orbites se chevauchent : il peut être
@@ -734,6 +742,7 @@ class Game {
       if (msg.killerId === this.myId) {
         this.camera.shake.add(0.5);
         this.sound.killConfirm();
+        this.haptics.play("kill");
         if (victim) this.scorePop(victim.renderX, victim.renderY, SCORE_KILL, "big");
       }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg);
@@ -770,6 +779,7 @@ class Game {
             this.camera.shake.addCapped(tierClashShake(msg.tier), 0.5);
           }
           this.sound.hit(r);
+          this.haptics.play("clash");
         } else {
           // Clash distant : son atténué selon distance, et petit shake si
           // une lame a été cassée tout près de nous.
@@ -1045,6 +1055,7 @@ class Game {
     const rank = this.computeMyRank();
     const best = this.submitLifeScore(me.score);
     this.sound.death();
+    this.haptics.play("death");
     this.camera.shake.add(0.8);
     const earned = me.score;
     const isAuthed = auth.getAccessToken() !== null;

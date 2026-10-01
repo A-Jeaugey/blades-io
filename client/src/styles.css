@@ -117,6 +117,8 @@ canvas#game {
   color: var(--fg-bright);
   font-size: 15px;
   animation: onboard-in .35s ease-out;
+  /* Au-dessus du bouton de chat (z-index 9), qu'elle recouvre en paysage. */
+  z-index: 10;
 }
 .onboard-card.hidden { display: none; }
 @keyframes onboard-in {
@@ -344,13 +346,31 @@ canvas#game {
   font-size: 13px;
   box-shadow: 0 0 20px rgba(var(--accent-cool-rgb), 0.15);
 }
-#leaderboard h4 {
+/* En-tête cliquable : replie ou déplie le classement (tâche 3.6). Tout le
+   panneau réagit au toucher (cf. ui/Leaderboard.ts). */
+#leaderboard { cursor: pointer; }
+.lb-head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
   margin: 0 0 6px 0;
   color: var(--cyan);
   font-size: 11px;
+  font-weight: 700;
   letter-spacing: 2px;
   text-transform: uppercase;
+  cursor: pointer;
 }
+.lb-head:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
+.lb-caret { transition: transform 0.2s; }
+#leaderboard.collapsed { padding: 0; min-width: 0; }
+#leaderboard.collapsed #lb-rows { display: none; }
+#leaderboard.collapsed .lb-head { margin: 0; padding: 8px 12px; }
+#leaderboard.collapsed .lb-caret { transform: rotate(-90deg); }
 .lb-row {
   display: grid;
   grid-template-columns: 1fr 58px 42px;
@@ -791,13 +811,14 @@ button:hover {
 }
 
 #king-crown {
-  position: absolute;
+  position: fixed;
   font-size: 24px;
   pointer-events: none;
   transform: translate(-50%, -100%);
   text-shadow: 0 0 10px rgba(255, 215, 0, 0.8);
   transition: opacity 0.2s;
-  z-index: 5;
+  /* Comme les nametags : sous le HUD. */
+  z-index: 6;
 }
 
 #effects {
@@ -977,8 +998,7 @@ button:hover {
   left: 0;
   right: 0;
   z-index: 9;
-  /* Encoche des téléphones en plein écran. */
-  padding: max(6px, env(safe-area-inset-top)) 12px 6px;
+  padding: 6px 12px;
   text-align: center;
   font-size: 13px;
   font-weight: 700;
@@ -1132,7 +1152,7 @@ button:hover {
     max-width: calc(100vw - 190px);
     padding: 6px 8px;
   }
-  #leaderboard h4 {
+  .lb-head {
     font-size: 10px;
     letter-spacing: 1.5px;
     margin-bottom: 4px;
@@ -2694,4 +2714,226 @@ button:hover {
   accent-color: var(--cyan);
   width: 16px; height: 16px;
   cursor: pointer;
+}
+
+/* =====================================================================
+   MOBILE (tâche 3.6) : zones de sécurité, lobby étroit, paysage bas,
+   cibles tactiles. Mesuré avec un audit automatisé à 360×640, 390×844,
+   640×360 et 844×390 en tactile émulé.
+   ===================================================================== */
+
+/* Zones de sécurité (encoche, coins arrondis, barre d'accueil) : la page
+   couvre tout l'écran (viewport-fit=cover dans index.html) et l'interface
+   s'en écarte. Valent 0 sur les écrans sans encoche. */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+/* Le HUD entier se place dans la zone sûre ; transform en fait le bloc de
+   référence de ses éléments fixed (classement en portrait, chat, bandeau),
+   qui suivent donc aussi. Les calques placés aux coordonnées du canvas
+   (nametags, couronne, repères de combat) restent hors du HUD. */
+#hud {
+  inset: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+  transform: translateZ(0);
+}
+.bio2-screen,
+.howto,
+.boutique {
+  padding: var(--safe-t) var(--safe-r) var(--safe-b) var(--safe-l);
+}
+#death-screen,
+#settings-panel {
+  padding: max(10px, var(--safe-t)) max(10px, var(--safe-r)) max(10px, var(--safe-b)) max(10px, var(--safe-l));
+}
+/* Une carte plus haute que l'écran défile au lieu d'être coupée en haut et
+   en bas (centrage flex) : en paysage, RESPAWN sortait de l'écran. */
+.death-card,
+.settings-card {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Boutons de fin de vie collés au bas de la carte quand elle défile : la
+   prochaine action reste sous le pouce. */
+.death-actions {
+  position: sticky;
+  bottom: -1px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 12px;
+  padding-bottom: 2px;
+  background: linear-gradient(180deg, transparent, var(--panel) 30%);
+}
+
+/* Réglages et boutons secondaires du lobby. */
+.bio2-tb-settings {
+  margin: 0 0 0 4px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 18px;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.bio2-tb-settings:hover { color: var(--cyan); box-shadow: none; background: transparent; }
+.bio2-cta-row { display: grid; grid-template-columns: 1fr; }
+
+/* ---- Lobby étroit (téléphone en portrait) ---- */
+@media (max-width: 480px) {
+  .bio2-topbar { padding: 0 2px 0 12px; letter-spacing: 1px; }
+  /* « SYS BLADE_GRID//v0.1 · » : sans eux, ping, joueurs en jeu et réglages
+     tiennent à 360 px (la roue sortait de l'écran). */
+  .bio2-tb-left > :nth-child(2),
+  .bio2-tb-left > :nth-child(3),
+  .bio2-tb-left > :nth-child(4) { display: none; }
+  .bio2-tb-left, .bio2-tb-right { gap: 6px; }
+  /* Un seul défilement, celui de la page, au lieu de deux imbriqués (la
+     console avait le sien, et ENTER THE GRID se cachait dedans). */
+  .bio2-center { padding: 8px 10px 14px; gap: 10px; }
+  .bio2-console { width: 100%; max-width: none; max-height: none; overflow: visible; padding: 12px 14px 14px; }
+  .bio2-mark-bracket,
+  .bio2-rarity-strip,
+  .bio2-marquee { display: none; }
+  .bio2-title { font-size: 42px; letter-spacing: 4px; }
+  .bio2-tagline { font-size: 11px; letter-spacing: 4px; }
+  /* Onglets de mode empilés : côte à côte, le troisième sortait de l'écran
+     (« JOIN CO… »). */
+  #mode-tabs { flex-direction: column; gap: 6px; }
+  .bio2-mode { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; }
+  .bio2-mode-hint { margin-left: auto; text-align: right; }
+  .bio2-cta-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bio2-cta-secondary { letter-spacing: 1.5px; gap: 6px; }
+  .bio2-cta { letter-spacing: 3px; padding: 12px 10px; }
+
+  /* Boutique : la croix de fermeture sortait du cadre, « ÉPÉES » était
+     coupé. Le thème actif reste affiché sur sa carte (ÉQUIPÉ). */
+  .boutique-head { padding: 10px 12px; gap: 8px; }
+  .boutique-head-left { gap: 8px; min-width: 0; }
+  .boutique-sub { display: none; }
+  .boutique-logo { font-size: 18px; letter-spacing: 3px; }
+  .boutique-head-right { gap: 8px; }
+  .boutique-tabs { padding: 0 6px; }
+  .boutique-tab { padding: 12px 10px; letter-spacing: 1px; }
+  .boutique-tab-soon { display: none; }
+  .boutique-foot { padding: 8px 14px; }
+  .boutique-foot-hint { font-size: 11px; }
+}
+
+/* ---- Écran bas (téléphone en paysage) ---- */
+@media (max-height: 500px) {
+  /* Lobby : l'essentiel d'abord, un seul défilement ; ENTER THE GRID
+     visible sans défiler dès 390 px de haut. */
+  .bio2-center { padding: 6px 24px 12px; gap: 6px; }
+  .bio2-console { max-height: none; overflow: visible; padding: 10px 22px 12px; }
+  .bio2-mark-bracket,
+  .bio2-tagline,
+  .bio2-rarity-strip,
+  .bio2-marquee,
+  .bio2-console-head,
+  .bio2-mode-hint { display: none; }
+  .bio2-title { font-size: 30px; }
+  .bio2-field { margin-top: 6px; }
+  .bio2-mode { flex-direction: row; align-items: center; gap: 8px; min-height: 44px; padding: 8px 10px; }
+  .mode-panel { min-height: 0; }
+  .bio2-cta { margin-top: 10px; padding: 10px 18px; }
+  .bio2-cta-row { grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  /* HUD : la minimap (172 px) prenait la moitié de la hauteur, et le
+     classement, empilé dessous, recouvrait THROW et BOOST. */
+  #top-right { top: 10px; right: 10px; gap: 6px; }
+  #minimap { width: 96px; height: 96px; }
+  #leaderboard {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    min-width: 0;
+    max-width: min(320px, calc(100% - 340px));
+    padding: 6px 8px;
+  }
+  .lb-row { grid-template-columns: 1fr 40px 32px; gap: 3px; padding: 1px 0; }
+  #top-left { top: 68px; }
+  /* Chat : à gauche de THROW, dans la grappe du pouce droit (il touchait la
+     minimap). */
+  .chat-fab { right: 258px; bottom: 71px; }
+  .chat { bottom: 130px; right: 258px; }
+  .chat.editing { bottom: 130px; }
+  .onboard-hint { bottom: 150px; }
+
+  /* Fin de vie compacte : tout tient sans défiler sur 360 px de haut. */
+  .death-card { padding: 12px 24px 10px; }
+  .death-card h2 { font-size: 20px; margin-bottom: 6px; }
+  #death-stats { margin: 4px 0 6px; }
+  #death-stats .score-total-container { margin-bottom: 6px; }
+  #death-stats .score-total { font-size: 32px; }
+  #death-stats .score-sub { font-size: 15px; margin-top: 4px; }
+  #death-stats .row { padding: 2px 0; }
+  #death-stats .death-tip { margin-top: 6px; padding: 5px 8px; font-size: 12px; }
+
+  /* Réglages sur deux colonnes. */
+  .settings-card {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 28px;
+    padding: 14px 24px;
+    max-width: 96%;
+  }
+  .settings-card h3,
+  .settings-card > div { grid-column: 1 / -1; }
+  .settings-card h3 { margin-bottom: 4px; }
+}
+
+/* ---- Cibles tactiles d'au moins 44 px ---- */
+@media (pointer: coarse) and (max-width: 600px) {
+  /* Roue des réglages (44 px) au-dessus du bloc d'état. */
+  #settings-icon { left: 10px; top: 10px; }
+  #top-left { top: 62px; }
+}
+@media (pointer: coarse) {
+  #settings-icon {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+  #leaderboard.collapsed .lb-head { min-height: 44px; }
+  #room-badge { min-height: 44px; display: flex; align-items: center; }
+  .bio2-cta,
+  .bio2-cta-secondary,
+  .onboard-ok,
+  .bio2-rename-btn,
+  .bio2-auth button,
+  .bio2-toggle,
+  .howto-reset,
+  .boutique-tab,
+  .boutique-btn,
+  .death-card button,
+  .settings-card button { min-height: 44px; }
+  .howto-close,
+  .boutique-close,
+  .bio2-auth-close,
+  .chat-send { min-width: 44px; min-height: 44px; }
+  .settings-card label { min-height: 44px; padding: 0; }
+  .settings-card input[type="range"] { height: 44px; margin: 0; }
+  .settings-card select { min-height: 44px; }
+  .settings-toggle input[type="checkbox"] { width: 22px; height: 22px; }
+  /* 16 px : en dessous, iOS zoome sur le champ au focus et décale tout. */
+  .bio2-input,
+  .bio2-auth input,
+  .chat-input,
+  .settings-card select { font-size: 16px; }
 }

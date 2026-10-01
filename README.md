@@ -122,6 +122,8 @@ Every push and pull request runs the same build in GitHub Actions (`.github/work
 
 The input mode follows the last device you used: touching the screen shows the touch controls, the keyboard or mouse hides them. Movement keys take over from the mouse until you left-click again; while moving with the keyboard, moving the mouse makes the cursor your aim (WASD + mouse), so you can throw behind you while running away. Direction and aim are measured on the ground from your character: the cursor points exactly where you go or throw, despite the tilted camera. On mobile, dragging from THROW and bringing your finger back to the button cancels the throw.
 
+On phones, the interface keeps clear of notches and rounded corners, every button is at least 44 px, and the in-game leaderboard starts collapsed (tap it to expand; the choice is remembered). Hits taken, kills and death trigger short vibrations where the browser supports them (Android; not iOS Safari), which can be turned off in Settings.
+
 New players get a controls card (matching their device) when they first enter a game, then one-time contextual tips (throw when an enemy is in range, boost cost, deadly edge, bushes), remembered in `localStorage` (`blade.onboarding`). The HOW TO PLAY page in the lobby repeats the rules and can show the tips again.
 
 ### Gameplay tips
