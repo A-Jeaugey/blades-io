@@ -302,6 +302,12 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   complète hors réseau. Toute modification d'un système serveur passe par
   ces tests ; un changement de comportement voulu met le test à jour dans
   le même commit.
+- **Arrêt du serveur** : sur SIGINT/SIGTERM, le serveur annonce le
+  redémarrage, refuse les entrées et attend le départ des joueurs
+  (`server/src/shutdown.ts`, préavis `RESTART_NOTICE_MS` : 60 s en
+  production, aucun par défaut en dev). Toute écriture asynchrone de fin de
+  partie (Supabase) passe par `trackWrite()`, sinon elle peut se perdre à
+  l'arrêt.
 - **`client/public/` est gitignoré**. Le dossier est régénéré au `predev`/
   `prebuild` par `sync-music`. N'y commitez rien à la main.
 - **Suppression de branches sur le remote local** (`http://127.0.0.1:.../`) :
@@ -326,10 +332,14 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
   obligatoire pour ce projet).
 - Branches de feature `claude/<task-name>` créées par les sessions, à
   cleaner après merge (depuis la machine du dev, pas le sandbox).
-- Le déploiement de production est auto-hébergé : `auto-deploy.sh`, lancé
-  toutes les 30 s par le timer de `systemd/`, redéploie `main` dès qu'il
-  bouge (`git reset --hard`, build complet, `pm2 restart`). Tout push sur
-  `main` redémarre donc le serveur et coupe les parties en cours (tâche T.3
-  du plan) : attendre que la CI soit verte sur la branche avant de fusionner.
+- Le déploiement de production est auto-hébergé (tâche T.3) :
+  `auto-deploy.sh` construit `main` dans une release à part (`npm ci`, build
+  complet, tests), bascule le lien `~/bladeio-current`, redémarre via pm2
+  (`ecosystem.config.js`) avec un préavis de 60 s aux joueurs, vérifie
+  `/healthz` et revient à la release précédente en cas d'échec. Le timer de
+  `systemd/` le lance chaque jour à 5 h : un push sur `main` n'est plus
+  déployé tout de suite (`systemctl start bladeio-autodeploy.service` pour
+  déployer maintenant). Attendre que la CI soit verte sur la branche avant
+  de fusionner.
   Les fichiers Render/Vercel/Docker restent des alternatives documentées
   dans le README, pas la cible actuelle.

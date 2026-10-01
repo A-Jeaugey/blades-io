@@ -209,16 +209,22 @@ curl -fsSL https://raw.githubusercontent.com/A-Jeaugey/blades-io/main/deploy.sh 
 
 The script:
 
-- installs Node 20 and pm2 if missing
-- clones / pulls the repo
-- builds shared + server + client
-- starts via pm2 with auto-start at boot
+- installs Node 20 and pm2 if missing (Node 20 or later is supported)
+- clones / pulls the repo into `~/bladeio`
+- builds, tests and starts the first release with `auto-deploy.sh` (below)
+- enables pm2 auto-start at boot
 
-The server listens on **2567**, serves the client at `/`, and exposes `/api` and `/healthz`. Server settings (Supabase keys, `SERVER_GUEST_SECRET`, `TRUST_PROXY`, `ALLOWED_ORIGINS`) go in `.env`; see `.env.example`.
+The server listens on **2567**, serves the client at `/`, and exposes `/api` and `/healthz` (`503` while a restart is announced). Server settings (Supabase keys, `SERVER_GUEST_SECRET`, `TRUST_PROXY`, `ALLOWED_ORIGINS`) go in `~/bladeio/.env`, linked into every release; see `.env.example`.
 
-#### Auto-deploy
+#### Updates: graceful deploys
 
-`auto-deploy.sh`, run every 30 s by the systemd timer in `systemd/`, deploys `main` as soon as it moves: `git reset --hard`, full build, `pm2 restart`. Every push to `main` therefore restarts the server and ends the matches in progress (graceful deploys are planned as task T.3 in `PLAN.md`). Check that CI is green before pushing to `main`.
+`auto-deploy.sh` deploys the latest `main` without cutting matches short:
+
+1. **Separate build.** The commit is built in its own release directory, `~/bladeio-releases/<commit>`: `npm ci`, full build, tests. The live version is not touched until all of that succeeds. A version that failed is not retried until a new commit lands (or with `--force`).
+2. **Atomic switch.** `~/bladeio-current` is switched to the new release, then pm2 restarts the server (`ecosystem.config.js`). The running server announces the restart: players see a 60 s countdown and new players are refused. The server closes when the last player leaves or the countdown ends, and it saves every match on the way out. Clients wait for the new version to answer, then return to the menu.
+3. **Health check.** The script polls `/healthz` and rolls back to the previous release if the new one does not answer.
+
+The systemd timer in `systemd/` runs the script every day at 05:00 (server time), when few players are online. To deploy right away, run `sudo systemctl start bladeio-autodeploy.service` or `~/bladeio/auto-deploy.sh`. Everything is logged to `~/bladeio-releases/deploy.log`. The 3 latest releases are kept, about 300 MB each. Check that CI is green before pushing to `main`.
 
 #### HTTPS via Caddy
 
@@ -283,6 +289,7 @@ shared/src/
 
 server/src/
   index.ts             # Express + Colyseus bootstrap, /api/stats, static client
+  shutdown.ts          # graceful restart: notice to players, pending writes
   rooms/ArenaRoom.ts   # tick loop, message handling, drop logic
   state/               # Colyseus schemas (Player, Blade, Crate, PowerUp)
   systems/             # movement, collisions, throws, pickup, bots, …
@@ -304,6 +311,11 @@ client/src/
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)
 tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s, time before the first death
+
+deploy.sh              # first install on a server
+auto-deploy.sh         # graceful deploys: separate build, switch, health check, rollback
+ecosystem.config.js    # pm2 settings (restart notice, kill timeout)
+systemd/               # daily deploy timer
 ```
 
 Project docs:

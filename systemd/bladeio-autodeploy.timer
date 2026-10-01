@@ -1,10 +1,14 @@
 [Unit]
-Description=Check for blade.io updates every 30s
+Description=Blade.io : déploiement à heure creuse
 
 [Timer]
-OnBootSec=60
-OnUnitActiveSec=30
-AccuracySec=5s
+# Tous les jours à 5 h (heure du serveur), quand peu de joueurs sont en
+# ligne ; le serveur les prévient 60 s avant de redémarrer (tâche T.3).
+# Avant : toutes les 30 s, donc à chaque push sur main, en pleine partie.
+# Déploiement immédiat : `systemctl start bladeio-autodeploy.service` ou
+# lancer auto-deploy.sh à la main.
+OnCalendar=*-*-* 05:00:00
+Persistent=true
 
 [Install]
 WantedBy=timers.target

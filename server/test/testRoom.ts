@@ -18,7 +18,7 @@ export class TestRoom {
 
   constructor(private readonly clock: FakeClock, options: { code?: string; bots?: boolean } = {}) {
     const room: any = new ArenaRoom();
-    room.listing = { metadata: null, save: async () => {}, markModified: () => {} };
+    room.listing = { metadata: null, save: async () => {}, markModified: () => {}, updateOne: async () => {} };
     room.autoDispose = false;
     room.__init();
     room.broadcast = (type: string, message: any) => {

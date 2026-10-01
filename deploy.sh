@@ -24,22 +24,18 @@ else
   git clone -b "$BRANCH" "$REPO" "$DIR"
 fi
 
-echo "=== [4/5] Build serveur + client ==="
-cd "$DIR"
-npm install --no-fund --no-audit
-npm run build:shared
-npm run build --workspace=@bladeio/server
-# Sous-chemin configurable (par défaut : racine du domaine).
-# Ex : BLADEIO_BASE_PATH=/spinning-blades/ pour servir sous un sous-chemin.
-BASE_PATH="${BLADEIO_BASE_PATH:-/}"
-echo "building client with base path: $BASE_PATH"
-VITE_BASE_PATH="$BASE_PATH" npm run build --workspace=@bladeio/client
-echo "client/dist prêt → servi directement par le serveur"
+echo "=== [4/5] Build, tests, release et démarrage ==="
+# Même chemin que les mises à jour : release construite à part, bascule du
+# lien ~/bladeio-current, pm2 avec arrêt en douceur (ecosystem.config.js).
+# Sous-chemin du client : BLADEIO_BASE_PATH (par défaut la racine).
+chmod +x "$DIR/auto-deploy.sh"
+if ! BLADEIO_REPO_DIR="$DIR" BLADEIO_BRANCH="$BRANCH" "$DIR/auto-deploy.sh" --force; then
+  echo "Échec : voir ~/bladeio-releases/deploy.log"
+  exit 1
+fi
+tail -n 3 "$HOME/bladeio-releases/deploy.log"
 
-echo "=== [5/5] PM2 ==="
-pm2 delete bladeio 2>/dev/null || true
-pm2 start server/dist/index.js --name bladeio --cwd "$DIR"
-pm2 save --force
+echo "=== [5/5] PM2 au démarrage de la machine ==="
 pm2 startup systemd | grep "sudo env" | bash || true
 
 echo ""
@@ -51,6 +47,7 @@ echo "Port           : 2567"
 echo "Test local     : curl http://localhost:2567/healthz"
 echo "Logs           : pm2 logs bladeio"
 echo "Redémarrer     : pm2 restart bladeio"
+echo "Déployer main  : ~/bladeio/auto-deploy.sh (journal : ~/bladeio-releases/deploy.log)"
 echo ""
 echo "Le serveur sert aussi le client en statique sur le même port."
 echo "Prochaine étape : Caddy pour le HTTPS (voir Caddyfile à la racine)."

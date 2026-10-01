@@ -10,6 +10,7 @@ import { ArenaRoom } from "./rooms/ArenaRoom";
 import { initSupabase } from "./auth/supabase";
 import { buildAuthRouter } from "./auth/routes";
 import { rateLimit } from "./http/rateLimit";
+import { afterShutdown, beforeShutdown, restartDeadline } from "./shutdown";
 
 initSupabase();
 
@@ -45,7 +46,13 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "")
 if (allowedOrigins.length > 0) app.use(cors({ origin: allowedOrigins }));
 
 app.use(express.json({ limit: "32kb" }));
-app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+// 503 pendant le préavis de redémarrage (tâche T.3) : un client coupé par
+// le redémarrage attend une version qui accepte des joueurs avant de
+// proposer d'y revenir.
+app.get("/healthz", (_req, res) => {
+  if (restartDeadline() > 0) res.status(503).send("restarting");
+  else res.status(200).send("ok");
+});
 // Plafond général de l'API, puis plafond serré sur la création de wallet
 // invité : chaque appel insère une ligne en base. 20 / 15 min laisse passer
 // une salle de classe derrière une même IP, pas un script.
@@ -103,6 +110,11 @@ const gameServer = new Server({
 // filterBy["code"] fait que joinOrCreate("arena", { code }) regroupe par
 // valeur de code. Public = code vide, private = code à 5 chars.
 gameServer.define("arena", ArenaRoom).filterBy(["code"]);
+
+// Arrêt en douceur sur SIGTERM / SIGINT (déploiement) : préavis aux
+// joueurs, puis attente des enregistrements de fin de partie (shutdown.ts).
+gameServer.onBeforeShutdown(beforeShutdown);
+gameServer.onShutdown(afterShutdown);
 
 gameServer.listen(PORT).then(() => {
   console.log(`[blade.io] server listening on :${PORT}`);

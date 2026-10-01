@@ -969,6 +969,26 @@ button:hover {
   color: var(--fg-bright);
 }
 
+/* Redémarrage du serveur annoncé : bande en haut de l'écran, par-dessus le
+   reste du HUD le temps du compte à rebours. */
+.restart-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9;
+  /* Encoche des téléphones en plein écran. */
+  padding: max(6px, env(safe-area-inset-top)) 12px 6px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--fg-bright);
+  background: rgba(var(--danger-rgb), 0.85);
+  pointer-events: none;
+}
+.restart-banner.hidden { display: none; }
+
 /* Caméra sur le tueur : bandeau sous le centre de l'écran (le tueur est au
    centre), au-dessus des contrôles tactiles. */
 .killcam {

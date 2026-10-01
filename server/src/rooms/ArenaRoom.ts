@@ -1,4 +1,4 @@
-import { Room, Client } from "@colyseus/core";
+import { Room, Client, ServerError } from "@colyseus/core";
 import { Encoder } from "@colyseus/schema";
 import {
   BladeRarity,
@@ -66,6 +66,7 @@ import { PickupSystem, attachBladeToPlayer } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
 import { pickSpawnPoint, randomSpawnPoint } from "../systems/spawnPoint";
 import { EventScope, InterestManager } from "../systems/interest";
+import { RestartAware, registerRoom, restartDeadline, trackWrite, unregisterRoom } from "../shutdown";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
 import { PowerUpSystem } from "../systems/powerups";
@@ -112,7 +113,7 @@ function bladesBeforeFight(p: Player): number {
   return p.bladeCount + lost;
 }
 
-export class ArenaRoom extends Room<ArenaState> {
+export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   maxClients = MAX_PLAYERS_PER_ROOM;
   private pickup = new PickupSystem();
   private spawning = new SpawnSystem();
@@ -138,6 +139,7 @@ export class ArenaRoom extends Room<ArenaState> {
   private nextSummaryAt = 0;
 
   onCreate(options: { code?: string; bots?: boolean } = {}): void {
+    registerRoom(this);
     this.roomCode = typeof options.code === "string" ? options.code.toUpperCase() : "";
     this.isPrivate = this.roomCode.length > 0;
     // Privé par défaut sans bots (les parties avec potes, pas besoin de
@@ -223,6 +225,8 @@ export class ArenaRoom extends Room<ArenaState> {
     guestId: string | null;
     name: string;
   }> {
+    // Redémarrage annoncé (cf. shutdown.ts) : plus personne n'entre.
+    if (restartDeadline() > 0) throw new ServerError(503, "server_restarting");
     const token = typeof options?.token === "string" && options.token.length > 0 ? options.token : null;
     const guestTok = typeof options?.guestToken === "string" && options.guestToken.length > 0 ? options.guestToken : null;
     const requestedName = sanitizeName(options?.name ?? "");
@@ -321,6 +325,24 @@ export class ArenaRoom extends Room<ArenaState> {
     }
   }
 
+  onDispose(): void {
+    unregisterRoom(this);
+  }
+
+  // Redémarrage du serveur (tâche T.3) : les joueurs voient un compte à
+  // rebours jusqu'à `at` (heure du serveur) ; la room n'accepte plus
+  // personne.
+  announceRestart(at: number): void {
+    this.broadcast("restart", { at });
+    // Un échec du verrou ne doit pas faire tomber le processus pendant le
+    // préavis : onAuth refuse de toute façon les nouvelles entrées.
+    this.lock().catch((e) => console.warn("[blade.io] room lock failed during shutdown:", e));
+  }
+
+  humanCount(): number {
+    return this.clients.length;
+  }
+
   private cleanupPlayer(sessionId: string): void {
     this.debugOrbitClients.delete(sessionId);
     this.interest.removeViewer(sessionId);
@@ -347,9 +369,10 @@ export class ArenaRoom extends Room<ArenaState> {
     if (p.isBot) return;
     if (this.isPrivate) return;
     const trophies = Math.max(0, Math.floor(p.score));
+    // Écritures suivies (trackWrite) : un arrêt du serveur les attend.
     if (p.userId) {
       const survival = Math.max(0, (Date.now() - p.spawnedAt) / 1000);
-      void recordMatch({
+      trackWrite(recordMatch({
         userId: p.userId,
         score: p.score,
         kills: p.kills,
@@ -358,12 +381,12 @@ export class ArenaRoom extends Room<ArenaState> {
         cratesDestroyed: p.cratesDestroyed,
         powerupsCollected: p.powerupsCollected,
         roomCode: this.roomCode || undefined,
-      });
-      if (trophies > 0) void creditWallet(p.userId, trophies);
+      }));
+      if (trophies > 0) trackWrite(creditWallet(p.userId, trophies));
       return;
     }
     if (p.guestId && trophies > 0) {
-      void creditGuestWallet(p.guestId, trophies);
+      trackWrite(creditGuestWallet(p.guestId, trophies));
     }
   }
 

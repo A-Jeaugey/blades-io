@@ -243,6 +243,12 @@ class Game {
   // Résumé de la room (classement, minimap), reçu toutes les 500 ms : la
   // zone d'intérêt ne nous envoie que les joueurs proches (tâche 2.4).
   private summary: RoomSummary | null = null;
+  // Redémarrage annoncé par le serveur (tâche T.3) : heure du serveur à
+  // laquelle il ferme, 0 sinon.
+  private restartAt = 0;
+  private nextRestartBannerAt = 0;
+  // Partie fermée par le redémarrage, en attente de la nouvelle version.
+  private restartWaiting = false;
   // Étendue de sol visible annoncée au serveur (rayon de notre zone).
   private sentViewRadius = 0;
   private nextViewCheckAt = 0;
@@ -466,6 +472,8 @@ class Game {
       console.error("could not join", e);
       if (e instanceof RoomNotFoundError) {
         alert(`Aucune room avec le code "${e.code}" — vérifie le code ou demande à l'hôte d'en créer une.`);
+      } else if (String((e as any)?.message ?? e).includes("server_restarting")) {
+        alert("The server is restarting for an update. Try again in a minute.");
       }
       this.login.show();
       this.hud.hide();
@@ -533,6 +541,11 @@ class Game {
     this.sentViewRadius = 0;
     this.nextViewCheckAt = 0;
     room.onMessage("summary", (summary: RoomSummary) => { this.summary = summary; });
+    this.restartAt = 0;
+    room.onMessage("restart", (msg: { at: number }) => {
+      this.restartAt = typeof msg?.at === "number" ? msg.at : 0;
+      this.nextRestartBannerAt = 0;
+    });
     this.pingMs = null;
     this.pingSamples.length = 0;
     this.pingSentAt.clear();
@@ -823,6 +836,12 @@ class Game {
       // ne spawn pas (sticky session zombie).
       if (this.room !== room) return;
       if (code === 1000) { this.returnToMenu(); return; }
+      // Fermeture après le compte à rebours de redémarrage : pas de
+      // reconnexion (la room n'existe plus), retour au menu expliqué.
+      if (this.restartAt > 0) {
+        void this.backToMenuAfterRestart(room);
+        return;
+      }
       // Expulsion pour flood : pas de reconnexion (le serveur la refuserait
       // de toute façon), et on dit pourquoi. L'alerte passe avant le retour
       // au menu, qui peut recharger la page (preset abaissé en partie).
@@ -1201,6 +1220,8 @@ class Game {
     if (meAlive?.alive && !this.dead) this.submitLifeScore(meAlive.score);
     this.death.hide();
     this.endKillCam();
+    this.restartAt = 0;
+    document.getElementById("restart-banner")?.classList.add("hidden");
     this.borderWarning.hide();
     this.hud.hide();
     this.hud.setRoomCode("");
@@ -1379,6 +1400,48 @@ class Game {
   // à l'heure du serveur, celui prédit au dernier envoi compris.
   private throwReady(me: any, serverNowMs: number): boolean {
     return me.bladeCount > 0 && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
+  }
+
+  // Compte à rebours du redémarrage annoncé (tâche T.3).
+  private updateRestartBanner(now: number): void {
+    this.nextRestartBannerAt = now + 250;
+    const el = document.getElementById("restart-banner");
+    if (!el) return;
+    if (this.restartWaiting) {
+      el.textContent = "SERVER UPDATING · back in a few seconds, your trophées are saved";
+      el.classList.remove("hidden");
+      return;
+    }
+    if (!this.restartAt || !this.room) {
+      el.classList.add("hidden");
+      return;
+    }
+    const left = Math.max(0, Math.ceil((this.restartAt - this.serverNow()) / 1000));
+    el.textContent = `SERVER RESTART IN ${left} s · update incoming, your trophées are saved`;
+    el.classList.remove("hidden");
+  }
+
+  // Partie fermée au bout du compte à rebours (tâche T.3). La nouvelle
+  // version met quelques secondes à démarrer : on attend qu'elle accepte des
+  // joueurs (/healthz, 503 pendant le préavis) avant de revenir au menu.
+  // Sinon, rejoindre tout de suite échoue, et le rechargement éventuel du
+  // retour au menu (preset abaissé en partie) tombe sur la page d'erreur du
+  // navigateur.
+  private async backToMenuAfterRestart(room: unknown): Promise<void> {
+    this.restartWaiting = true;
+    this.nextRestartBannerAt = 0;
+    const until = performance.now() + 90_000;
+    while (performance.now() < until && this.room === room) {
+      try {
+        const r = await fetch(`/healthz?t=${Date.now()}`, { cache: "no-store" });
+        if (r.ok) break;
+      } catch { /* ancienne version arrêtée, nouvelle pas encore lancée */ }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    this.restartWaiting = false;
+    if (this.room !== room) return;
+    alert("The server was updated. Your trophées were saved: jump back in!");
+    void this.returnToMenu();
   }
 
   // Zone d'intérêt (tâche 2.4) : le serveur ne nous envoie que ce qui est
@@ -1634,8 +1697,10 @@ class Game {
       // Horloge d'inputs fixe : un input par SERVER_DT de temps réel, quel
       // que soit le framerate (le serveur applique un pas par input). Au plus
       // 5 par frame ; au-delà (onglet en arrière-plan), le retard est
-      // abandonné plutôt que rattrapé d'un bloc.
-      if (this.room) {
+      // abandonné plutôt que rattrapé d'un bloc. Rien pendant l'attente de
+      // la nouvelle version (room fermée) : le joueur se déplacerait seul,
+      // en prédiction, dans une partie figée.
+      if (this.room && !this.restartWaiting) {
         const stepMs = SERVER_DT * 1000;
         this.inputAccumMs += frameSec * 1000;
         for (let i = 0; i < 5 && this.inputAccumMs >= stepMs; i++) {
@@ -1717,8 +1782,9 @@ class Game {
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
       this.killFeed.update(now);
-      if (this.room && now >= this.nextPingAt) this.sendPing(now);
+      if (this.room && !this.restartWaiting && now >= this.nextPingAt) this.sendPing(now);
       if (this.room && now >= this.nextViewCheckAt) this.announceView(now);
+      if (now >= this.nextRestartBannerAt) this.updateRestartBanner(now);
       if (now >= this.nextHintCheckAt) {
         this.nextHintCheckAt = now + 250;
         this.checkOnboardingHints(serverNowMs);

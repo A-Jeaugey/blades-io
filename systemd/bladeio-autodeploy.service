@@ -1,5 +1,5 @@
 [Unit]
-Description=Blade.io auto-deploy poll
+Description=Blade.io : construction et déploiement de la dernière version
 After=network-online.target
 
 [Service]
@@ -8,3 +8,8 @@ Type=oneshot
 User=YOURUSER
 WorkingDirectory=/home/YOURUSER/bladeio
 ExecStart=/home/YOURUSER/bladeio/auto-deploy.sh
+# Plafond (un service oneshot n'a pas de délai par défaut) : un build bloqué,
+# npm ci sans réseau par exemple, garderait sinon le verrou du script et
+# bloquerait tous les déploiements suivants. Un déploiement normal (build,
+# tests, préavis de 60 s aux joueurs) prend quelques minutes.
+TimeoutStartSec=30min
