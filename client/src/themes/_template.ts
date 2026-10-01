@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
 import { Theme, computeRarityGlowComp } from "./Theme";
 
@@ -17,6 +16,8 @@ import { Theme, computeRarityGlowComp } from "./Theme";
 //      dans `DecorVariant` (Theme.ts) et une fonction `create<Kind>Decor()`
 //      dans `Decor.ts`. Sinon, réutilise `cyber` ou `spirit` en changeant
 //      juste les couleurs.
+//   6. Lancer `node tools/check-themes.mjs` : le contrat de lisibilité
+//      (themes/readability.ts) doit passer, la CI le vérifie aussi.
 //
 // IMPORTANT : ce fichier n'est PAS enregistré dans `themes/index.ts` — il ne
 // figure pas dans le dropdown Settings. C'est volontaire : il sert de modèle,
@@ -29,23 +30,30 @@ import { Theme, computeRarityGlowComp } from "./Theme";
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── 1) Couleurs des 4 raretés ───────────────────────────────────────────────
-// Convention recommandée : chaque rareté doit être visuellement distincte au
-// premier coup d'œil (palette resserrée mais contraste élevé entre les 4).
-// La compensation de bloom est calculée auto via computeRarityGlowComp().
+// Familles universelles (décision D4, themes/readability.ts) : commune
+// blanche, rare bleue, épique violette, légendaire or. Choisis la nuance dans
+// la famille ; la rareté se lit pareil sur toutes les cartes. La compensation
+// de bloom est calculée auto via computeRarityGlowComp().
 const TEMPLATE_RARITY_COLOR: Record<BladeRarity, number> = {
-  [BladeRarity.Common]:    0xff00ff, // ← TODO : ta couleur Common (la + fréquente, doit rester discrète)
-  [BladeRarity.Rare]:      0xff00ff, // ← TODO
-  [BladeRarity.Epic]:      0xff00ff, // ← TODO
-  [BladeRarity.Legendary]: 0xff00ff, // ← TODO : doit ressortir IMMÉDIATEMENT (souvent une teinte chaude dans une mer froide, ou inversement)
+  [BladeRarity.Common]:    0xff00ff, // ← TODO : blanc ou argent (la + fréquente, doit rester discrète)
+  [BladeRarity.Rare]:      0xff00ff, // ← TODO : bleu, du cyan à l'azur
+  [BladeRarity.Epic]:      0xff00ff, // ← TODO : violet
+  [BladeRarity.Legendary]: 0xff00ff, // ← TODO : or ou ambre, doit ressortir IMMÉDIATEMENT
 };
 
-// ─── 2) Shaders du sol (3 niveaux de qualité obligatoires) ───────────────────
-// `uTime` (rich seulement) et `uRadius` sont fournis par Ground.ts.
-// Tout autre uniform doit être déclaré ET rempli par `buildExtraUniforms()`.
+// ─── 2) Sol : couleurs et shaders (3 niveaux de qualité obligatoires) ────────
+// Toutes les couleurs du sol, en hex tel qu'à l'écran : `base` (dominante,
+// très sombre) et un motif par clé, à son plus fort. Ground.ts les passe aux
+// shaders (base → uBase, crack → uCrack…), avec `uTime` (rich seulement) et
+// `uRadius`. Contrat : pas de couleur en dur dans les shaders, et seulement
+// des mix() entre ces couleurs ; luminance plafonnée au rendu de toute façon.
 //
 // Les 3 versions ci-dessous ne font qu'un fond plat avec edge fade — assez
 // pour que le jeu compile et tourne, mais visuellement vide. Remplace par ce
 // que tu veux (grille, brume FBM, lave animée, glace cristalline, etc.).
+const TEMPLATE_GROUND_COLORS = {
+  base: 0xff00ff, // ← TODO : fond du sol, luminance ≤ 0,03
+};
 
 const TEMPLATE_FRAG_RICH = /* glsl */ `
   precision highp float;
@@ -79,7 +87,7 @@ const TEMPLATE_FRAG_SIMPLE = /* glsl */ `
 `;
 
 const TEMPLATE_FRAG_FLAT = /* glsl */ `
-  precision lowp float;
+  precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
@@ -93,21 +101,7 @@ const TEMPLATE_FRAG_FLAT = /* glsl */ `
   }
 `;
 
-// ─── 3) Uniforms additionnels du shader ──────────────────────────────────────
-// Si tes shaders utilisent des uniforms en plus de uTime/uRadius (typiquement
-// des couleurs vec3), déclare-les ici. La fonction est appelée une fois à
-// l'init du Ground, pas par frame.
-function buildTemplateUniforms(detail: "rich" | "simple" | "flat"): Record<string, THREE.IUniform> {
-  // TODO : si tu as plusieurs couleurs, calcule-les ici depuis tes constantes
-  // hex (utilise `new THREE.Color(0x...)` puis `new THREE.Vector3(c.r, c.g, c.b)`).
-  // Le shader template ci-dessus n'utilise que `uBase`.
-  const baseColor = new THREE.Color(0xff00ff); // ← TODO : ta couleur de base
-  return {
-    uBase: { value: new THREE.Vector3(baseColor.r, baseColor.g, baseColor.b) },
-  };
-}
-
-// ─── 4) Theme objet final ────────────────────────────────────────────────────
+// ─── 3) Theme objet final ────────────────────────────────────────────────────
 export const TEMPLATE_THEME: Theme = {
   // ID stable utilisé en localStorage et dans le registre. Lowercase, court,
   // sans espaces. Doit être unique parmi tous les thèmes enregistrés.
@@ -269,7 +263,7 @@ export const TEMPLATE_THEME: Theme = {
     fragRich:   TEMPLATE_FRAG_RICH,
     fragSimple: TEMPLATE_FRAG_SIMPLE,
     fragFlat:   TEMPLATE_FRAG_FLAT,
-    buildExtraUniforms: buildTemplateUniforms,
+    colors:     TEMPLATE_GROUND_COLORS,
   },
 
   // ─── Palette UI (CSS variables) ───

@@ -159,6 +159,39 @@ C'est **garanti par construction** : un joueur qui paye pour le thème "Forge
 Vermeille" ne voit pas une map différente d'un joueur en thème de base. Pas de
 pay-to-win possible.
 
+### ★ Lisibilité : le contrat de thème (tâche 6.3)
+
+Un thème ne doit jamais rendre le jeu plus dur à lire. Le contrat vit dans
+`client/src/themes/readability.ts` ; `npm run check:themes`
+(`tools/check-themes.mjs`) le vérifie pour chaque thème du registre et pour
+la palette daltonienne, et la CI le lance. À lancer après toute retouche de
+couleur ou de shader du sol.
+
+- **Raretés, familles universelles (décision D4)** : commune blanche
+  (argent), rare bleue (du cyan à l'azur), épique violette, légendaire or ou
+  ambre. Plages OKLCH dans `RARITY_FAMILIES` ; un thème choisit sa nuance,
+  jamais une autre teinte. Écart CIEDE2000 d'au moins 20 entre deux raretés.
+- **Sol sombre et calme** : toutes ses couleurs sont déclarées dans
+  `ground.colors` (hex tel qu'à l'écran, `base` = la dominante), luminance
+  ≤ 0,03 pour `base`, ≤ 0,12 pour les motifs ; chaque rareté ressort sur
+  `base` (contraste ≥ 3) et ne se confond avec aucun motif.
+- **Couleurs réservées au gameplay** : la zone mortelle (`palette.boundary`)
+  est rouge et loin de toute rareté ; ni le sol ni les raretés ne ressemblent
+  aux couleurs de menace (`DANGER_COLOR`, `PREY_COLOR`) ; les particules
+  d'ambiance (`ambient.wisps.colors`) ne prennent la couleur d'aucune lame.
+- **Shaders du sol** : aucune couleur en dur (`vec3(0.4, 0.1, 0.9)` est
+  refusé), uniquement des `mix()` entre les couleurs déclarées (qui bornent
+  donc ce qui s'affiche). `Ground.ts` renomme le `main` du thème et ajoute la
+  sortie commune : plafond de luminance (`READABILITY.groundMaxLuma`) puis
+  conversion vers l'espace de sortie ; le sol s'affiche ainsi pareil avec ou
+  sans post-FX.
+
+Le contrôle s'auto-vérifie : il doit refuser les palettes d'avant 6.3
+(Forge aux lames couleur de lave, Profondeurs au sol clair, légendaire rose
+du Néon comme la zone mortelle…). Non couverts, parce que de forme
+distincte : power-ups, caisses, joueurs, décor en volume ; les sceaux et
+anneaux du décor au sol restent à 10-12 % d'opacité.
+
 ### Anatomie d'un thème
 
 ```ts
@@ -172,7 +205,7 @@ interface Theme {
   decor: DecorVariant;         // discriminated union: cyber | spirit
   ambient: ThemeAmbient;       // wisps config (ou null)
   music: ThemeMusic;           // chemins lobby/battle .mp3
-  ground: ThemeGround;         // 3 fragment shader sources + buildExtraUniforms()
+  ground: ThemeGround;         // 3 fragment shader sources + colors (couleurs du sol)
   ui: ThemeUiPalette;          // CSS variables (--cyan, --pink, etc.)
 }
 ```
@@ -227,10 +260,13 @@ modifiez les valeurs. Points sensibles :
 - **Palette complète obligatoire** : tous les champs de `ThemePalette` doivent
   avoir une valeur. La `rarityGlowComp` se calcule via `computeRarityGlowComp()`
   pour équilibrer le bloom selon la luminance des couleurs choisies.
+- **Raretés** : une nuance dans chaque famille universelle (blanc, bleu,
+  violet, or), cf. « Lisibilité » plus haut.
 - **Ground shader** : 3 variantes obligatoires (`fragRich`, `fragSimple`,
-  `fragFlat`). Si vous utilisez des uniforms personnalisés, fournissez-les via
-  `buildExtraUniforms(detail)`. `uTime` et `uRadius` sont gérés par
-  `Ground.ts`.
+  `fragFlat`) et les couleurs du sol dans `ground.colors` : `Ground.ts` les
+  passe en uniforms (`base` → `uBase`, `crack` → `uCrack`), avec `uTime`
+  (rich) et `uRadius`. Pas de couleur en dur, seulement des `mix()`.
+- **Vérifier** : `npm run check:themes` doit passer (la CI le lance).
 - **Decor variant** : choisissez un `kind` existant (`cyber` ou `spirit`) si
   votre thème ressemble à l'un des deux. Sinon, voir étape 2.
 - **CSS palette** : 8 variables. Pour la cohérence, choisissez 2 accents
@@ -400,8 +436,9 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 - **Build et CI** : `npm run build` (shared, puis serveur, puis client)
   passe avec la version de TypeScript verrouillée (5.9.3) ; l'ancien
   plantage de `build:shared` ne se reproduit plus. La CI GitHub Actions
-  (`.github/workflows/ci.yml`) rejoue ce build complet puis `npm test` à
-  chaque push : elle doit être verte avant de pousser sur `main`.
+  (`.github/workflows/ci.yml`) rejoue ce build complet puis `npm test` et
+  `npm run check:themes` à chaque push : elle doit être verte avant de
+  pousser sur `main`.
 - **Tests serveur** : `npm test` (`server/test/*.test.ts`, `node:test`
   compilé par `tsc` vers `server/dist-test/`, gitignoré). Les systèmes
   lisent `Date.now()` et `Math.random()` : utiliser `FakeClock` et

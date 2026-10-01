@@ -8,22 +8,35 @@ import { Theme, computeRarityGlowComp } from "./Theme";
 // tous les joueurs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Épique violet-bleu (tâche 3.8) : le pourpre d'avant (0xb14bff), poussé
-// par la compensation de glow, sortait magenta comme le rose légendaire
-// (écart CIEDE2000 de 2,6 mesuré sur le rendu, 15 maintenant).
+// Raretés dans les familles universelles (tâche 6.3, décision D4 : blanc,
+// bleu, violet, or). Épique violet-bleu (tâche 3.8) : le pourpre d'avant
+// (0xb14bff), poussé par la compensation de glow, sortait magenta comme le
+// rose légendaire. Légendaire en or : le rose d'avant était celui de la
+// zone mortelle, des caisses et des autres joueurs.
 const RARITY_COLOR_NEON: Record<BladeRarity, number> = {
   [BladeRarity.Common]: 0xffffff,
   [BladeRarity.Rare]: 0x00e5ff,
   [BladeRarity.Epic]: 0x7c5cff,
-  [BladeRarity.Legendary]: 0xff2ea8,
+  [BladeRarity.Legendary]: 0xffc83d,
 };
 
-// Grid shader d'origine : grille néon double échelle (4u + 20u) avec pulse.
+// Grille néon double échelle (4 u et 20 u) qui pulse. Couleurs du sol telles
+// qu'affichées en qualité haute avant la tâche 6.3, lignes fines un peu
+// moins vives (lisibilité, cf. readability.ts).
+const GROUND_COLORS_NEON = {
+  base: 0x272b3f,
+  grid: 0x1f6878,
+  gridMajor: 0x5a3a8a,
+};
+
 const FRAG_RICH_NEON = /* glsl */ `
   precision highp float;
   varying vec2 vWorld;
   uniform float uTime;
   uniform float uRadius;
+  uniform vec3 uBase;
+  uniform vec3 uGrid;
+  uniform vec3 uGridMajor;
 
   float grid(vec2 p, float scale, float width) {
     vec2 g = abs(fract(p / scale - 0.5) - 0.5) / fwidth(p / scale);
@@ -36,11 +49,10 @@ const FRAG_RICH_NEON = /* glsl */ `
     float edgeFade = smoothstep(uRadius, uRadius - 60.0, r);
     float g1 = grid(vWorld, 4.0, 1.2);
     float g2 = grid(vWorld, 20.0, 1.4);
+    // Pulsation lente des lignes fines.
     float pulse = 0.85 + 0.15 * sin(uTime * 1.5 + r * 0.05);
-    vec3 base = vec3(0.02, 0.024, 0.05);
-    vec3 minor = vec3(0.0, 0.8, 1.0) * 0.22;
-    vec3 major = vec3(0.4, 0.1, 0.9) * 0.4;
-    vec3 col = base + g1 * minor * pulse + g2 * major;
+    vec3 col = mix(uBase, uGrid, g1 * pulse);
+    col = mix(col, uGridMajor, g2);
     col *= edgeFade;
     gl_FragColor = vec4(col, 1.0);
   }
@@ -50,6 +62,8 @@ const FRAG_SIMPLE_NEON = /* glsl */ `
   precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
+  uniform vec3 uBase;
+  uniform vec3 uGrid;
 
   float grid(vec2 p, float scale, float width) {
     vec2 f = abs(fract(p / scale - 0.5) - 0.5);
@@ -61,24 +75,22 @@ const FRAG_SIMPLE_NEON = /* glsl */ `
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 40.0, r);
     float g = grid(vWorld, 20.0, 0.04);
-    vec3 base = vec3(0.02, 0.024, 0.05);
-    vec3 line = vec3(0.0, 0.65, 0.9) * 0.25;
-    vec3 col = base + g * line;
+    vec3 col = mix(uBase, uGrid, g);
     col *= edgeFade;
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
 const FRAG_FLAT_NEON = /* glsl */ `
-  precision lowp float;
+  precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
+  uniform vec3 uBase;
 
   void main() {
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 30.0, r);
-    vec3 base = vec3(0.04, 0.05, 0.10);
-    gl_FragColor = vec4(base * edgeFade, 1.0);
+    gl_FragColor = vec4(uBase * edgeFade, 1.0);
   }
 `;
 
@@ -155,7 +167,7 @@ export const NEON_THEME: Theme = {
     fragRich: FRAG_RICH_NEON,
     fragSimple: FRAG_SIMPLE_NEON,
     fragFlat: FRAG_FLAT_NEON,
-    buildExtraUniforms: () => ({}), // Pas d'uniforms custom — couleurs baked.
+    colors: GROUND_COLORS_NEON,
   },
 
   ui: {

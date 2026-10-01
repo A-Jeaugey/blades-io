@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
 import { Theme, computeRarityGlowComp } from "./Theme";
 
@@ -11,9 +10,6 @@ import { Theme, computeRarityGlowComp } from "./Theme";
 
 const NIGHT_DEEP = 0x0e0820;
 const FOG_MID = 0x2a1f4a;
-const GROUND_BASE = 0x140a26;
-const GROUND_MID = 0x2a1d4a;
-const GROUND_HIGHLIGHT = 0xe8d4f0;
 const SACRED_GOLD = 0xf4d471;
 const SHRINE_PRIMARY = 0xa685f4;
 const SHRINE_ACCENT = 0xd8a4e8;
@@ -22,14 +18,28 @@ const GROVE_FOLIAGE = 0x3a2a5a;
 const GROVE_ACCENT = 0xc9a4ff;
 const BOUNDARY = 0xff5d8a;
 
+// Raretés dans les familles universelles (tâche 6.3) : rare en bleu lunaire
+// (le lilas d'avant sortait de la famille bleue), épique tiré vers l'orchidée
+// pour rester loin de ce bleu.
 const RARITY_COLOR_SANCT: Record<BladeRarity, number> = {
   [BladeRarity.Common]: 0xf0e4f5,
-  [BladeRarity.Rare]: 0xd8a4e8,
-  [BladeRarity.Epic]: 0x9d7dff,
-  [BladeRarity.Legendary]: 0xf4d471,
+  [BladeRarity.Rare]: 0x86b0ff,
+  [BladeRarity.Epic]: 0xb77cf5,
+  [BladeRarity.Legendary]: SACRED_GOLD,
 };
 
-// Brume mauve organique (FBM) + wisps + cercles rituels diffus.
+// Sol (tâche 6.3) : les poussières et contours étaient crème (la couleur des
+// lames communes) et les cercles rituels or (celle des légendaires) ;
+// désormais mauve et ocre sourds.
+const GROUND_COLORS_SANCT = {
+  base: 0x140a26,
+  mid: 0x2a1d4a,
+  bands: 0x33224f,
+  glow: 0x6a4a8a,
+  sacred: 0x5a4a28,
+};
+
+// Brume mauve organique (FBM) + poussières + cercles rituels diffus.
 const FRAG_RICH_SANCT = /* glsl */ `
   precision highp float;
   varying vec2 vWorld;
@@ -37,7 +47,8 @@ const FRAG_RICH_SANCT = /* glsl */ `
   uniform float uRadius;
   uniform vec3 uBase;
   uniform vec3 uMid;
-  uniform vec3 uHighlight;
+  uniform vec3 uBands;
+  uniform vec3 uGlow;
   uniform vec3 uSacred;
 
   float hash(vec2 p) {
@@ -103,21 +114,18 @@ const FRAG_RICH_SANCT = /* glsl */ `
 
     // ─── 5. Cercles rituels ───
     float rings = 0.5 + 0.5 * sin(r * 0.18 - uTime * 0.4);
-    rings = pow(rings, 8.0) * 0.12;
+    rings = pow(rings, 8.0);
 
-    // Composition : bandes plus discrètes (0.55→0.32), edges plus marqués
-    // (0.18→0.32). L'œil voit la structure via les contours fins, pas via
-    // des grands blocs colorés qui bougent.
-    vec3 col = uBase;
-    col = mix(col, uMid, mistDeep * 0.7);
-    col = mix(col, uMid * 1.35, bands * 0.32);
-    col += uHighlight * bandEdge * 0.32;
-    col += uHighlight * motes * 0.85;
-    col += uSacred * rings;
+    // Composition par mélanges seulement (contrat du sol, readability.ts) :
+    // bandes discrètes, contours fins plus marqués. L'œil voit la structure
+    // via les contours, pas via de grands blocs colorés qui bougent.
+    vec3 col = mix(uBase, uMid, mistDeep * 0.7);
+    col = mix(col, uBands, bands * 0.32);
+    col = mix(col, uGlow, bandEdge * 0.4);
+    col = mix(col, uGlow, motes);
+    col = mix(col, uSacred, rings * 0.45);
 
     col *= edgeFade;
-    float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
-    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -148,18 +156,16 @@ const FRAG_SIMPLE_SANCT = /* glsl */ `
     float edgeFade = smoothstep(uRadius, uRadius - 40.0, r);
     float mist = vnoise(vWorld * 0.025) * 0.6 + vnoise(vWorld * 0.05) * 0.4;
     float rings = 0.5 + 0.5 * sin(r * 0.18);
-    rings = pow(rings, 8.0) * 0.1;
+    rings = pow(rings, 8.0);
     vec3 col = mix(uBase, uMid, mist);
-    col += uSacred * rings;
+    col = mix(col, uSacred, rings * 0.45);
     col *= edgeFade;
-    float dither = (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
 const FRAG_FLAT_SANCT = /* glsl */ `
-  precision lowp float;
+  precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
@@ -170,24 +176,6 @@ const FRAG_FLAT_SANCT = /* glsl */ `
     gl_FragColor = vec4(uBase * edgeFade, 1.0);
   }
 `;
-
-function buildSanctuaireUniforms(detail: "rich" | "simple" | "flat"): Record<string, THREE.IUniform> {
-  const baseCol = new THREE.Color(GROUND_BASE);
-  const midCol = new THREE.Color(GROUND_MID);
-  const highlightCol = new THREE.Color(GROUND_HIGHLIGHT);
-  const sacredCol = new THREE.Color(SACRED_GOLD);
-  const out: Record<string, THREE.IUniform> = {
-    uBase: { value: new THREE.Vector3(baseCol.r, baseCol.g, baseCol.b) },
-  };
-  if (detail !== "flat") {
-    out.uMid = { value: new THREE.Vector3(midCol.r, midCol.g, midCol.b) };
-    out.uSacred = { value: new THREE.Vector3(sacredCol.r, sacredCol.g, sacredCol.b) };
-  }
-  if (detail === "rich") {
-    out.uHighlight = { value: new THREE.Vector3(highlightCol.r, highlightCol.g, highlightCol.b) };
-  }
-  return out;
-}
 
 export const SANCTUAIRE_THEME: Theme = {
   id: "sanctuaire",
@@ -254,9 +242,11 @@ export const SANCTUAIRE_THEME: Theme = {
   },
 
   ambient: {
+    // Lucioles menthe et rose : la crème d'avant était la couleur des lames
+    // communes (tâche 6.3).
     wisps: {
       counts: { high: 80, medium: 50, low: 30, ultra: 18 },
-      colors: [0xf5e8d8, 0xf5e8d8, 0xf5e8d8, SHRINE_ACCENT, MUSHROOM_GLOW],
+      colors: [MUSHROOM_GLOW, MUSHROOM_GLOW, 0x7fd8c0, 0xff8ec0],
       drifSpeedMin: 0.6,
       drifSpeedMax: 1.2,
     },
@@ -274,7 +264,7 @@ export const SANCTUAIRE_THEME: Theme = {
     fragRich: FRAG_RICH_SANCT,
     fragSimple: FRAG_SIMPLE_SANCT,
     fragFlat: FRAG_FLAT_SANCT,
-    buildExtraUniforms: buildSanctuaireUniforms,
+    colors: GROUND_COLORS_SANCT,
   },
 
   ui: {

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
+import { READABILITY, groundUniformName } from "../themes/readability";
 
 // Vertex shader commun à tous les thèmes : projette la position monde dans
 // vWorld pour que le fragment shader puisse calculer ses effets en
@@ -19,6 +20,43 @@ const GROUND_VERT = /* glsl */ `
 // (theme.ground.fragRich/fragSimple/fragFlat). Chaque thème a sa propre
 // vision du sol — grille néon, brume mauve organique, etc.
 
+// Sortie commune à tous les sols (tâche 6.3), ajoutée après le main du thème
+// (renommé) :
+// - garde-fou de lisibilité : la luminance affichée ne dépasse jamais
+//   READABILITY.groundMaxLuma, quel que soit le shader (teinte gardée) ;
+// - tramage anti-banding (rich, simple) d'un demi-niveau sur 255, calculé
+//   dans l'espace d'affichage (gamma 2,2 approché) : ajouté en linéaire comme
+//   les thèmes le faisaient, il devenait un grain de 4 à 5 niveaux dans les
+//   sombres une fois encodé ;
+// - conversion vers l'espace de sortie, comme les matériaux de three : le
+//   shader travaille en linéaire. Sans elle, le sol s'affichait plus sombre
+//   sans post-FX (low, ultra : rendu direct, sortie brute) qu'avec (high,
+//   medium : OutputPass encode en sRGB), et les couleurs déclarées par le
+//   thème n'étaient celles de l'écran qu'avec post-FX.
+const GROUND_OUTPUT = /* glsl */ `
+precision highp float;
+uniform float uGroundMaxLuma;
+float groundDither(vec2 p) {
+  return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453) - 0.5;
+}
+void main() {
+  themeGround();
+  vec3 c = max(gl_FragColor.rgb, vec3(0.0));
+  float y = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c *= min(1.0, uGroundMaxLuma / max(y, 1e-5));
+  #ifdef GROUND_DITHER
+  c = pow(max(pow(c, vec3(1.0 / 2.2)) + groundDither(gl_FragCoord.xy) / 255.0, vec3(0.0)), vec3(2.2));
+  #endif
+  gl_FragColor = vec4(c, 1.0);
+  #include <colorspace_fragment>
+}
+`;
+
+function wrapGroundShader(src: string, dither: boolean): string {
+  const body = src.replace(/void\s+main\s*\(\s*\)/, "void themeGround()");
+  return (dither ? "#define GROUND_DITHER\n" : "") + body + GROUND_OUTPUT;
+}
+
 export function createGround(q: QualityConfig): { mesh: THREE.Mesh; update: (t: number) => void } {
   const theme = getActiveTheme();
   const geo = new THREE.PlaneGeometry(MAP_RADIUS * 2.2, MAP_RADIUS * 2.2, 1, 1);
@@ -30,19 +68,24 @@ export function createGround(q: QualityConfig): { mesh: THREE.Mesh; update: (t: 
   }
 
   // Uniforms communs à tous les thèmes : uRadius (toujours), uTime (en rich
-  // seulement quand le shader anime quelque chose). Les uniforms theme-
-  // spécifiques (couleurs personnalisées par exemple) sont fournis par le
-  // hook theme.ground.buildExtraUniforms().
+  // seulement quand le shader anime quelque chose), plafond de luminance, et
+  // une couleur par entrée de theme.ground.colors (uBase pour base…), en
+  // linéaire (THREE.Color convertit le hex sRGB).
   const uniforms: Record<string, THREE.IUniform> = {
     uRadius: { value: MAP_RADIUS },
-    ...theme.ground.buildExtraUniforms(q.groundDetail),
+    uGroundMaxLuma: { value: READABILITY.groundMaxLuma },
   };
+  for (const [key, hex] of Object.entries(theme.ground.colors)) {
+    uniforms[groundUniformName(key)] = { value: new THREE.Color(hex) };
+  }
   const hasTime = q.groundDetail === "rich";
   if (hasTime) uniforms.uTime = { value: 0 };
 
   const mat = new THREE.ShaderMaterial({
     vertexShader: GROUND_VERT,
-    fragmentShader: frag,
+    // Sol uni en potato : pas de dégradé à tramer, quelques opérations de
+    // moins par pixel sur les plus petits GPU.
+    fragmentShader: wrapGroundShader(frag, q.groundDetail !== "flat"),
     uniforms,
     transparent: false,
   });

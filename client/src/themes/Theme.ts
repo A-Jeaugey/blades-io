@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,14 +121,22 @@ export interface ThemeMusic {
   battle: string;
 }
 
+// Couleurs du sol (tâche 6.3) : toutes celles qu'il affiche, en hex sRGB tel
+// qu'à l'écran. base est sa couleur dominante, les autres ses motifs à leur
+// plus fort. Ground.ts les passe aux shaders (uBase, uCrack… : « u » puis la
+// clé avec une majuscule) ; tools/check-themes.mjs les vérifie (readability.ts).
+export type GroundColors = { base: number } & Record<string, number>;
+
 export interface ThemeGround {
-  // Sources GLSL pour les 3 niveaux de qualité.
+  // Sources GLSL pour les 3 niveaux de qualité. Contrat : aucune couleur en
+  // dur, le shader ne fait que mélanger (mix, poids de 0 à 1) les couleurs de
+  // colors, qui bornent donc ce qu'il affiche. Ground.ts plafonne en plus la
+  // luminance et convertit vers l'espace de sortie. uRadius et uTime (rich)
+  // sont fournis aussi.
   fragRich: string;
   fragSimple: string;
   fragFlat: string;
-  // Uniforms additionnels (couleurs par exemple) à injecter dans le matériau.
-  // uRadius et uTime sont gérés par Ground.ts — ce hook fournit le reste.
-  buildExtraUniforms: (groundDetail: "rich" | "simple" | "flat") => Record<string, THREE.IUniform>;
+  colors: GroundColors;
 }
 
 export interface ThemeUiPalette {

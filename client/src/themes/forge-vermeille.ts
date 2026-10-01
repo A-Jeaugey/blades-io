@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
 import { Theme, computeRarityGlowComp } from "./Theme";
 
@@ -13,32 +12,45 @@ import { Theme, computeRarityGlowComp } from "./Theme";
 // Palette structurelle (5 couleurs principales) :
 const COAL_DEEP = 0x1a0a06;        // pierre charbon — fond du renderer
 const SMOKE_MID = 0x3d1a14;        // fumée crimson — brouillard mid
-const LAVA_BRIGHT = 0xff5e2e;      // fissures de lave — l'accent saturé
+const LAVA_BRIGHT = 0xff5e2e;      // lave vive — décor, caisses, éclats
 const EMBER_GOLD = 0xffba4a;       // braise dorée — accents chauds
-const WHITE_HOT = 0xfff5d4;        // métal blanc-chaud — la rareté max
+const WHITE_HOT = 0xfff5d4;        // métal blanc-chaud — joueur, bouclier
 const IRON_RED = 0xc44a2e;         // fer rouge — couleur "froide" de la palette
 const BOUNDARY_RED = 0xff2a0f;     // mur de mort — rouge brutal saturé
 
+// Raretés (tâche 6.3) : les couleurs de revenu de l'acier, dans les familles
+// universelles (blanc, bleu, violet, or). Avant, fer rouge, orange, or et
+// blanc-chaud : les teintes de la lave du sol, où les lames disparaissaient
+// (audit, GFX-02).
 const RARITY_COLOR_FORGE: Record<BladeRarity, number> = {
-  // Logique : dans une forge, la chaleur = la valeur. Le fer rouge sombre
-  // est commun (slag), le métal blanc-chaud est précieux (forgé à point).
-  [BladeRarity.Common]: IRON_RED,
-  [BladeRarity.Rare]: 0xff8a3e,        // ember orange
-  [BladeRarity.Epic]: EMBER_GOLD,
-  [BladeRarity.Legendary]: WHITE_HOT,  // contraste max dans la palette chaude
+  [BladeRarity.Common]: 0xe8e2da,      // acier poli
+  [BladeRarity.Rare]: 0x4f9dff,        // revenu bleu
+  [BladeRarity.Epic]: 0xa46bff,        // revenu violet
+  [BladeRarity.Legendary]: 0xffc94a,   // paille dorée, forgé à point
 };
 
-// Lava ground shader — fissures lumineuses dans la pierre + mares de magma
-// + braises pulsantes. La signature visuelle du thème.
+// Sol (tâche 6.3) : basalte sombre, veines de lave fines et sourdes, mares de
+// magma profondes. Avant, la lave couvrait la moitié du sol en orange vif
+// (luminance moyenne 0,11 en qualité haute).
+const GROUND_COLORS_FORGE = {
+  base: 0x120a08,     // basalte
+  rock: 0x2a1610,     // strates
+  crack: 0xa0400f,    // cœur des veines de lave (orangé : loin du rouge de danger)
+  pool: 0x4a1408,     // magma profond
+  ember: 0x9a4a14,    // braises
+};
+
+// Basalte en strates, veines de lave, mares de magma et braises qui pulsent.
 const FRAG_RICH_FORGE = /* glsl */ `
   precision highp float;
   varying vec2 vWorld;
   uniform float uTime;
   uniform float uRadius;
-  uniform vec3 uBase;     // pierre charbon sombre
-  uniform vec3 uCrack;    // lave brillante dans les fissures
-  uniform vec3 uPool;     // magma chaud dans les mares
-  uniform vec3 uEmber;    // braises dorées qui pulsent
+  uniform vec3 uBase;
+  uniform vec3 uRock;
+  uniform vec3 uCrack;
+  uniform vec3 uPool;
+  uniform vec3 uEmber;
 
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -86,41 +98,35 @@ const FRAG_RICH_FORGE = /* glsl */ `
     float stoneEdge = 1.0 - smoothstep(0.0, 0.08, abs(stoneFract - 1.0));
     stoneEdge = clamp(stoneEdge, 0.0, 1.0);
 
-    // ─── 2. Fissures de lave (déjà sharp — on garde) ───
-    // L'effet "smoothstep up - smoothstep down" donne un pic narrow
-    // centré sur 0.5 → fissures lumineuses qui se ramifient comme des
-    // éclairs gelés. Naturellement à arête nette, pas besoin de toucher.
+    // ─── 2. Veines de lave ───
+    // Pic étroit autour de 0.5 (smoothstep montant moins descendant) : des
+    // fissures fines qui se ramifient, cœur vif et halo sombre autour. Plus
+    // larges, la lave couvrait le sol.
     float crackBase = fbm(vWorld * 0.05 + drift);
-    float crackBand = smoothstep(0.43, 0.50, crackBase) - smoothstep(0.50, 0.57, crackBase);
-    crackBand *= 1.6;
+    float crackCore = smoothstep(0.485, 0.50, crackBase) - smoothstep(0.50, 0.515, crackBase);
+    float crackGlow = smoothstep(0.44, 0.50, crackBase) - smoothstep(0.50, 0.56, crackBase);
 
-    // ─── 3. Mares de magma (stylisées) ───
-    // Avant : smoothstep continue → flaques qui glissent visiblement.
-    // Maintenant : seuil dur (step) + halo soft autour → flaques
-    // distinctes qui ressemblent à de vraies coulées de magma figées.
+    // ─── 3. Mares de magma ───
+    // Cœur à seuil serré + halo doux : des flaques distinctes, figées, qui
+    // pulsent à peine.
     float poolField = fbm(vWorld * 0.022 - drift * 0.6);
-    float poolCore = smoothstep(0.65, 0.72, poolField);
-    float poolHalo = smoothstep(0.55, 0.65, poolField) * 0.4;
-    float pool = (poolCore + poolHalo) * (0.85 + 0.15 * sin(uTime * 0.4 + r * 0.06));
+    float poolCore = smoothstep(0.7, 0.75, poolField);
+    float poolHalo = smoothstep(0.62, 0.7, poolField) * 0.4;
+    float pool = min(1.0, poolCore + poolHalo) * (0.85 + 0.15 * sin(uTime * 0.4 + r * 0.06));
 
-    // ─── 4. Braises (haute fréquence, drift × 1 au lieu de × 6) ───
-    // Avant : drift × 6 sur le emberField → braises glissaient en
-    // world-space au rythme du player → "sand under foot" effet. Maintenant
-    // drift × 1 → quasi-statiques, pulsent juste en luminosité.
+    // ─── 4. Braises (haute fréquence, quasi fixes, pulsent en intensité) ───
     vec2 emberPos = vWorld * 0.11 + drift * 1.0;
     float emberField = fbm(emberPos);
-    float embers = smoothstep(0.78, 0.86, emberField) * (0.5 + 0.5 * sin(uTime * 1.8 + r * 0.2));
+    float embers = smoothstep(0.8, 0.86, emberField) * (0.5 + 0.5 * sin(uTime * 1.8 + r * 0.2));
 
-    vec3 col = uBase;
-    col = mix(col, uBase * 1.6, stoneBands * 0.35);          // strates
-    col += uCrack * stoneEdge * 0.20;                         // contours strates (lava-tint)
-    col += uPool * pool * 0.7;                                // mares
-    col += uCrack * crackBand;                                // fissures
-    col += uEmber * embers * 0.85;                            // braises
+    // Composition par mélanges seulement (contrat du sol, readability.ts).
+    vec3 col = mix(uBase, uRock, stoneBands * 0.6);           // strates
+    col = mix(col, uCrack, stoneEdge * 0.3);                  // contours des strates
+    col = mix(col, uPool, pool);                              // mares
+    col = mix(col, uPool, crackGlow * 0.8);                   // halo des veines
+    col = mix(col, uCrack, crackCore);                        // cœur des veines
+    col = mix(col, uEmber, embers);                           // braises
     col *= edgeFade;
-
-    float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
-    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -133,6 +139,7 @@ const FRAG_SIMPLE_FORGE = /* glsl */ `
   uniform float uRadius;
   uniform vec3 uBase;
   uniform vec3 uCrack;
+  uniform vec3 uPool;
 
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -151,19 +158,18 @@ const FRAG_SIMPLE_FORGE = /* glsl */ `
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 40.0, r);
     float crackBase = vnoise(vWorld * 0.05) * 0.6 + vnoise(vWorld * 0.1) * 0.4;
-    float crackBand = smoothstep(0.45, 0.5, crackBase) - smoothstep(0.5, 0.55, crackBase);
-    crackBand *= 1.4;
-    vec3 col = uBase + uCrack * crackBand;
+    float crackCore = smoothstep(0.485, 0.5, crackBase) - smoothstep(0.5, 0.515, crackBase);
+    float crackGlow = smoothstep(0.44, 0.5, crackBase) - smoothstep(0.5, 0.56, crackBase);
+    vec3 col = mix(uBase, uPool, crackGlow * 0.8);
+    col = mix(col, uCrack, crackCore);
     col *= edgeFade;
-    float dither = (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
 // Flat — couleur unie + edge fade (Potato Mode).
 const FRAG_FLAT_FORGE = /* glsl */ `
-  precision lowp float;
+  precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
@@ -174,24 +180,6 @@ const FRAG_FLAT_FORGE = /* glsl */ `
     gl_FragColor = vec4(uBase * edgeFade, 1.0);
   }
 `;
-
-function buildForgeUniforms(detail: "rich" | "simple" | "flat"): Record<string, THREE.IUniform> {
-  const baseCol = new THREE.Color(0x0a0606);     // charbon profond
-  const crackCol = new THREE.Color(LAVA_BRIGHT);
-  const poolCol = new THREE.Color(IRON_RED);
-  const emberCol = new THREE.Color(EMBER_GOLD);
-  const out: Record<string, THREE.IUniform> = {
-    uBase: { value: new THREE.Vector3(baseCol.r, baseCol.g, baseCol.b) },
-  };
-  if (detail !== "flat") {
-    out.uCrack = { value: new THREE.Vector3(crackCol.r, crackCol.g, crackCol.b) };
-  }
-  if (detail === "rich") {
-    out.uPool = { value: new THREE.Vector3(poolCol.r, poolCol.g, poolCol.b) };
-    out.uEmber = { value: new THREE.Vector3(emberCol.r, emberCol.g, emberCol.b) };
-  }
-  return out;
-}
 
 export const FORGE_VERMEILLE_THEME: Theme = {
   id: "forge-vermeille",
@@ -268,7 +256,9 @@ export const FORGE_VERMEILLE_THEME: Theme = {
     // Counts modérés pour ne pas saturer un visuel déjà chargé.
     wisps: {
       counts: { high: 60, medium: 40, low: 25, ultra: 12 },
-      colors: [EMBER_GOLD, 0xff8a3e, WHITE_HOT],
+      // Étincelles orange et rouges : l'or et le blanc-chaud d'avant étaient
+      // ceux des lames légendaires et communes (tâche 6.3).
+      colors: [0xff8a3e, LAVA_BRIGHT, 0xff6a1f],
       drifSpeedMin: 0.8,        // un peu plus rapide que sanctuaire
       drifSpeedMax: 1.5,        // — la forge est agitée, pas contemplative
     },
@@ -283,7 +273,7 @@ export const FORGE_VERMEILLE_THEME: Theme = {
     fragRich: FRAG_RICH_FORGE,
     fragSimple: FRAG_SIMPLE_FORGE,
     fragFlat: FRAG_FLAT_FORGE,
-    buildExtraUniforms: buildForgeUniforms,
+    colors: GROUND_COLORS_FORGE,
   },
 
   ui: {

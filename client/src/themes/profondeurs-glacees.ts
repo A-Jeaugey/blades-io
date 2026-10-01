@@ -1,4 +1,3 @@
-import * as THREE from "three";
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
 import { Theme, computeRarityGlowComp } from "./Theme";
 
@@ -16,17 +15,30 @@ const CRYSTAL_BRIGHT = 0x66c4ff;    // cyan glacial vif — accent saturé
 const AURORA_VIOLET = 0xb480ff;     // violet polaire mystique
 const AURORA_GREEN = 0x6affb8;      // mint glacé — aurore verte
 const AMBER_PRECIOUS = 0xffd49a;    // ambre doré chaud — la rareté max (chaleur dans le froid)
-const ICE_PALE = 0xb8d4ec;          // glace pâle — couleur "common" discrète
+const ICE_PALE = 0xb8d4ec;          // glace pâle — repli des lames
 const BOUNDARY_HOT = 0xff4d6a;      // mur de mort — rouge chaud saturé (signale clairement la mort dans la palette froide)
 
 const RARITY_COLOR_GLACEES: Record<BladeRarity, number> = {
-  // Logique : la chaleur est PRÉCIEUSE dans le froid. Common = givre pâle
-  // (banal), Legendary = ambre doré (le seul élément chaud → ressort
-  // immédiatement comme un trésor dans une mer cyan).
-  [BladeRarity.Common]: ICE_PALE,
-  [BladeRarity.Rare]: CRYSTAL_BRIGHT,
+  // Logique : la chaleur est PRÉCIEUSE dans le froid. Common = givre (banal),
+  // Legendary = ambre (le seul élément chaud → ressort comme un trésor).
+  // Tâche 6.3 : commun presque blanc et rare d'un bleu plus profond (le givre
+  // bleuté et le cyan d'avant se confondaient), ambre plus saturé pour rester
+  // dans la famille or.
+  [BladeRarity.Common]: 0xe9f2fa,
+  [BladeRarity.Rare]: 0x3c9dff,
   [BladeRarity.Epic]: AURORA_VIOLET,
-  [BladeRarity.Legendary]: AMBER_PRECIOUS,
+  [BladeRarity.Legendary]: 0xffc56b,
+};
+
+// Sol (tâche 6.3) : glace sombre, veines de givre sourdes, aurore à peine
+// visible. Avant, arêtes cyan vif (la couleur des lames rares) et aurore
+// verte sur tout le sol (luminance moyenne 0,17 en qualité haute).
+const GROUND_COLORS_GLACEES = {
+  base: 0x040c1a,     // glace profonde
+  mid: 0x1a3045,      // facettes
+  vein: 0x24506e,     // arêtes des cristaux
+  aurora: 0x0e3a34,   // bandes d'aurore
+  sparkle: 0x34627e,  // éclats de givre
 };
 
 // Voronoi tessellation — cristaux fracturés au sol. Signature visuelle
@@ -37,10 +49,11 @@ const FRAG_RICH_GLACEES = /* glsl */ `
   varying vec2 vWorld;
   uniform float uTime;
   uniform float uRadius;
-  uniform vec3 uBase;       // pierre glaciaire profonde
-  uniform vec3 uMid;        // teinte intermédiaire — variation interne aux cellules
-  uniform vec3 uCrystal;    // veines de cristal — les arêtes Voronoï
+  uniform vec3 uBase;       // glace profonde
+  uniform vec3 uMid;        // variation interne aux cellules
+  uniform vec3 uVein;       // arêtes des cellules Voronoï
   uniform vec3 uAurora;     // bandes d'aurore qui dérivent
+  uniform vec3 uSparkle;    // éclats de givre
 
   float hash11(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -130,16 +143,13 @@ const FRAG_RICH_GLACEES = /* glsl */ `
     float auroraBand = smoothstep(0.40, 0.55, a1) * (1.0 - smoothstep(0.55, 0.72, a1));
     auroraBand *= 0.7 + 0.3 * sin(uTime * 0.5);
 
-    vec3 col = uBase;
-    col = mix(col, uMid, interiorBands * 0.55);              // facets glace
-    col += uCrystal * edgeStrength * 0.95;                    // arêtes Voronoï
-    col += uCrystal * crystals * 0.9;                         // cristaux scintillants
-    col += uAurora * auroraBand * 0.55;                       // aurores
+    // Composition par mélanges seulement (contrat du sol, readability.ts).
+    vec3 col = mix(uBase, uMid, interiorBands * 0.55);       // facettes
+    col = mix(col, uAurora, auroraBand);                      // aurores
+    col = mix(col, uVein, edgeStrength);                      // arêtes Voronoï
+    col = mix(col, uSparkle, crystals);                       // éclats
     col *= edgeFade;
 
-    // Dithering anti-banding sur les gradients aurore.
-    float dither = (hash11(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
-    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -152,7 +162,7 @@ const FRAG_SIMPLE_GLACEES = /* glsl */ `
   uniform float uRadius;
   uniform vec3 uBase;
   uniform vec3 uMid;
-  uniform vec3 uCrystal;
+  uniform vec3 uVein;
 
   float hash11(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -195,17 +205,15 @@ const FRAG_SIMPLE_GLACEES = /* glsl */ `
     float edgeStrength = 1.0 - smoothstep(0.0, 0.1, v.y - v.x);
     float interior = vnoise(vWorld * 0.04);
     vec3 col = mix(uBase, uMid, interior * 0.4);
-    col += uCrystal * edgeStrength * 0.85;
+    col = mix(col, uVein, edgeStrength);
     col *= edgeFade;
-    float dither = (hash11(gl_FragCoord.xy) - 0.5) / 255.0;
-    col += vec3(dither);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
 // Flat — couleur unie + edge fade (Potato Mode).
 const FRAG_FLAT_GLACEES = /* glsl */ `
-  precision lowp float;
+  precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
@@ -216,24 +224,6 @@ const FRAG_FLAT_GLACEES = /* glsl */ `
     gl_FragColor = vec4(uBase * edgeFade, 1.0);
   }
 `;
-
-function buildGlaceesUniforms(detail: "rich" | "simple" | "flat"): Record<string, THREE.IUniform> {
-  const baseCol = new THREE.Color(0x040c1a);              // glace profonde sombre
-  const midCol = new THREE.Color(FOG_FROST);
-  const crystalCol = new THREE.Color(CRYSTAL_BRIGHT);
-  const auroraCol = new THREE.Color(AURORA_GREEN);
-  const out: Record<string, THREE.IUniform> = {
-    uBase: { value: new THREE.Vector3(baseCol.r, baseCol.g, baseCol.b) },
-  };
-  if (detail !== "flat") {
-    out.uMid = { value: new THREE.Vector3(midCol.r, midCol.g, midCol.b) };
-    out.uCrystal = { value: new THREE.Vector3(crystalCol.r, crystalCol.g, crystalCol.b) };
-  }
-  if (detail === "rich") {
-    out.uAurora = { value: new THREE.Vector3(auroraCol.r, auroraCol.g, auroraCol.b) };
-  }
-  return out;
-}
 
 export const PROFONDEURS_GLACEES_THEME: Theme = {
   id: "profondeurs-glacees",
@@ -313,7 +303,9 @@ export const PROFONDEURS_GLACEES_THEME: Theme = {
     // rarement (chaleur lointaine, mystique).
     wisps: {
       counts: { high: 70, medium: 45, low: 28, ultra: 14 },
-      colors: [0xb8e8ff, CRYSTAL_BRIGHT, AURORA_VIOLET, 0xeef6ff, AMBER_PRECIOUS],
+      // Menthe d'aurore et givre bleu-vert : le cyan, le violet, le blanc et
+      // l'ambre d'avant étaient ceux des lames (tâche 6.3).
+      colors: [AURORA_GREEN, 0x8ae8d8, 0x5fd0c8],
       drifSpeedMin: 0.4,    // plus lent que sanctuaire (0.6) — monde gelé
       drifSpeedMax: 0.9,    // plus lent que sanctuaire (1.2) — languissant
     },
@@ -328,7 +320,7 @@ export const PROFONDEURS_GLACEES_THEME: Theme = {
     fragRich: FRAG_RICH_GLACEES,
     fragSimple: FRAG_SIMPLE_GLACEES,
     fragFlat: FRAG_FLAT_GLACEES,
-    buildExtraUniforms: buildGlaceesUniforms,
+    colors: GROUND_COLORS_GLACEES,
   },
 
   ui: {

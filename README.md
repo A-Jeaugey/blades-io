@@ -39,6 +39,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Cosmetics** | Seen by everyone, and never changing what you see or what hits: 9 character skins (colors, head shape and an accessory: headband, visor, antenna, hood, horns, ears or crest), 5 blade styles (a light pattern that leaves rarity colors and tier shapes alone), 4 trails and 3 elimination effects. Half unlock with your level (2 to 30, announced on the death card), the rest are sold for trophées in the BOUTIQUE (SKINS, BLADES and EFFECTS tabs, signed-in players). Equipped items apply from your next game, without reloading; the server checks each one when you join. Your ground ring and spawn shield never change |
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
+| **Map themes** | Four looks for the arena: Original Neon (free), Spirit Sanctuary, Vermilion Forge and Frozen Depths (BOUTIQUE), seen only by whoever equips them. Same map, same framing and the same rarity colors on every theme (white, blue, violet, gold). Each theme passes a readability check, run in CI (`npm run check:themes`): dark ground, no ground or ambient color that looks like a blade or a threat, a red kill zone |
 | **Camera** | Same framing for every theme (a cosmetic never changes what you see). It pulls back smoothly as your orbit grows, and narrow screens get pulled back until they show at least ~80 % of a 16:9 screen's width (portrait phones see more depth, at a smaller scale) |
 
 ### Bots
@@ -357,6 +358,7 @@ client/src/
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)
 tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s, time before the first death
 tools/bench-snowball.js # snowball bench: leader reign length, underdog kills
+tools/check-themes.mjs # theme readability check (rarity colors, ground, reserved colors), run in CI
 
 deploy.sh              # first install on a server
 auto-deploy.sh         # graceful deploys: separate build, switch, health check, rollback

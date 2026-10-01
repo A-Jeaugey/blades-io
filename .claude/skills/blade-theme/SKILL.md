@@ -11,6 +11,7 @@ Workflow complet pour ajouter un thème (identité visuelle + sonore d'une map) 
 
 Lis `CLAUDE.md` à la racine du repo pour le contexte général. Sections critiques :
 - **Système de thèmes** (anatomie, ce qui change vs reste fixe)
+- **Lisibilité : le contrat de thème** (tâche 6.3) — `client/src/themes/readability.ts`
 - **Comment ajouter un nouveau thème** (recette officielle)
 
 ## Process — ordre exact
@@ -28,19 +29,30 @@ Output : 5-6 mots-clés validés par l'utilisateur avant d'écrire du code.
 
 ### 2. Palette — règles structurantes
 
-**Logique des 4 raretés** : la rareté la plus rare doit ressortir IMMÉDIATEMENT. Souvent = teinte chaude au milieu d'une palette froide (ou inverse pour les thèmes chauds → Legendary blanc-chaud dans une palette de feu).
+**Les 4 raretés ont des familles de teinte universelles** (décision D4, `RARITY_FAMILIES` dans `readability.ts`) : la rareté se lit pareil sur toutes les cartes. Le thème choisit seulement la nuance :
+
+| Rareté | Famille | Plage OKLCH | Exemples |
+|---|---|---|---|
+| Common | blanc / argent | C ≤ 0,05, L ≥ 0,88 | `#ffffff` (Néon), `#e8e2da` acier (Forge) |
+| Rare | bleu, du cyan à l'azur | H 200° à 265°, C ≥ 0,11 | `#00e5ff`, `#3c9dff` |
+| Epic | violet | H 280° à 320°, C ≥ 0,14 | `#7c5cff`, `#b480ff` |
+| Legendary | or / ambre | H 55° à 100°, C ≥ 0,11, L ≥ 0,78 | `#ffc83d`, `#ffc56b` |
+
+Écart CIEDE2000 ≥ 20 entre deux raretés. Pour un thème chaud, ne PAS prendre les teintes du thème pour les raretés : la Forge avait ses lames couleur de lave et elles disparaissaient sur le sol (elle utilise maintenant les couleurs de revenu de l'acier). La légendaire reste or, donc c'est le sol qui s'adapte.
 
 Couleurs requises (cf. `Theme.palette` dans `Theme.ts`) :
 - **clearColor** : fond du renderer (très sombre)
 - **fogColor** : brouillard, souvent proche du clearColor
-- **boundary** : mur de mort, doit attirer l'œil (saturé contrasté)
-- **rarityColor[Common→Legendary]** : 4 niveaux avec progression visible
+- **boundary** : mur de mort, un rouge franc (H 345° à 40°), loin de toute rareté
+- **rarityColor[Common→Legendary]** : dans les familles ci-dessus
 - **powerUpColor[5 types]** : 5 teintes distinctes lisibles à 50% zoom
 - **fx.{crateHit, crateDestroy, death, clash, tierUpHi, tierUpLo, …}** : bursts de particules
 - **playerLocal/Remote** : 3 teintes par côté (primary/accent/accentDim)
 - **crate** : primary/emissive/edge
 
 **Règle d'or** : pas plus de 5-6 couleurs structurelles, le reste = variations.
+
+**Couleurs réservées au gameplay** : rien dans le sol ni dans les particules d'ambiance ne ressemble à une rareté ou aux couleurs de menace (`DANGER_COLOR` rouge, `PREY_COLOR` vert). Les particules (`ambient.wisps.colors`) : jamais blanc, bleu, violet ou or de lame.
 
 ### 3. Decor variant — réutiliser ou créer
 
@@ -53,7 +65,11 @@ Créer un nouveau `kind` (ex : `glacial`, `molten`) seulement si la géométrie 
 
 ### 4. Ground shader — la signature visuelle
 
-Chaque thème doit avoir un sol identifiable au premier coup d'œil. **3 variantes obligatoires** : `fragRich`, `fragSimple`, `fragFlat`.
+Chaque thème doit avoir un sol identifiable au premier coup d'œil, mais **sombre et calme** : c'est le fond sur lequel on lit les lames. **3 variantes obligatoires** : `fragRich`, `fragSimple`, `fragFlat`.
+
+**Couleurs du sol déclarées** dans `ground.colors` (hex tel qu'à l'écran) : `base` (la dominante, luminance ≤ 0,03) et un motif par clé, à son plus fort (luminance ≤ 0,12). `Ground.ts` les passe en uniforms : `base` → `uBase`, `crack` → `uCrack`. Dans les shaders : **aucune couleur en dur** (`vec3(0.4, 0.1, 0.9)` est refusé) et **seulement des `mix()`** entre ces couleurs, poids de 0 à 1 (pas de `col += uCrack * 1.6` : ça sort des couleurs déclarées). `Ground.ts` plafonne la luminance et convertit vers l'espace de sortie, pour les 3 niveaux.
+
+Des motifs fins (lignes, veines, éclats) plutôt que de grandes nappes claires : la Forge d'avant couvrait la moitié du sol de lave orange vif, les Profondeurs d'aurore verte.
 
 Patterns prouvés :
 
@@ -70,7 +86,7 @@ float dither = (hash(gl_FragCoord.xy + uTime * 60.0) - 0.5) / 255.0;
 col += vec3(dither);
 ```
 
-Uniforms theme-spécifiques : déclarés dans le shader + fournis par `buildExtraUniforms(detail)`. `uTime` (rich seulement) et `uRadius` sont gérés par `Ground.ts`.
+Uniforms : les couleurs viennent de `ground.colors` (déclarer `uniform vec3 uXxx;` dans chaque niveau qui s'en sert, sinon le shader ne compile pas à ce niveau ; le contrôle le signale). `uTime` (rich seulement) et `uRadius` sont fournis par `Ground.ts`.
 
 ### 5. Lighting + blade material
 
@@ -163,13 +179,16 @@ const tracks = [
 
 Dans `themes/<id>.ts` : `music: { lobby: "lobby-<id>.mp3", battle: "battle-<id>.mp3" }`. L'utilisateur dépose les `.mp3` source dans `assets/music/` à la racine du repo avec ces noms exacts.
 
-### 11. Build + commit
+### 11. Vérification, build + commit
 
 ```bash
+npm run check:themes                # contrat de lisibilité (la CI le lance aussi)
 cd client
 npx tsc -p tsconfig.json --noEmit  # typecheck
 npx vite build                      # vérifie que les shaders compilent
 ```
+
+`check:themes` doit afficher OK pour le nouveau thème ; chaque écart nomme la règle et les couleurs en cause.
 
 Commit + push (sur main si autorisé pour la session, sinon feature branch).
 
@@ -180,6 +199,8 @@ Commit + push (sur main si autorisé pour la session, sinon feature branch).
 - ❌ Ne fournir qu'un seul niveau de ground shader (les 3 sont obligatoires : `rich`, `simple`, `flat`)
 - ❌ Trop de wisps (>100) — fatigue l'œil, concurrence le combat
 - ❌ Choisir une couleur très saturée/brillante pour Common (rareté la plus fréquente — doit rester discrète sinon l'écran sature)
+- ❌ Sortir une rareté de sa famille (rose légendaire, orange rare…) ou reprendre la couleur d'une rareté dans le sol ou les particules
+- ❌ Un sol clair ou de grandes nappes lumineuses (luminance plafonnée de toute façon par `Ground.ts`)
 - ❌ Suno prompts avec 5+ références (mélange mal sur v5.5, dilue le mood)
 - ❌ Ajouter le thème à la racine du dropdown sans avoir testé que les 3 niveaux de qualité tournent (rich/simple/flat sont des paths critiques)
 
@@ -190,3 +211,4 @@ Commit + push (sur main si autorisé pour la session, sinon feature branch).
 - Exemple thème spirit : `client/src/themes/sanctuaire.ts`
 - Exemple thème cyber : `client/src/themes/neon.ts`
 - Interface formelle : `client/src/themes/Theme.ts`
+- Contrat de lisibilité : `client/src/themes/readability.ts`, contrôle `tools/check-themes.mjs`
