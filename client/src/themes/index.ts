@@ -1,4 +1,5 @@
-import { DANGER_COLOR, PREY_COLOR, Theme } from "./Theme";
+import { DANGER_COLOR, PREY_COLOR, Theme, computeRarityGlowComp } from "./Theme";
+import { COLORBLIND_DANGER_COLOR, COLORBLIND_PREY_COLOR, COLORBLIND_RARITY_COLOR } from "./colorblind";
 import { NEON_THEME } from "./neon";
 import { SANCTUAIRE_THEME } from "./sanctuaire";
 import { FORGE_VERMEILLE_THEME } from "./forge-vermeille";
@@ -19,11 +20,36 @@ export const THEMES: Record<string, Theme> = {
 export const DEFAULT_THEME_ID = NEON_THEME.id;
 
 const STORAGE_KEY = "blade.theme";
+const COLORBLIND_KEY = "blade.colorblind";
+
+// Palette daltonienne (tâche 3.8) : lue une fois au démarrage, comme le
+// thème, puisque les matériaux sont construits avec. La changer demande un
+// rechargement.
+const colorblind = readColorblindChoice();
+
+function readColorblindChoice(): boolean {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(COLORBLIND_KEY) === "1";
+}
+
+// Thème tel qu'il est rendu : la palette daltonienne remplace les couleurs
+// des raretés. Les thèmes du registre (boutique, sélecteur) restent intacts.
+function resolve(theme: Theme): Theme {
+  if (!colorblind) return theme;
+  return {
+    ...theme,
+    palette: {
+      ...theme.palette,
+      rarityColor: COLORBLIND_RARITY_COLOR,
+      rarityGlowComp: computeRarityGlowComp(COLORBLIND_RARITY_COLOR),
+    },
+  };
+}
 
 // Cache local du thème actif. Les modules de rendu lisent ce cache une seule
 // fois à l'init. Changement de thème runtime = reload de la page (acceptable
 // vu que le thème est sélectionné en lobby, jamais en plein match).
-let activeTheme: Theme = readActiveTheme();
+let activeTheme: Theme = resolve(readActiveTheme());
 
 function readActiveTheme(): Theme {
   if (typeof localStorage === "undefined") return THEMES[DEFAULT_THEME_ID];
@@ -42,7 +68,7 @@ export function setActiveTheme(id: string): void {
     return;
   }
   if (id === activeTheme.id) return;
-  activeTheme = THEMES[id];
+  activeTheme = resolve(THEMES[id]);
   if (typeof localStorage !== "undefined") {
     localStorage.setItem(STORAGE_KEY, id);
   }
@@ -51,6 +77,28 @@ export function setActiveTheme(id: string): void {
 export function listThemes(): Theme[] {
   return Object.values(THEMES);
 }
+
+// Palette daltonienne du rendu en cours (lue au démarrage).
+export function isColorblindActive(): boolean {
+  return colorblind;
+}
+
+// Choix enregistré de la palette daltonienne (celui du prochain démarrage).
+export function colorblindChoice(): boolean {
+  return readColorblindChoice();
+}
+
+export function setColorblindChoice(on: boolean): void {
+  if (typeof localStorage === "undefined") return;
+  if (on) localStorage.setItem(COLORBLIND_KEY, "1");
+  else localStorage.removeItem(COLORBLIND_KEY);
+}
+
+// Couleurs de menace en vigueur, communes à tous les thèmes (nametags,
+// alerte de bordure, minimap).
+export const THREAT_COLORS: Readonly<{ danger: number; prey: number }> = colorblind
+  ? { danger: COLORBLIND_DANGER_COLOR, prey: COLORBLIND_PREY_COLOR }
+  : { danger: DANGER_COLOR, prey: PREY_COLOR };
 
 // Helper : convertit un int hex (0xff8a3e) en chaîne CSS "#rrggbb".
 function hexToCss(hex: number): string {
@@ -85,8 +133,8 @@ export function applyThemeCss(theme: Theme = activeTheme): void {
   root.style.setProperty("--accent-cool-rgb", ui.accentCoolRgb);
   root.style.setProperty("--accent-warm-rgb", ui.accentWarmRgb);
   // Couleurs de menace communes à tous les thèmes (nametags, alertes).
-  root.style.setProperty("--danger-rgb", rgbTriplet(DANGER_COLOR));
-  root.style.setProperty("--prey-rgb", rgbTriplet(PREY_COLOR));
+  root.style.setProperty("--danger-rgb", rgbTriplet(THREAT_COLORS.danger));
+  root.style.setProperty("--prey-rgb", rgbTriplet(THREAT_COLORS.prey));
   // Couleurs des raretés pour les éléments UI qui les affichent (rarity
   // strip dots du login screen, badges éventuels). Tirées de
   // theme.palette.rarityColor pour rester cohérent avec le rendu 3D.

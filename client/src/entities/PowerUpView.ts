@@ -17,6 +17,17 @@ interface PowerUpEntry {
 
 const TYPES = [PowerUpType.Speed, PowerUpType.Spin, PowerUpType.Magnet, PowerUpType.Shield, PowerUpType.Blades];
 
+// Glow des formes (tâche 3.8). À 1,6 pour toutes, les couleurs claires
+// (blanc, jaune) partaient en tache de bloom : forme illisible, en niveaux
+// de gris surtout. Ramené à une luminance commune, comme les raretés des
+// lames, sans dépasser l'ancien glow pour les couleurs sombres.
+const GLOW_MAX = 1.6;
+const GLOW_LUMINANCE = 0.5;
+function glowFor(color: number): number {
+  const lum = 0.299 * ((color >> 16) & 255) / 255 + 0.587 * ((color >> 8) & 255) / 255 + 0.114 * (color & 255) / 255;
+  return Math.min(GLOW_MAX, GLOW_LUMINANCE / Math.max(0.2, lum));
+}
+
 // Une forme par type (tâche 4.3) : la couleur seule, qui change en plus
 // avec le thème, ne suffisait pas à les reconnaître. Formes plates posées à
 // l'horizontale, lisibles depuis la caméra plongeante, qui tournent dans
@@ -129,7 +140,7 @@ export class PowerUpRenderer {
         : new THREE.MeshPhongMaterial({
             color,
             emissive: color,
-            emissiveIntensity: 1.6,
+            emissiveIntensity: glowFor(color),
             shininess: 100,
           });
       this.mats.set(t, mat);

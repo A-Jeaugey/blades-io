@@ -187,7 +187,17 @@ résolu une fois depuis `localStorage["blade.theme"]` ou défaut neon).
 
 Switch : `setActiveTheme(id)` persiste dans localStorage. **Le changement
 n'est pas hot-swap** : il faut reload pour que les shaders/matériaux/CSS
-soient reconstruits. L'UI Settings demande un confirm() avant reload.
+soient reconstruits. Au lobby, une modale propose de recharger tout de
+suite ou au prochain retour au menu ; en partie, le rechargement attend le
+retour au menu (`ui/pendingReload.ts`).
+
+Palette daltonienne (option des réglages, `localStorage["blade.colorblind"]`) :
+`themes/colorblind.ts` remplace les couleurs des raretés du thème actif et
+les couleurs de menace. `getActiveTheme()` renvoie le thème ainsi résolu
+(le registre `THEMES` reste intact, pour la boutique) ; les couleurs de
+menace se lisent dans `THREAT_COLORS` (`themes/index.ts`), jamais
+directement dans `DANGER_COLOR` / `PREY_COLOR`. Même règle de rechargement
+que le thème.
 
 CSS : `applyThemeCss()` est appelé **avant** `new Game()` dans `main.ts`. Il
 injecte les variables `--cyan`, `--pink`, `--dark`, etc. sur `:root` depuis
@@ -295,6 +305,13 @@ reçoit que l'`item_id`) et la boutique l'affiche. Ne jamais remettre de
 - **Couleurs** : ne **jamais** hardcoder un hex en dehors de `themes/*.ts`.
   Tous les modules de rendu lisent via `getActiveTheme()`. Si vous voyez un
   `0xff2ea8` en dehors de `themes/`, c'est un bug à corriger.
+- **Accessibilité** (tâche 3.8) : une information ne passe jamais par la
+  seule couleur (forme, symbole ou taille en plus : formes des power-ups,
+  ▲/▼ des nametags, taille des raretés). Toute secousse passe par
+  `camera.shake` (le réglage du joueur s'y applique) ; tout nouveau flash,
+  éclat ou clignotement suit le réglage des flashs (`setFlashIntensity`,
+  appelé depuis `settings.onChange` dans `main.ts`). Une nouvelle couleur
+  qui code une information se vérifie sous daltonisme simulé.
 - **Shaders** : commentez les passes (qu'est-ce qui anime, qu'est-ce qui dérive).
   Précisez `precision highp/mediump/lowp` selon le niveau de qualité visé.
 - **Performance** :

@@ -8,6 +8,9 @@ const FREQS_Y = [6.1, 10.9, 13.3];
 const WEIGHTS = [0.5, 0.3, 0.2];
 
 export class ScreenShake {
+  // Réglage du joueur (tâche 3.8), de 0 (aucune secousse) à 1. Il agit sur
+  // l'amplitude : les secousses gardent leur durée.
+  intensity = 1;
   private trauma = 0;
   private time = 0;
   private readonly phases = Array.from({ length: 6 }, () => Math.random() * Math.PI * 2);
@@ -35,6 +38,7 @@ export class ScreenShake {
       ny += Math.sin(t * FREQS_Y[i] + this.phases[i + 3]) * WEIGHTS[i];
     }
     this.trauma = Math.max(0, this.trauma - dt * 1.5);
-    return { x: nx * shake * 0.8, y: ny * shake * 0.5 };
+    const k = shake * this.intensity;
+    return { x: nx * k * 0.8, y: ny * k * 0.5 };
   }
 }

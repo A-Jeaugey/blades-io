@@ -1,6 +1,5 @@
-import { MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
-import { getActiveTheme } from "../themes";
-import { DANGER_COLOR } from "../themes/Theme";
+import { BladeRarity, MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
+import { THREAT_COLORS, getActiveTheme } from "../themes";
 
 function rgba(color: number, alpha: number): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
@@ -25,13 +24,27 @@ export class Minimap {
   private size: number;
   private arenaEdge: string;
   private outsideFill: string;
+  private background: string;
+  private rim: string;
+  private othersFill: string;
+  private legendaryFill: string;
+  private meFill: string;
 
   constructor() {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
     this.size = this.canvas.width;
-    this.arenaEdge = rgba(getActiveTheme().palette.boundary, 0.9);
-    this.outsideFill = rgba(DANGER_COLOR, 0.28);
+    // Couleurs du thème actif (celles d'avant pour le Néon). Les flèches des
+    // légendaires prennent la couleur de la rareté, palette daltonienne
+    // comprise (tâche 3.8).
+    const theme = getActiveTheme();
+    this.arenaEdge = rgba(theme.palette.boundary, 0.9);
+    this.outsideFill = rgba(THREAT_COLORS.danger, 0.28);
+    this.background = rgba(theme.palette.clearColor, 0.7);
+    this.rim = `rgba(${theme.ui.accentCoolRgb}, 0.3)`;
+    this.othersFill = theme.ui.accentCool;
+    this.legendaryFill = rgba(theme.palette.rarityColor[BladeRarity.Legendary], 1);
+    this.meFill = rgba(theme.palette.playerLocal.primary, 1);
   }
 
   draw(me: MinimapPlayer, others: MinimapPlayer[], legendaries: MinimapBlade[]): void {
@@ -39,11 +52,11 @@ export class Minimap {
     const S = this.size;
     ctx.clearRect(0, 0, S, S);
     // Fond
-    ctx.fillStyle = "rgba(5, 6, 12, 0.7)";
+    ctx.fillStyle = this.background;
     ctx.beginPath();
     ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(0, 229, 255, 0.3)";
+    ctx.strokeStyle = this.rim;
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -71,7 +84,7 @@ export class Minimap {
     ctx.stroke();
     ctx.restore();
     // Autres joueurs
-    ctx.fillStyle = "#00e5ff";
+    ctx.fillStyle = this.othersFill;
     for (const p of others) {
       const dx = p.x - me.x;
       const dy = p.y - me.y;
@@ -84,7 +97,7 @@ export class Minimap {
       ctx.fill();
     }
     // Légendaires proches en flèche
-    ctx.fillStyle = "#ff2ea8";
+    ctx.fillStyle = this.legendaryFill;
     for (const b of legendaries) {
       const dx = b.x - me.x;
       const dy = b.y - me.y;
@@ -106,11 +119,11 @@ export class Minimap {
       ctx.restore();
     }
     // Moi au centre
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = this.meFill;
     ctx.beginPath();
     ctx.arc(S / 2, S / 2, 3.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#ffffff";
+    ctx.strokeStyle = this.meFill;
     ctx.lineWidth = 1;
     ctx.stroke();
   }

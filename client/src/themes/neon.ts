@@ -8,10 +8,13 @@ import { Theme, computeRarityGlowComp } from "./Theme";
 // tous les joueurs.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Épique violet-bleu (tâche 3.8) : le pourpre d'avant (0xb14bff), poussé
+// par la compensation de glow, sortait magenta comme le rose légendaire
+// (écart CIEDE2000 de 2,6 mesuré sur le rendu, 15 maintenant).
 const RARITY_COLOR_NEON: Record<BladeRarity, number> = {
   [BladeRarity.Common]: 0xffffff,
   [BladeRarity.Rare]: 0x00e5ff,
-  [BladeRarity.Epic]: 0xb14bff,
+  [BladeRarity.Epic]: 0x7c5cff,
   [BladeRarity.Legendary]: 0xff2ea8,
 };
 

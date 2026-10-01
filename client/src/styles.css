@@ -1399,7 +1399,7 @@ button:hover {
 }
 .bio2-rarity-dot[data-r="common"]    { --c: var(--rarity-common, #ffffff); }
 .bio2-rarity-dot[data-r="rare"]      { --c: var(--rarity-rare, #00e5ff); }
-.bio2-rarity-dot[data-r="epic"]      { --c: var(--rarity-epic, #b14bff); }
+.bio2-rarity-dot[data-r="epic"]      { --c: var(--rarity-epic, #7c5cff); }
 .bio2-rarity-dot[data-r="legendary"] { --c: var(--rarity-legendary, #ff2ea8); }
 .bio2-rarity-label { margin-left: 6px; }
 
@@ -2801,6 +2801,15 @@ button:hover {
   justify-content: center;
   gap: 0 12px;
   padding-bottom: 2px;
+  background: linear-gradient(180deg, transparent, var(--panel) 30%);
+}
+/* De même pour FERMER et QUITTER LA PARTIE : avec les réglages
+   d'accessibilité (tâche 3.8), la carte des réglages défile sur les petits
+   téléphones. */
+.settings-actions {
+  position: sticky;
+  bottom: -1px;
+  padding: 8px 0 2px;
   background: linear-gradient(180deg, transparent, var(--panel) 30%);
 }
 

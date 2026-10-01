@@ -119,7 +119,11 @@ export class BladeRenderer {
   // affichée en blanc jusqu'à la fin du flash.
   // Un InstancedMesh de fantômes par tier : la forme suit le palier.
   private ghosts: THREE.InstancedMesh[] = [];
-  private ghostList: Array<{ matrix: THREE.Matrix4; until: number; tier: number }> = [];
+  private ghostList: Array<{ matrix: THREE.Matrix4; until: number; tier: number; rarity: BladeRarity }> = [];
+  // Réglage des flashs (tâche 3.8), de 0 à 1 : part de blanc du flash, et
+  // couleur des fantômes (couleur de la rareté mêlée de blanc d'autant).
+  private flashIntensity = 1;
+  private ghostColors: THREE.Color[] = [];
   private counts: number[] = new Array(BUCKETS).fill(0);
   private idToIndex = new Map<string, { rarity: BladeRarity; tier: number; index: number }>();
   private entries = new Map<string, BladeEntry>();
@@ -172,11 +176,16 @@ export class BladeRenderer {
       }
     }
     const ghostMat = new THREE.MeshBasicMaterial({ color: FLASH_COLOR });
+    for (const r of rarities) this.ghostColors[r] = new THREE.Color(FLASH_COLOR);
     for (let t = 0; t < TIER_BUCKETS; t++) {
       const ghosts = new THREE.InstancedMesh(geos[t], ghostMat, MAX_GHOSTS);
       ghosts.count = 0;
       ghosts.frustumCulled = false;
       ghosts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      // Couleur par instance créée d'emblée : le shader l'inclut dès sa
+      // compilation.
+      ghosts.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX_GHOSTS * 3).fill(1), 3);
+      ghosts.instanceColor.setUsage(THREE.DynamicDrawUsage);
       this.ghosts.push(ghosts);
       this.root.add(ghosts);
     }
@@ -224,10 +233,10 @@ export class BladeRenderer {
     const e = this.entries.get(id);
     if (!e) return;
     const ref = this.idToIndex.get(id);
-    if (ref && e.flashUntil > performance.now() && this.ghostList.length < MAX_GHOSTS) {
+    if (ref && e.flashUntil > performance.now() && this.flashIntensity > 0 && this.ghostList.length < MAX_GHOSTS) {
       const matrix = new THREE.Matrix4();
       this.meshes[bucketKey(ref.rarity, ref.tier)].getMatrixAt(ref.index, matrix);
-      this.ghostList.push({ matrix, until: e.flashUntil, tier: ref.tier });
+      this.ghostList.push({ matrix, until: e.flashUntil, tier: ref.tier, rarity: ref.rarity });
     }
     this.incOwnerRing(e.ownerId, e.ringIndex, -1);
     this.entries.delete(id);
@@ -356,6 +365,15 @@ export class BladeRenderer {
     return !!this.entries.get(id)?.ownerId;
   }
 
+  setFlashIntensity(k: number): void {
+    this.flashIntensity = k;
+    const rarityColor = getActiveTheme().palette.rarityColor;
+    const white = new THREE.Color(FLASH_COLOR);
+    for (const r of [BladeRarity.Common, BladeRarity.Rare, BladeRarity.Epic, BladeRarity.Legendary]) {
+      this.ghostColors[r].set(rarityColor[r]).lerp(white, k);
+    }
+  }
+
   // Flash blanc d'une lame impliquée dans un clash (now : performance.now()).
   flash(id: string, now: number): void {
     const e = this.entries.get(id);
@@ -474,7 +492,7 @@ export class BladeRenderer {
       // Réécrit à chaque frame : un index d'instance change de lame quand
       // une autre est retirée du bucket.
       const k = (e.flashUntil - now) / FLASH_MS;
-      const flash = k > 0 ? Math.min(1, k * 2) : 0;
+      const flash = k > 0 ? Math.min(1, k * 2) * this.flashIntensity : 0;
       const flashArr = this.flashes[key].array as Float32Array;
       if (flashArr[ref.index] !== flash) {
         flashArr[ref.index] = flash;
@@ -494,9 +512,13 @@ export class BladeRenderer {
       for (const g of this.ghosts) g.count = 0;
       for (const ghost of this.ghostList) {
         const mesh = this.ghosts[ghost.tier];
+        mesh.setColorAt(mesh.count, this.ghostColors[ghost.rarity]);
         mesh.setMatrixAt(mesh.count++, ghost.matrix);
       }
-      for (const g of this.ghosts) g.instanceMatrix.needsUpdate = true;
+      for (const g of this.ghosts) {
+        g.instanceMatrix.needsUpdate = true;
+        g.instanceColor!.needsUpdate = true;
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 import * as Tone from "tone";
-import { BladeRarity } from "@bladeio/shared";
+import { BladeRarity, PowerUpType } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
 
 // Musiques servies depuis client/public/ (synchronisées au build via le script
@@ -36,6 +36,9 @@ export class SoundManager {
   private lossSynth!: Tone.Synth;
   private chimeSynth!: Tone.FMSynth;
   private crateSynth!: Tone.NoiseSynth;
+  // Power-ups (tâche 3.8) : un motif par type, cf. powerUp().
+  private powerSynth!: Tone.Synth;
+  private magnetSynth!: Tone.FMSynth;
   private boostNoise!: Tone.Noise;
   private boostFilter!: Tone.Filter;
   private boostEnv!: Tone.AmplitudeEnvelope;
@@ -136,6 +139,21 @@ export class SoundManager {
       envelope: { attack: 0.002, decay: 0.22, sustain: 0, release: 0.1 },
     }).connect(crateFilter);
     this.crateSynth.volume.value = -4;
+
+    // Power-ups : onde carrée adoucie par un passe-bas, et voix FM grave
+    // pour l'aimant.
+    const powerFilter = new Tone.Filter(2800, "lowpass").connect(reverb);
+    this.powerSynth = new Tone.Synth({
+      oscillator: { type: "square" },
+      envelope: { attack: 0.003, decay: 0.08, sustain: 0.2, release: 0.08 },
+    }).connect(powerFilter);
+    this.powerSynth.volume.value = -6;
+    this.magnetSynth = new Tone.FMSynth({
+      harmonicity: 0.5,
+      modulationIndex: 6,
+      envelope: { attack: 0.01, decay: 0.15, sustain: 0.3, release: 0.15 },
+    }).connect(reverb);
+    this.magnetSynth.volume.value = 4;
 
     this.boostNoise = new Tone.Noise("pink");
     this.boostFilter = new Tone.Filter(900, "lowpass");
@@ -263,6 +281,54 @@ export class SoundManager {
     const notes = ["C5", "E5", "G5", "B5"];
     const n = notes[Math.min(3, rarity)];
     this.pickupSynth.triggerAttackRelease(n, 0.12, this.nextTime(this.pickupSynth), gain);
+  }
+
+  // Notes successives sur une voix (numéros MIDI), espacées de step
+  // secondes. Départs strictement croissants exigés par Tone.js : on avance
+  // la dernière date connue de la voix à chaque note.
+  private sequence(synth: Tone.Synth | Tone.FMSynth, notes: number[], step: number, dur: number, gain: number): void {
+    let t = this.nextTime(synth);
+    for (const m of notes) {
+      synth.triggerAttackRelease(Tone.Frequency(m, "midi").toFrequency(), dur, t, gain);
+      this.lastTriggerTime.set(synth, t);
+      t += step;
+    }
+  }
+
+  // Ramassage d'un power-up (tâche 3.8) : un motif par type, pour le
+  // reconnaître sans le voir, transposé vers l'aigu avec la rareté.
+  // Vitesse : trois notes qui montent vite. Rotation : trille. Aimant : deux
+  // notes graves à l'octave. Bouclier : gong métallique et note tenue.
+  // Lames : deux tintements métalliques aigus et un éclat.
+  powerUp(type: PowerUpType, rarity: BladeRarity, gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    const up = [0, 2, 4, 7][Math.min(3, rarity)];
+    const pitch = 2 ** (up / 12);
+    switch (type) {
+      case PowerUpType.Speed:
+        this.sequence(this.powerSynth, [76, 81, 88].map((m) => m + up), 0.045, 0.05, gain);
+        break;
+      case PowerUpType.Spin:
+        this.sequence(this.powerSynth, [79, 74, 79, 74, 79].map((m) => m + up), 0.04, 0.035, gain);
+        break;
+      case PowerUpType.Magnet:
+        this.sequence(this.magnetSynth, [48, 60].map((m) => m + up), 0.09, 0.12, gain);
+        break;
+      case PowerUpType.Shield:
+        this.hitSynth.triggerAttackRelease(160 * pitch, 0.35, this.nextTime(this.hitSynth), gain);
+        this.sequence(this.powerSynth, [67 + up], 0, 0.3, 0.6 * gain);
+        break;
+      case PowerUpType.Blades: {
+        const t0 = this.nextTime(this.hitSynth);
+        this.hitSynth.triggerAttackRelease(1300 * pitch, 0.05, t0, gain);
+        const t1 = t0 + 0.07;
+        this.lastTriggerTime.set(this.hitSynth, t1);
+        this.hitSynth.triggerAttackRelease(1750 * pitch, 0.05, t1, gain);
+        this.sequence(this.powerSynth, [96, 101].map((m) => m + up), 0.07, 0.04, 0.7 * gain);
+        this.shatterSynth.triggerAttackRelease(0.08, this.nextTime(this.shatterSynth), gain);
+        break;
+      }
+    }
   }
 
   hit(rarity: BladeRarity, gain = 1): void {

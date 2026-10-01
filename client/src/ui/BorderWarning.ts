@@ -1,9 +1,11 @@
-import { DANGER_COLOR } from "../themes/Theme";
+import { THREAT_COLORS } from "../themes";
 
 // Distance (u) entre l'orbite extérieure du joueur et la zone mortelle à
 // partir de laquelle l'alerte démarre. À la vitesse de boost (~19 u/s), il
 // reste plus d'une seconde pour réagir.
 export const BORDER_WARNING_DISTANCE = 25;
+// Part de l'opacité qui pulse, au réglage des flashs à 100 %.
+const PULSE_DEPTH = 0.4;
 
 // Vignette rouge plein écran à l'approche de la bordure. En DOM plutôt
 // qu'en post-FX : elle doit s'afficher dans toutes les qualités, y compris
@@ -14,11 +16,18 @@ export class BorderWarning {
   private shown = 0;
   private lastOpacity = "";
   private lastBackground = "";
+  private pulseDepth = PULSE_DEPTH;
 
   constructor() {
     this.el = document.getElementById("border-warning") as HTMLElement;
-    const c = DANGER_COLOR;
+    const c = THREAT_COLORS.danger;
     this.rgb = `${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255}`;
+  }
+
+  // Réglage des flashs (tâche 3.8), de 0 à 1 : à 0, la vignette garde
+  // l'opacité de l'alerte sans clignoter.
+  setFlashIntensity(k: number): void {
+    this.pulseDepth = PULSE_DEPTH * k;
   }
 
   // intensity : 0 (loin) → 1 (au contact). dirX/dirY : direction écran
@@ -34,7 +43,7 @@ export class BorderWarning {
     }
     // Pulsation qui accélère à l'approche.
     const pulse = 0.5 + 0.5 * Math.sin(t * (4 + 10 * this.shown));
-    this.setOpacity(Math.min(1, this.shown * (0.6 + 0.4 * pulse)).toFixed(2));
+    this.setOpacity(Math.min(1, this.shown * (1 - this.pulseDepth + this.pulseDepth * pulse)).toFixed(2));
     const cx = (50 - dirX * 22).toFixed(0);
     const cy = (50 - dirY * 22).toFixed(0);
     const bg = `radial-gradient(circle at ${cx}% ${cy}%, rgba(${this.rgb}, 0) 38%, rgba(${this.rgb}, 0.5) 78%, rgba(${this.rgb}, 0.85) 100%)`;

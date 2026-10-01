@@ -67,7 +67,7 @@ import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
 import { getBest, submitScore } from "./ui/personalBest";
 import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
-import { SettingsPanel } from "./ui/Settings";
+import { SettingsPanel, shakeIntensity } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
@@ -448,6 +448,10 @@ class Game {
       this.input.setSensitivity(s.joystickSens);
       this.nametags.setEnabled(s.showNametags);
       this.haptics.enabled = s.vibration;
+      this.camera.shake.intensity = shakeIntensity(s);
+      this.blades.setFlashIntensity(s.flashes);
+      this.particles.setFlashIntensity(s.flashes);
+      this.borderWarning.setFlashIntensity(s.flashes);
     });
     this.settings.onQuit(() => {
       this.returnToMenu();
@@ -750,12 +754,12 @@ class Game {
       if (msg.byId === this.myId) this.scorePop(msg.x, msg.y, SCORE_CRATE, "small");
     }));
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
-      // Effet visuel coloré selon le type + son de pickup satisfaisant.
+      // Effet visuel coloré selon le type, et son propre au type.
       const color = this.theme.palette.powerUpColor[msg.type as PowerUpType] ?? this.theme.palette.fx.powerUpFallback;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 22);
       // Le son est plein volume si c'est moi qui ramasse, atténué sinon.
       const g = msg.playerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
-      this.sound.pickup(msg.rarity as BladeRarity, g);
+      this.sound.powerUp(msg.type as PowerUpType, msg.rarity as BladeRarity, g);
       // Pour le joueur local, on retient la durée pour afficher la barre.
       if (msg.playerId === this.myId) {
         this.scorePop(msg.x, msg.y, SCORE_POWERUP, "small");

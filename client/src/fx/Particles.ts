@@ -27,19 +27,24 @@ void main() {
 // lieu de la teinter (mélanger vers la couleur du brouillard l'ajouterait à
 // l'image).
 const FRAGMENT = `
+uniform float uIntensity;
 varying vec3 vColor;
 varying float vAlpha;
 #include <fog_pars_fragment>
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
-  float a = vAlpha * smoothstep(1.0, 0.35, d);
+  float a = vAlpha * uIntensity * smoothstep(1.0, 0.35, d);
   #ifdef USE_FOG
     a *= 1.0 - smoothstep(fogNear, fogFar, vFogDepth);
   #endif
   gl_FragColor = vec4(vColor, a);
 }
 `;
+
+// Éclat des particules au réglage des flashs à 0 % (tâche 3.8) : atténuées
+// mais visibles, elles montrent encore où a eu lieu un choc.
+const MIN_INTENSITY = 0.35;
 
 interface Particle {
   px: number; py: number; pz: number;
@@ -87,7 +92,7 @@ export class ParticlePool {
     this.material = new THREE.ShaderMaterial({
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 1 } }]),
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uScale: { value: 1 }, uIntensity: { value: 1 } }]),
       fog: true,
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -115,6 +120,12 @@ export class ParticlePool {
 
   get object3d(): THREE.Object3D {
     return this.points;
+  }
+
+  // Réglage des flashs, de 0 à 1 : éclats et explosions s'atténuent (en
+  // mélange additif, l'opacité règle la luminosité ajoutée).
+  setFlashIntensity(k: number): void {
+    this.material.uniforms.uIntensity.value = MIN_INTENSITY + (1 - MIN_INTENSITY) * k;
   }
 
   spawnSparks(x: number, y: number, z: number, color: number, count: number, speed = 4): void {

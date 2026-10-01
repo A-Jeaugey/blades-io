@@ -131,10 +131,10 @@
             <span class="bio2-rail-title" data-i18n="lobby.patchNotes">PATCH NOTES</span>
           </div>
           <ul class="bio2-rail-list">
-            <li data-i18n-html="lobby.patch1"><b>NEW</b> French and English</li>
-            <li data-i18n-html="lobby.patch2"><b>NEW</b> bots: easy, normal, hard</li>
-            <li data-i18n-html="lobby.patch3"><b>NEW</b> leader bounty · underdog kills pay double</li>
-            <li data-i18n-html="lobby.patch4"><b>NEW</b> six tiers · a blade shape for each</li>
+            <li data-i18n-html="lobby.patch1"><b>NEW</b> colorblind palette · adjustable shake and flashes</li>
+            <li data-i18n-html="lobby.patch2"><b>NEW</b> French and English</li>
+            <li data-i18n-html="lobby.patch3"><b>NEW</b> bots: easy, normal, hard</li>
+            <li data-i18n-html="lobby.patch4"><b>NEW</b> leader bounty · underdog kills pay double</li>
           </ul>
           <div class="bio2-rail-foot">
             <span class="bio2-tb-key" data-i18n="lobby.build">BUILD</span>
@@ -473,16 +473,22 @@
             </select>
           </label>
           <label><span data-i18n="settings.joystick">Joystick sensitivity</span> <input type="range" id="joy-sens" min="0.5" max="2" step="0.05" value="1" /></label>
+          <label><span data-i18n="settings.shake">Screen shake</span> <input type="range" id="shake-intensity" min="0" max="1" step="0.05" value="1" /></label>
+          <label><span data-i18n="settings.flashes">Flashes</span> <input type="range" id="flash-intensity" min="0" max="1" step="0.05" value="1" /></label>
           <label class="settings-toggle">
             <input type="checkbox" id="nametags-toggle" />
             <span data-i18n="settings.nametags">Show nametags</span>
+          </label>
+          <label class="settings-toggle">
+            <input type="checkbox" id="colorblind-toggle" />
+            <span data-i18n="settings.colorblind">Colorblind palette</span>
           </label>
           <label class="settings-toggle">
             <input type="checkbox" id="vibration-toggle" />
             <span data-i18n="settings.vibration">Vibration</span>
           </label>
           <p id="settings-note" class="settings-note hidden" role="status"></p>
-          <div style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
+          <div class="settings-actions" style="display: flex; justify-content: center; gap: 12px; margin-top: 20px;">
             <button id="close-settings" data-i18n="common.closeCaps">CLOSE</button>
             <button id="quit-match-btn" class="hidden" style="border-color: var(--pink); color: var(--pink);" data-i18n="settings.quitMatch">QUIT MATCH</button>
           </div>

@@ -1,5 +1,5 @@
 import { QualityPreset, detectPreset, savePresetChoice } from "../quality";
-import { getActiveTheme, listThemes, setActiveTheme } from "../themes";
+import { colorblindChoice, getActiveTheme, isColorblindActive, listThemes, setActiveTheme, setColorblindChoice } from "../themes";
 import { isOwned } from "../boutique/owned";
 import { Haptics } from "../fx/Haptics";
 import { I18nKey, Lang, getLang, onLangChange, setLang, t, themeName } from "../i18n";
@@ -19,6 +19,13 @@ export interface SettingsState {
   // Vibrations au coup et à l'élimination (tactile, si le navigateur les
   // permet).
   vibration: boolean;
+  // Secousse de l'écran, de 0 à 1 (tâche 3.8). null : valeur par défaut,
+  // qui suit la préférence système « réduire les animations » tant que le
+  // joueur n'a pas touché au curseur (cf. shakeIntensity).
+  shake: number | null;
+  // Flashs, de 0 à 1 : blanc des lames qui s'entrechoquent, éclat des
+  // particules, pulsation de l'alerte de bordure.
+  flashes: number;
   // Version du format enregistré, pour les migrations de valeurs par défaut.
   settingsVersion: number;
 }
@@ -27,6 +34,20 @@ export interface SettingsState {
 // et tout l'état était enregistré au premier réglage modifié : un « false »
 // stocké en v1 est presque toujours l'ancien défaut, pas un choix.
 const SETTINGS_VERSION = 2;
+
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// Secousse effective : celle du curseur, sinon aucune si le système demande
+// de réduire les animations.
+export function shakeIntensity(s: SettingsState): number {
+  return s.shake ?? (prefersReducedMotion() ? 0 : 1);
+}
+
+function formatPercent(v: number): string {
+  return new Intl.NumberFormat(getLang() === "fr" ? "fr-FR" : "en-US", { style: "percent", maximumFractionDigits: 0 }).format(v);
+}
 
 export class SettingsPanel {
   private panel: HTMLElement;
@@ -40,6 +61,8 @@ export class SettingsPanel {
     joystickSens: 1,
     showNametags: true,
     vibration: true,
+    shake: null,
+    flashes: 1,
     settingsVersion: SETTINGS_VERSION,
   };
   private listeners: Array<(s: SettingsState) => void> = [];
@@ -79,6 +102,8 @@ export class SettingsPanel {
     this.bindRange("vol-music", "music");
     this.bindRange("vol-sfx", "sfx");
     this.bindRange("joy-sens", "joystickSens");
+    this.bindRange("shake-intensity", "shake");
+    this.bindRange("flash-intensity", "flashes");
     const qSel = document.getElementById("quality-select") as HTMLSelectElement | null;
     if (qSel) {
       qSel.value = this.state.qualityChoice;
@@ -143,6 +168,18 @@ export class SettingsPanel {
       });
     }
 
+    // Palette daltonienne (tâche 3.8) : comme le thème, elle s'applique au
+    // rechargement.
+    const colorblindToggle = document.getElementById("colorblind-toggle") as HTMLInputElement | null;
+    if (colorblindToggle) {
+      colorblindToggle.checked = colorblindChoice();
+      colorblindToggle.addEventListener("change", () => {
+        setColorblindChoice(colorblindToggle.checked);
+        if (colorblindToggle.checked === isColorblindActive()) return;
+        void this.applyWithReload("settings.colorblindReload");
+      });
+    }
+
     // Vibrations : la ligne n'apparaît que si le navigateur sait vibrer.
     const vibrationToggle = document.getElementById("vibration-toggle") as HTMLInputElement | null;
     if (vibrationToggle) {
@@ -156,6 +193,7 @@ export class SettingsPanel {
     }
 
     this.applyToInputs();
+    onLangChange(() => this.applyToInputs());
   }
 
   private bindRange(id: string, key: keyof SettingsState): void {
@@ -163,6 +201,7 @@ export class SettingsPanel {
     if (!el) return;
     el.addEventListener("input", () => {
       (this.state[key] as any) = parseFloat(el.value);
+      el.setAttribute("aria-valuetext", formatPercent(parseFloat(el.value)));
       this.persist();
       this.emit();
     });
@@ -172,11 +211,23 @@ export class SettingsPanel {
     localStorage.setItem("blade.settings", JSON.stringify(this.state));
   }
 
+  // Curseurs : position, et valeur en pourcentage pour les lecteurs d'écran
+  // (sinon annoncée en fraction, « 0,7 »).
   private applyToInputs(): void {
-    (document.getElementById("vol-master") as HTMLInputElement).value = String(this.state.master);
-    (document.getElementById("vol-music") as HTMLInputElement).value = String(this.state.music);
-    (document.getElementById("vol-sfx") as HTMLInputElement).value = String(this.state.sfx);
-    (document.getElementById("joy-sens") as HTMLInputElement).value = String(this.state.joystickSens);
+    const values: Array<[string, number]> = [
+      ["vol-master", this.state.master],
+      ["vol-music", this.state.music],
+      ["vol-sfx", this.state.sfx],
+      ["joy-sens", this.state.joystickSens],
+      ["shake-intensity", shakeIntensity(this.state)],
+      ["flash-intensity", this.state.flashes],
+    ];
+    for (const [id, v] of values) {
+      const el = document.getElementById(id) as HTMLInputElement | null;
+      if (!el) continue;
+      el.value = String(v);
+      el.setAttribute("aria-valuetext", formatPercent(v));
+    }
   }
 
   onChange(cb: (s: SettingsState) => void): void {

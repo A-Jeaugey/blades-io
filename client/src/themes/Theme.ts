@@ -17,7 +17,8 @@ import { BladeRarity, PowerUpType } from "@bladeio/shared";
 // Couleurs de menace, identiques pour tous les thèmes : une menace se lit
 // de la même façon quel que soit le cosmétique acheté (principe « aucun
 // avantage payant » du plan). Rouge : zone mortelle, joueur plus fort que
-// soi. Vert : joueur plus faible.
+// soi. Vert : joueur plus faible. La palette daltonienne les remplace (cf.
+// THREAT_COLORS dans themes/index.ts).
 export const DANGER_COLOR = 0xff2a3d;
 export const PREY_COLOR = 0x3dff8a;
 

@@ -79,7 +79,7 @@ Each client only receives what is near it (interest management with Colyseus `St
 
 ### Audio
 
-Sound effects are 100 % procedural — Tone.js synths for pickups, throws, the boost noise, and one distinct sound per combat event: a metallic tink for a clash, a bright shatter when an enemy blade breaks, two falling tones when you lose one of yours, a rising chime for an elimination, a crunch for a crate, a heavy hit for your death. Clashing blades flash white, a red arc at the screen edge points at whoever is breaking your blades, and a "+1" pops where you eliminate someone. The only audio files are the music tracks: one lobby and one battle track per theme, stored in `assets/music/` and copied into `client/public/` at build time (`sync-music` script).
+Sound effects are 100 % procedural — Tone.js synths for pickups, throws, the boost noise, and one distinct sound per combat event: a metallic tink for a clash, a bright shatter when an enemy blade breaks, two falling tones when you lose one of yours, a rising chime for an elimination, a crunch for a crate, a heavy hit for your death. Each power-up type has its own pickup sound, pitched up with rarity: three rising notes for Speed, a trill for Spin, two low notes for Magnet, a gong for Shield, metallic tings for Blades. Clashing blades flash white, a red arc at the screen edge points at whoever is breaking your blades, and a "+1" pops where you eliminate someone. The only audio files are the music tracks: one lobby and one battle track per theme, stored in `assets/music/` and copied into `client/public/` at build time (`sync-music` script).
 
 ---
 
@@ -136,6 +136,8 @@ Every push and pull request runs the same build in GitHub Actions (`.github/work
 The input mode follows the last device you used: touching the screen shows the touch controls, the keyboard or mouse hides them. Movement keys take over from the mouse until you left-click again; while moving with the keyboard, moving the mouse makes the cursor your aim (WASD + mouse), so you can throw behind you while running away. Direction and aim are measured on the ground from your character: the cursor points exactly where you go or throw, despite the tilted camera. On mobile, dragging from THROW and bringing your finger back to the button cancels the throw.
 
 On phones, the interface keeps clear of notches and rounded corners, every button is at least 44 px, and the in-game leaderboard starts collapsed (tap it to expand; the choice is remembered). Hits taken, kills and death trigger short vibrations where the browser supports them (Android; not iOS Safari), which can be turned off in Settings.
+
+Accessibility settings: screen shake (0–100 %, off by default when the system asks for reduced motion), flashes (0–100 %: white flash of clashing blades, particle bursts, pulse of the border warning) and a colorblind palette (rarity and threat colors that stay apart under protanopia, deuteranopia and tritanopia, on every theme; applies after a reload). Nothing relies on color alone: each power-up has its own shape (readable in grayscale), rarer blades are bigger, and nametags mark threat with ▲/▼.
 
 New players get a controls card (matching their device) when they first enter a game, then one-time contextual tips (throw when an enemy is in range, boost cost, deadly edge, bushes), remembered in `localStorage` (`blade.onboarding`). The HOW TO PLAY page in the lobby repeats the rules and can show the tips again.
 
