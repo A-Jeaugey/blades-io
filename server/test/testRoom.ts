@@ -41,7 +41,11 @@ export class TestRoom {
     }
   }
 
-  join(sessionId: string, auth: { userId?: string | null; guestId?: string | null } = {}): Player {
+  join(
+    sessionId: string,
+    auth: { userId?: string | null; guestId?: string | null } = {},
+    opts: { protected?: boolean } = {},
+  ): Player {
     this.room.onJoin({ sessionId }, {}, {
       userId: auth.userId ?? null,
       username: null,
@@ -49,8 +53,13 @@ export class TestRoom {
       name: sessionId,
     });
     const p = this.state.players.get(sessionId)!;
-    // Les tests placent les joueurs eux-mêmes : pas d'invulnérabilité.
-    p.spawnProtectionUntil = 0;
+    // Les tests placent les joueurs eux-mêmes : ni invulnérabilité, ni
+    // période de grâce, sauf demande (banc de survie : un vrai nouveau venu).
+    if (!opts.protected) {
+      p.spawnProtectionUntil = 0;
+      p.graceUntil = 0;
+      p.graceRampUntil = 0;
+    }
     return p;
   }
 

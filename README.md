@@ -25,6 +25,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **Power-ups** | Speed, Spin, Magnet, Shield, +Blades — duration scales with rarity |
 | **Loot crates** | Shoot or orbit them to crack them open and dump weighted-rare loot |
 | **Glitch bushes** | Step in to vanish from other players' screens and minimaps |
+| **Safe spawn** | You (re)spawn within 150 u of the center, away from other players (further from bigger ones), where loose blades lie. For 10 s, bots leave you alone: they don't chase you, throw at you or farm next to you. Over the next 40 s they only go after you up close (15 u, growing back to their usual 80 u). Both end as soon as you throw or your blades hit someone (a bot hunting you doesn't count). The first 2.5 s are also invulnerable |
 | **Border** | Touching the kill zone is instant death — no clamp. Your outer blades are shredded first. The last 25 u are announced by a red vignette, an alarm and the arena edge on the minimap |
 | **Score** | kills × 15 + peak blade count of the life + 1 per 10 s alive + crates × 3 + power-ups × 2. In public rooms, it is credited as trophées at the end of each life (death or leaving) |
 | **Private rooms** | Join by code, 2.5× loot density, unranked and without trophées |
@@ -96,6 +97,7 @@ npm start                  # run the prod server (serves the built client)
 npm test                   # server system tests (node:test, simulated clock)
 node tools/bench-server.js 60 120   # server bench: 60 bots, 120 simulated seconds
 node tools/bench-survival.js        # newcomer survival against bots (after npm test)
+node tools/bench-survival.js first  # time before a newcomer's first death (random walker)
 ```
 
 Add `?debug=hitbox` to the game URL to overlay the server-side hitboxes of nearby orbiting blades and display the measured client/server drift.
@@ -296,7 +298,7 @@ client/src/
   audio/SoundManager   # Tone.js procedural SFX + music player
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)
-tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s against bots
+tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s, time before the first death
 ```
 
 Project docs:

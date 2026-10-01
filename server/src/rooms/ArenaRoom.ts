@@ -15,8 +15,9 @@ import {
   RECENT_LOSS_BUFFER_CAP,
   RECENT_LOSS_DROP_RATIO,
   RECENT_LOSS_WINDOW_MS,
+  SPAWN_GRACE_MS,
+  SPAWN_GRACE_RAMP_MS,
   SPAWN_PROTECTION_MS,
-  DECOR_COLLIDERS,
   GROUND_BLADE_TTL_MS,
   INITIAL_BLADE_COUNT,
   MAP_RADIUS,
@@ -27,12 +28,10 @@ import {
   MAX_PLAYERS_PER_ROOM,
   NAME_MAX_LENGTH,
   NAME_MIN_LENGTH,
-  PLAYER_BODY_RADIUS,
   RARITY_HP,
   SERVER_DT,
   SERVER_TICKRATE,
   TierUpEvent,
-  WALL_KILL_THICKNESS,
   InputMessage,
   SetNameMessage,
   RespawnMessage,
@@ -41,7 +40,6 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   CHAT_RATE_LIMIT_COUNT,
   CHAT_RATE_LIMIT_WINDOW_MS,
-  resolveDecorCollision,
   tierBladeHitbox,
   tierFromBladeCount,
 } from "@bladeio/shared";
@@ -58,6 +56,7 @@ import { resolveCollisions } from "../systems/collisions";
 import { applyWallDamage } from "../systems/wallDamage";
 import { PickupSystem, attachBladeToPlayer } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
+import { pickSpawnPoint, randomSpawnPoint } from "../systems/spawnPoint";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
 import { PowerUpSystem } from "../systems/powerups";
@@ -83,33 +82,6 @@ function sanitizeName(raw: string): string {
     .slice(0, NAME_MAX_LENGTH);
   if (cleaned.length < NAME_MIN_LENGTH) return "Anon" + Math.floor(Math.random() * 1000);
   return cleaned;
-}
-
-function randomSpawnPoint(state: ArenaState): { x: number; y: number } {
-  const innerRadius = MAP_RADIUS - WALL_KILL_THICKNESS - 5;
-  for (let tries = 0; tries < 30; tries++) {
-    const r = Math.sqrt(Math.random()) * innerRadius * 0.8;
-    const a = Math.random() * Math.PI * 2;
-    const x = Math.cos(a) * r;
-    const y = Math.sin(a) * r;
-    let inDecor = false;
-    for (const d of DECOR_COLLIDERS) {
-      const dx = x - d.x;
-      const dy = y - d.y;
-      const minR = d.radius + PLAYER_BODY_RADIUS + 1;
-      if (dx * dx + dy * dy < minR * minR) { inDecor = true; break; }
-    }
-    if (inDecor) continue;
-    let ok = true;
-    state.players.forEach((p) => {
-      if (!p.alive) return;
-      const dx = p.x - x;
-      const dy = p.y - y;
-      if (dx * dx + dy * dy < 25 * 25) ok = false;
-    });
-    if (ok) return { x, y };
-  }
-  return resolveDecorCollision(0, 0, PLAYER_BODY_RADIUS);
 }
 
 export class ArenaRoom extends Room<ArenaState> {
@@ -247,7 +219,7 @@ export class ArenaRoom extends Room<ArenaState> {
     p.userId = auth?.userId ?? null;
     p.guestId = auth?.guestId ?? null;
     p.name = sanitizeName(auth?.name ?? "");
-    const spawn = randomSpawnPoint(this.state);
+    const spawn = pickSpawnPoint(this.state);
     p.x = spawn.x; p.y = spawn.y;
     p.alive = true;
     p.spawnedAt = Date.now();
@@ -259,6 +231,7 @@ export class ArenaRoom extends Room<ArenaState> {
     p.orbitTick = this.state.tick;
     p.orbitRate = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
+    this.startGrace(p);
     this.state.players.set(client.sessionId, p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
   }
@@ -417,7 +390,7 @@ export class ArenaRoom extends Room<ArenaState> {
     const p = this.state.players.get(client.sessionId);
     if (!p || p.alive) return;
     if (msg?.name) p.name = sanitizeName(msg.name);
-    const spawn = randomSpawnPoint(this.state);
+    const spawn = pickSpawnPoint(this.state);
     p.x = spawn.x; p.y = spawn.y;
     p.inputDx = 0; p.inputDy = 0; p.inputBoost = false;
     p.inputThrow = false; p.aimX = 0; p.aimY = 0;
@@ -446,7 +419,31 @@ export class ArenaRoom extends Room<ArenaState> {
     p.knockbackVy = 0;
     p.recentLosses = [];
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
+    this.startGrace(p);
     for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+  }
+
+  // Période de grâce d'un joueur qui (ré)apparaît (cf. SPAWN_GRACE_MS).
+  private startGrace(p: Player): void {
+    const now = Date.now();
+    p.graceUntil = now + SPAWN_GRACE_MS;
+    p.graceRampUntil = p.graceUntil + SPAWN_GRACE_RAMP_MS;
+  }
+
+  // Fin anticipée de la grâce et de sa rampe : le joueur a lancé, ou ses
+  // lames ont touché quelqu'un.
+  private endGrace(p: Player | null | undefined): void {
+    if (!p) return;
+    p.graceUntil = 0;
+    p.graceRampUntil = 0;
+  }
+
+  // Clash entre p et other : p a touché quelqu'un, sauf si other est un bot
+  // lancé à sa poursuite. C'est alors le bot qui attaque ; s'il suffisait à
+  // lever la protection, tous les autres bots fondraient aussitôt sur p.
+  private endGraceOnContact(p: Player, other: Player): void {
+    if (other.isBot && this.bots.isChasing(other.id, p.id)) return;
+    this.endGrace(p);
   }
 
   private tick(dt: number): void {
@@ -503,6 +500,8 @@ export class ArenaRoom extends Room<ArenaState> {
       onCrateHit: (crate, attacker) => this.handleCrateHit(crate, attacker),
       onCrateDestroyed: (crate, attacker) => this.handleCrateDestroyed(crate, attacker),
       onClash: (info) => {
+        this.endGraceOnContact(info.aOwner, info.bOwner);
+        this.endGraceOnContact(info.bOwner, info.aOwner);
         const ev: ClashEvent = {
           aId: info.a.id,
           bId: info.b.id,
@@ -580,7 +579,10 @@ export class ArenaRoom extends Room<ArenaState> {
   // cohérent avec le reste (kill drop, broadcast, score…).
   private makeThrowCallbacks() {
     return {
-      onBladeThrown: (ev: BladeThrownEvent) => this.emit("bladeThrown", ev),
+      onBladeThrown: (ev: BladeThrownEvent) => {
+        this.endGrace(this.state.players.get(ev.thrownBy));
+        this.emit("bladeThrown", ev);
+      },
       onProjectileImpact: (ev: ProjectileImpactEvent) => this.emit("projectileImpact", ev),
       onPlayerKilled: (victim: Player, killer: Player | null) =>
         this.killPlayer(victim, killer, "throw"),
@@ -754,6 +756,7 @@ export class ArenaRoom extends Room<ArenaState> {
     if (killer) {
       killer.kills++;
       updateScore(killer);
+      this.endGrace(killer);
     }
     // Pas de killer humain → on étiquette la cause (border = "wall") pour que
     // le death screen affiche quand même un "killed by". Sinon la ligne

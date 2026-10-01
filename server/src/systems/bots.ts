@@ -5,9 +5,12 @@ import {
   BOT_THINK_INTERVAL,
   MAP_RADIUS,
   PLAYER_SPEED,
+  SPAWN_GRACE_CHASE_RADIUS,
+  SPAWN_GRACE_RAMP_MS,
   THROW_PROJECTILE_MAX_RANGE,
   THROW_PROJECTILE_SPEED,
   WALL_KILL_THICKNESS,
+  outerOrbitRadius,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -15,6 +18,12 @@ import { Player } from "../state/Player";
 // Rayon de sécurité : marge confortable pour que ni le corps, ni les lames
 // orbitantes ne touchent la zone de mort.
 const BOT_SAFE_RADIUS = MAP_RADIUS - WALL_KILL_THICKNESS - 8;
+
+// Marge entre l'orbite d'un bot et celle d'un joueur en période de grâce
+// quand le bot choisit où aller récolter.
+const GRACE_KEEPOUT_MARGIN = 6;
+// Distance au-delà de laquelle un bot ne prend personne en chasse.
+const CHASE_RADIUS = 80;
 
 // Clamp un point cible dans la zone safe.
 function clampToSafe(x: number, y: number): { x: number; y: number } {
@@ -107,6 +116,11 @@ export class BotController {
   // sur le sample courant pour absorber le knockback / micro-jitter sans
   // figer les tournants brusques.
   private velocity = new Map<string, VelocityCache>();
+  // Joueurs en période de grâce (cf. SPAWN_GRACE_MS), relevés à chaque
+  // update : les bots ne les poursuivent pas, ne leur lancent rien et ne
+  // vont pas récolter à leur contact (un clash, même accidentel, mettrait
+  // fin à leur grâce).
+  private graced: Array<{ x: number; y: number; reach: number }> = [];
 
   spawnBot(arena: ArenaState, spawnPoint: { x: number; y: number }): Player {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
@@ -157,6 +171,13 @@ export class BotController {
     // Mise à jour cache vélocité avant les décisions des bots — toutes les
     // prédictions d'intercept en dépendent.
     this.updateVelocityCache(arena, now);
+    const nowMs = Date.now();
+    this.graced.length = 0;
+    arena.players.forEach((p) => {
+      if (p.alive && p.graceUntil > nowMs) {
+        this.graced.push({ x: p.x, y: p.y, reach: outerOrbitRadius(p.bladeCount) });
+      }
+    });
     arena.players.forEach((p) => {
       if (!p.isBot || !p.alive) return;
       let st = this.state.get(p.id);
@@ -239,6 +260,37 @@ export class BotController {
   private getVelocity(id: string): { vx: number; vy: number } {
     const v = this.velocity.get(id);
     return v ? { vx: v.vx, vy: v.vy } : { vx: 0, vy: 0 };
+  }
+
+  // Point où ce bot ne doit pas aller : son orbite y toucherait celle d'un
+  // joueur en période de grâce.
+  private nearGraced(bot: Player, x: number, y: number): boolean {
+    if (this.graced.length === 0) return false;
+    const botReach = outerOrbitRadius(bot.bladeCount);
+    for (const g of this.graced) {
+      const keep = g.reach + botReach + GRACE_KEEPOUT_MARGIN;
+      const dx = x - g.x;
+      const dy = y - g.y;
+      if (dx * dx + dy * dy < keep * keep) return true;
+    }
+    return false;
+  }
+
+  // Ce bot poursuit-il ce joueur (dernière décision) ? Un clash entre eux
+  // est alors son attaque, pas celle du joueur.
+  isChasing(botId: string, targetId: string): boolean {
+    const st = this.state.get(botId);
+    return !!st && st.actionType === "chase" && st.currentTargetId === targetId;
+  }
+
+  // Rayon dans lequel un bot prend ce joueur en chasse : nul pendant la
+  // grâce, puis croissant jusqu'au rayon normal pendant la rampe (un nouveau
+  // venu n'est d'abord remarqué que de près).
+  private chaseRadiusFor(other: Player, nowMs: number): number {
+    if (other.graceUntil > nowMs) return 0;
+    if (other.graceRampUntil <= nowMs) return CHASE_RADIUS;
+    const t = 1 - (other.graceRampUntil - nowMs) / SPAWN_GRACE_RAMP_MS;
+    return SPAWN_GRACE_CHASE_RADIUS + (CHASE_RADIUS - SPAWN_GRACE_CHASE_RADIUS) * Math.max(0, Math.min(1, t));
   }
 
   // Compte les lames perdues récemment (3s) — proxy pour "je prends cher".
@@ -390,15 +442,18 @@ export class BotController {
     // cible est NETTEMENT meilleure (>20 d'écart), on switch quand même.
     const COMMITMENT_BONUS = 20;
 
+    const nowMs = Date.now();
     arena.players.forEach((other) => {
       if (other.id === bot.id || !other.alive) return;
       if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
+      const radius = this.chaseRadiusFor(other, nowMs);
+      if (radius <= 0) return;
 
       const dx = other.x - bot.x;
       const dy = other.y - bot.y;
       const d = Math.hypot(dx, dy);
 
-      if (d > 80) return;
+      if (d > radius) return;
 
       let score = 80 + (bot.bladeCount - other.bladeCount) * 5 - d;
 
@@ -452,6 +507,7 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > farmRadius) return;
+      if (this.nearGraced(bot, b.x, b.y)) return;
 
       let score = 40 - d * 0.5;
       if (st.personality === BotPersonality.Farmer) score += 20;
@@ -480,6 +536,7 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > 60) return;
+      if (this.nearGraced(bot, c.x, c.y)) return;
 
       let score = 35 - d * 0.5;
       if (st.personality === BotPersonality.Farmer) score += 25;
@@ -505,6 +562,7 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > 70) return;
+      if (this.nearGraced(bot, pu.x, pu.y)) return;
 
       let score = 60 - d * 0.5;
       if (pu.type === 4 && bot.bladeCount < 5) score += 40;
@@ -527,10 +585,13 @@ export class BotController {
     let ty = st.targetY;
 
     if (distToTarget < 5 || st.actionType !== "wander") {
-      const r = Math.random() * (MAP_RADIUS - WALL_KILL_THICKNESS - 10);
-      const a = Math.random() * Math.PI * 2;
-      tx = Math.cos(a) * r;
-      ty = Math.sin(a) * r;
+      for (let tries = 0; tries < 4; tries++) {
+        const r = Math.random() * (MAP_RADIUS - WALL_KILL_THICKNESS - 10);
+        const a = Math.random() * Math.PI * 2;
+        tx = Math.cos(a) * r;
+        ty = Math.sin(a) * r;
+        if (!this.nearGraced(bot, tx, ty)) break;
+      }
     }
 
     let score = 10;
@@ -654,6 +715,7 @@ export class BotController {
       let best = Infinity;
       arena.players.forEach((other) => {
         if (other.id === bot.id || !other.alive || other.bladeCount <= bot.bladeCount) return;
+        if (other.graceUntil > now) return;
         const d = Math.hypot(other.x - bot.x, other.y - bot.y);
         if (d < best) { best = d; pursuer = other; }
       });
@@ -696,10 +758,11 @@ export class BotController {
   }
 
   // Direction (normalisée) vers le point d'interception d'une cible, ou
-  // null si elle est hors de portée utile ou protégée. On aligne sur où la
-  // cible SERA quand le projectile arrive (pas où elle est) : sans ça les
-  // bots ratent toute cible en mouvement à >12u. La vitesse cible vient du
-  // cache lissé (vraie vitesse incluant knockback, pas juste l'intent input).
+  // null si elle est hors de portée utile, protégée ou en période de grâce.
+  // On aligne sur où la cible SERA quand le projectile arrive (pas où elle
+  // est) : sans ça les bots ratent toute cible en mouvement à >12u. La
+  // vitesse cible vient du cache lissé (vraie vitesse incluant knockback,
+  // pas juste l'intent input).
   private leadAim(
     bot: Player,
     target: Player,
@@ -707,7 +770,7 @@ export class BotController {
     minDist: number,
     maxDist: number,
   ): { x: number; y: number } | null {
-    if (!target.alive || target.spawnProtectionUntil > now) return null;
+    if (!target.alive || target.spawnProtectionUntil > now || target.graceUntil > now) return null;
     const d = Math.hypot(target.x - bot.x, target.y - bot.y);
     if (d < minDist || d > maxDist) return null;
     const v = this.getVelocity(target.id);

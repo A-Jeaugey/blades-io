@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { BladeThrownEvent, MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
+import {
+  BladeThrownEvent,
+  MAP_RADIUS,
+  SPAWN_GRACE_CHASE_RADIUS,
+  SPAWN_GRACE_MS,
+  SPAWN_GRACE_RAMP_MS,
+  WALL_KILL_THICKNESS,
+} from "@bladeio/shared";
 import { ArenaState } from "../src/state/ArenaState";
 import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
 import { BotController, BotPersonality } from "../src/systems/bots";
 import { updateMovement } from "../src/systems/movement";
 import { processThrows } from "../src/systems/throws";
-import { DT, FakeClock, addPlayer, seedRandom } from "./helpers";
+import { DT, FakeClock, addGroundBlade, addPlayer, seedRandom } from "./helpers";
 
 let clock: FakeClock;
 let state: ArenaState;
@@ -180,4 +187,78 @@ test("visée des bots : un Farmer vise la caisse qu'il récolte", () => {
   assert.equal(bot.inputThrow, true);
   const err = angleTo(bot.x, bot.y, crate.x, crate.y, bot.aimX, bot.aimY);
   assert.ok(err <= 0.3 + 1e-9, `erreur de visée ${err}`);
+});
+
+// Période de grâce (tâche 3.2) : un joueur apparu depuis moins de 10 s
+// n'est ni poursuivi, ni visé, ni gêné dans sa récolte.
+function decision(bot: Player): string {
+  const internals = bots as unknown as { state: Map<string, { actionType: string; nextThinkAt: number }> };
+  return internals.state.get(bot.id)!.actionType;
+}
+
+function rethink(bot: Player): void {
+  const internals = bots as unknown as { state: Map<string, { nextThinkAt: number }> };
+  internals.state.get(bot.id)!.nextThinkAt = 0;
+  clock.advance(DT * 1000);
+  bots.update(DT, state);
+}
+
+test("grâce : un bot ne poursuit ni ne vise un joueur apparu depuis peu, puis si", () => {
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
+  const prey = addPlayer(state, { x: 12, y: -84, blades: 3 });
+  prey.graceUntil = clock.now + SPAWN_GRACE_MS;
+  setPersonality(bot, BotPersonality.Hunter);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
+  assert.equal(bot.inputThrow, false);
+  // Grâce terminée (délai écoulé, lancer ou contact) : une proie comme une
+  // autre.
+  prey.graceUntil = 0;
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+  assert.equal(bot.inputThrow, true);
+  assert.equal(bots.isChasing(bot.id, prey.id), true);
+});
+
+test("grâce : après les 10 s, le nouveau venu n'est d'abord poursuivi que de près", () => {
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
+  const prey = addPlayer(state, { x: 50, y: -100, blades: 3 });
+  // Grâce écoulée, début de la rampe : rayon de poursuite réduit.
+  prey.graceUntil = clock.now;
+  prey.graceRampUntil = clock.now + SPAWN_GRACE_RAMP_MS;
+  setPersonality(bot, BotPersonality.Hunter);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
+  prey.x = SPAWN_GRACE_CHASE_RADIUS - 5;
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+  // Rampe terminée : poursuivi jusqu'au rayon normal, comme tout le monde.
+  prey.x = 50;
+  prey.graceRampUntil = 0;
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+});
+
+test("grâce : un Hunter en fuite ne lance pas sur un poursuivant en grâce", () => {
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 6, isBot: true });
+  const threat = addPlayer(state, { x: 15, y: -100, blades: 30 });
+  threat.graceUntil = clock.now + SPAWN_GRACE_MS;
+  setPersonality(bot, BotPersonality.Hunter);
+  rethink(bot);
+  // Il fuit toujours une menace, mais sans lui lancer dessus.
+  assert.ok(bot.inputDx < -0.9);
+  assert.equal(bot.inputThrow, false);
+});
+
+test("grâce : un bot ne va pas récolter au contact d'un joueur en grâce", () => {
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 3, isBot: true });
+  const newcomer = addPlayer(state, { x: 0, y: -60, blades: 3 });
+  newcomer.graceUntil = clock.now + SPAWN_GRACE_MS;
+  addGroundBlade(state, { x: 0, y: -63 });
+  setPersonality(bot, BotPersonality.Farmer);
+  rethink(bot);
+  assert.notEqual(decision(bot), "farm_blade");
+  newcomer.graceUntil = 0;
+  rethink(bot);
+  assert.equal(decision(bot), "farm_blade");
 });

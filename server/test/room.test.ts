@@ -392,7 +392,9 @@ test("mur : une lame désintégrée est signalée au-delà du bord de l'arène",
   const killRadius = MAP_RADIUS - WALL_KILL_THICKNESS;
   p.x = killRadius - 1; // corps dans l'arène, orbite (1,8 u) qui déborde
   p.y = 0;
-  r.tick(30);
+  // Un tour d'orbite complet (≤ 1,6 s au plus lent), quelle que soit la
+  // phase tirée au spawn : chaque lame passe côté mur.
+  r.tick(100);
   const events = r.eventsOf("bladeDestroyed");
   assert.equal(events.length, 3);
   for (const e of events) assert.ok(Math.hypot(e.x, e.y) > killRadius - 0.5, `rayon ${Math.hypot(e.x, e.y)}`);

@@ -91,6 +91,12 @@ export class Player extends Schema {
   // Pas de nouveau hitlag avant cette date (ms epoch) : fin du gel en cours
   // + HITLAG_COOLDOWN_MS.
   hitlagReadyAt: number = 0;
+  // Période de grâce (ms epoch) : les bots ignorent le joueur jusqu'à
+  // graceUntil, puis ne le poursuivent que de près jusqu'à graceRampUntil.
+  // Remises à 0 dès qu'il lance ou que ses lames touchent quelqu'un (cf.
+  // SPAWN_GRACE_MS). Jamais posées pour un bot.
+  graceUntil: number = 0;
+  graceRampUntil: number = 0;
   // Visée du lancer en attente, normalisée (0, 0 = aucune : le lancer suit
   // la direction de déplacement). Écrite avec inputThrow (handleInput, bots),
   // consommée par processThrows.

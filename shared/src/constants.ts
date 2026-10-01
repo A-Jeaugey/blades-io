@@ -217,6 +217,33 @@ export const THROW_PROJECTILE_HITBOX = 0.85;
 // En contrepartie ses propres lames ne font pas de dégât non plus
 // (pas de "spawn camp offensif" possible).
 export const SPAWN_PROTECTION_MS = 2500;
+
+// --- Spawn sûr et période de grâce (tâche 3.2) ---
+// Un joueur apparaît à moins de SPAWN_RADIUS du centre, loin de la zone
+// mortelle (248 u) : avant, jusqu'à ~194 u, et un débutant qui marchait au
+// hasard finissait au mur. Le point retenu est le meilleur de
+// SPAWN_CANDIDATES tirages : à distance des autres joueurs, d'autant plus
+// qu'ils ont de lames (BASE + PER_BLADE × lames, plafonné), puis là où il y
+// a le plus de lames au sol à moins de SPAWN_LOOT_RADIUS.
+export const SPAWN_RADIUS = 150;
+export const SPAWN_CANDIDATES = 30;
+export const SPAWN_CLEARANCE_BASE = 35;
+export const SPAWN_CLEARANCE_PER_BLADE = 2;
+export const SPAWN_CLEARANCE_MAX = 100;
+export const SPAWN_LOOT_RADIUS = 25;
+// Période de grâce : les bots ignorent un joueur apparu depuis moins de
+// SPAWN_GRACE_MS (ni poursuite, ni lancer, ni récolte à son contact). Ensuite,
+// pendant SPAWN_GRACE_RAMP_MS, ils ne le prennent en chasse que de près : le
+// rayon de poursuite remonte de SPAWN_GRACE_CHASE_RADIUS au rayon normal
+// (80 u). Sans cette rampe, tous les bots à moins de 80 u fondaient sur lui
+// à la 10e seconde : au banc (`tools/bench-survival.js first`), médiane
+// avant la première mort ~39 s, ~57 s avec.
+// Grâce et rampe s'arrêtent dès qu'il lance ou que ses lames touchent
+// quelqu'un (pas un bot lancé à sa poursuite) : pas de lames de bots
+// gratuites pour un joueur aguerri qui vient de réapparaître.
+export const SPAWN_GRACE_MS = 10000;
+export const SPAWN_GRACE_RAMP_MS = 40000;
+export const SPAWN_GRACE_CHASE_RADIUS = 15;
 // Rayon de ramassage : généreux pour que ça "accroche" dès qu'on frôle.
 export const PICKUP_RADIUS = 2.8;
 // Attraction magnétique : au-delà du ramassage direct, la lame se dirige
