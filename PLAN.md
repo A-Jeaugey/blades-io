@@ -330,9 +330,10 @@ Objectif : une progression qui ne plafonne pas, un snowball maîtrisé, une cart
   - Quoi : prime sur le leader (bonus de loot et de trophées à son élimination, affichée sur la couronne) ; bonus « underdog » pour un kill contre un joueur deux fois plus gros ; loot de mort qui privilégie les lames rares ; rendements décroissants de la hitbox au-delà d'un seuil.
   - Acceptation : télémétrie : durée médiane de règne du leader en baisse ; les kills « underdog » représentent une part mesurable des éliminations.
 
-- [ ] **4.3 — Power-ups rééquilibrés** · S · `GAME-08`
+- [x] **4.3 — Power-ups rééquilibrés** · S · `GAME-08` · 2026-10-01 · `eb2d929`
   - Quoi : durées de l'ordre de 8, 12, 18 et 25 s selon la rareté ; le power-up Blades donne des lames dont la rareté suit la sienne ; formes distinctes (cf. 3.8).
   - Acceptation : aucun effet ne dure plus de 30 s.
+  - Réalisé : 8, 12, 18 et 25 s (contre 12, 25, 45 et 90 s) ; un second ramassage prolonge jusqu'à la plus lointaine échéance, sans cumul, donc 25 s au plus (testé). Blades : 3 Common, 3 Rare, 2 Epic ou 2 Legendary, au lieu de 2 à 12 Common. Formes plates par type, lisibles depuis la caméra : double chevron, flèche circulaire, fer à cheval, écu, shuriken (vérifiées en qualité haute et « potato »). Banc de survie, avant → après : morts avant 30 s 3,3 → 3,9 % (une vie sur 153) ; première mort médiane 54,5 → 61,0 s. La part des morts par lancer double (5 sur 41 → 13 sur 55), les lames rares percent davantage : à suivre dans `life_stats_causes`. Sons distincts par type : avec 3.8.
 
 - [ ] **4.6 — Bots plus justes et plus variés** · M · `GAME-09` `GAME-03` · Décision D8
   - Quoi : vision qui respecte les bushes ; niveaux de difficulté, avec plus de bots faciles quand des débutants sont présents ; pas plus d'un bot sur un même nouveau joueur ; indicateur « bot » discret dans le classement.
@@ -471,7 +472,7 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | mesurable après la migration 0005 et la fusion | < 15 % | `life_stats_summary` (4.8) |
 | JavaScript initial | 1,24 Mo | 1,24 Mo | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 129 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 131 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
