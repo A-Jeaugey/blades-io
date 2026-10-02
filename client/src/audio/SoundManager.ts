@@ -36,6 +36,8 @@ export class SoundManager {
   private lossSynth!: Tone.Synth;
   private chimeSynth!: Tone.FMSynth;
   private crateSynth!: Tone.NoiseSynth;
+  private glitchSynth!: Tone.NoiseSynth;
+  private glitchFilter!: Tone.Filter;
   // Power-ups (tâche 3.8) : un motif par type, cf. powerUp().
   private powerSynth!: Tone.Synth;
   private magnetSynth!: Tone.FMSynth;
@@ -154,6 +156,14 @@ export class SoundManager {
       envelope: { attack: 0.01, decay: 0.15, sustain: 0.3, release: 0.15 },
     }).connect(reverb);
     this.magnetSynth.volume.value = 4;
+
+    // Buisson (tâche 4.7) : salves de statique, en bande étroite.
+    this.glitchFilter = new Tone.Filter({ frequency: 2200, type: "bandpass", Q: 2.5 }).connect(this.sfxGain);
+    this.glitchSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.045, sustain: 0, release: 0.02 },
+    }).connect(this.glitchFilter);
+    this.glitchSynth.volume.value = -16;
 
     this.boostNoise = new Tone.Noise("pink");
     this.boostFilter = new Tone.Filter(900, "lowpass");
@@ -437,6 +447,21 @@ export class SoundManager {
     const t1 = t0 + 0.08;
     this.lastTriggerTime.set(this.alarmSynth, t1);
     this.alarmSynth.triggerAttackRelease(lo, 0.06, t1, gain);
+  }
+
+  // Entrée ou sortie d'un buisson : deux salves de statique, montantes à
+  // l'entrée, descendantes à la sortie.
+  bushGlitch(entering: boolean): void {
+    if (!this.started) return;
+    const t0 = this.nextTime(this.glitchSynth);
+    this.glitchFilter.frequency.setValueAtTime(entering ? 1700 : 3200, t0);
+    this.glitchSynth.triggerAttackRelease(0.04, t0);
+    // Seconde salve 70 ms plus tard (départs croissants par voix, cf.
+    // borderWarning).
+    const t1 = t0 + 0.07;
+    this.lastTriggerTime.set(this.glitchSynth, t1);
+    this.glitchFilter.frequency.setValueAtTime(entering ? 3200 : 1700, t1);
+    this.glitchSynth.triggerAttackRelease(0.04, t1);
   }
 
   // Lame désintégrée par le mur : grésillement bref et aigu.

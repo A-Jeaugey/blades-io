@@ -93,7 +93,8 @@ const TEMPLATE_FRAG_FLAT = /* glsl */ `
   uniform vec3 uBase;
 
   // Niveau "ultra" / Potato Mode. Reste dans le minimum vital : couleur unie
-  // + edge fade. Pas d'uniforms additionnels nécessaires en général.
+  // + edge fade. Les thèmes livrés y ajoutent une grille de 20 u (repère de
+  // vitesse) en mélangeant uBase avec une couleur de motif déclarée.
   void main() {
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 30.0, r);
@@ -210,13 +211,18 @@ export const TEMPLATE_THEME: Theme = {
     obeliskInner:  0x00ffff, // ← TODO : couleur des 10 cônes proches du centre
     obeliskOuter:  0xff00ff, // ← TODO : couleur des cônes extérieurs
     cubeColor:     0xff00ff, // ← TODO : cubes flottants émissifs
-    bushFoliage:   0xff00ff, // ← TODO : tronc des bushes (mauve/vert/etc.)
-    bushAccent:    0x00ffff, // ← TODO : sphères halo des bushes
+    bushFoliage:   0xff00ff, // ← TODO : dôme des buissons (sombre)
+    bushAccent:    0x00ffff, // ← TODO : glitch, halo et particules des buissons
     groundPad:     0x00ffff, // ← TODO : sceaux ronds au sol
     ringHint:      0xff00ff, // ← TODO : anneaux concentriques très diffus
+    // Structures (tâche 4.7). Loin de la couleur du mur (palette.boundary).
+    baseDark:        0x111122, // ← TODO : corps sombres (pylônes, arches, racks)
+    structureNeon:   0xff00ff, // ← TODO : néons des arches et pylônes, cristaux
+    structureScreen: 0x00ffff, // ← TODO : panneaux holographiques, pads à drone
+    structureLed:    0x00ff00, // ← TODO : LED des racks et des drones
   },
   // Variante alternative — décommenter et commenter le bloc ci-dessus si tu
-  // préfères le décor spirit (champignons + lanternes). Il a 4 champs en plus :
+  // préfères le décor spirit (champignons + lanternes). Il a ses propres champs :
   //
   // decor: {
   //   kind: "spirit",
@@ -232,8 +238,13 @@ export const TEMPLATE_THEME: Theme = {
   //   mushroomCap:       0x00ffff,  // chapeau translucide
   //   mushroomUnderglow: 0xff00ff,  // glow rose sous le chapeau
   //   mossColor:         0xff00ff,  // mousse au sol entre les champis
+  //   mushroomStemGlow:  0xff00ff,  // lueur des pieds
   //   groundPad:         0x00ffff,
   //   ringHint:          0xff00ff,
+  //   baseDark:          0x1a0f2e,  // pierre des structures (tâche 4.7)
+  //   structureNeon:     0xff00ff,  // laque des portiques
+  //   structureScreen:   0x00ffff,  // glyphes des stèles
+  //   structureLed:      0x00ff00,  // orbes
   // },
 
   // ─── Particules ambient ───

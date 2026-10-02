@@ -42,6 +42,13 @@ export type DecorVariant =
       bushAccent: number;       // halo
       groundPad: number;        // sceaux au sol (cyan d'origine)
       ringHint: number;         // anneaux concentriques
+      // Structures (tâche 4.7) : corps sombres, néons (arches, pylônes,
+      // cristaux), écrans holographiques (panneaux, pads), LED (racks,
+      // drones). Loin de la couleur du mur (palette.boundary).
+      baseDark: number;
+      structureNeon: number;
+      structureScreen: number;
+      structureLed: number;
     }
   // Spirit world : sanctuaire doré, lanternes 3 couches, bosquets de
   // champignons + mousse au sol.
@@ -59,8 +66,15 @@ export type DecorVariant =
       mushroomCap: number;
       mushroomUnderglow: number;
       mossColor: number;
+      mushroomStemGlow: number; // lueur des pieds de champignons
       groundPad: number;
       ringHint: number;
+      // Structures (tâche 4.7), mêmes rôles qu'en cyber : pierre sombre,
+      // laque des portiques, glyphes des stèles, orbes.
+      baseDark: number;
+      structureNeon: number;
+      structureScreen: number;
+      structureLed: number;
     };
 
 export interface ThemePalette {

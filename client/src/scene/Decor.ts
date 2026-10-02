@@ -1,7 +1,9 @@
 import * as THREE from "three";
-import { BUSHES, DECOR_COLLIDERS, FLOATING_CUBES, GROUND_PADS } from "@bladeio/shared";
+import { BUSHES, CENTRAL_PILLAR, FLOATING_CUBES, GROUND_PADS, INNER_OBELISKS, OBELISKS } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme, DecorVariant } from "../themes";
+import { createBushField } from "./Bushes";
+import { createStructures } from "./Structures";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Decor — dispatcher entre les variantes cyber et spirit.
@@ -12,20 +14,44 @@ import { getActiveTheme, DecorVariant } from "../themes";
 // le thème spirit ne voit pas une map différente d'un joueur en thème neon).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createDecor(q: QualityConfig): {
+export interface DecorHandle {
   group: THREE.Object3D;
   update: (t: number) => void;
-} {
+  // Buisson du joueur local (-1 : aucun) : son dôme devient transparent.
+  setInsideBush: (index: number) => void;
+  setFlashIntensity: (k: number) => void;
+  // Couleur des rafales à l'entrée et à la sortie d'un buisson.
+  bushBurstColor: number;
+}
+
+export function createDecor(q: QualityConfig): DecorHandle {
   const theme = getActiveTheme();
-  if (theme.decor.kind === "cyber") {
-    return createCyberDecor(q, theme.decor);
-  }
-  return createSpiritDecor(q, theme.decor);
+  const base = theme.decor.kind === "cyber"
+    ? createCyberDecor(q, theme.decor)
+    : createSpiritDecor(q, theme.decor);
+  // Buissons et structures (tâche 4.7), dans les deux variantes.
+  const bushes = createBushField(q, theme.decor);
+  const structures = createStructures(q, theme.decor);
+  base.group.add(bushes.object, structures.object);
+  return {
+    group: base.group,
+    update(t: number) {
+      base.update(t);
+      bushes.update(t);
+      structures.update(t);
+    },
+    setInsideBush: (index) => bushes.setInside(index),
+    setFlashIntensity(k: number) {
+      bushes.setFlashIntensity(k);
+      structures.setFlashIntensity(k);
+    },
+    bushBurstColor: bushes.burstColor,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CYBER VARIANT — décor néon original (cubes flottants pink, obélisques
-// cyan/purple, bushes verts).
+// CYBER VARIANT — pilier central, obélisques, sceaux et anneaux au sol,
+// cubes flottants. Buissons et structures : Bushes.ts, Structures.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 function createCyberDecor(
   q: QualityConfig,
@@ -40,15 +66,15 @@ function createCyberDecor(
     q.simpleMaterials
       ? mkBasic(color)
       : new THREE.MeshStandardMaterial({
-          color: 0x111122,
+          color: v.baseDark,
           emissive: color,
           emissiveIntensity: intensity,
           metalness: 0.4,
           roughness: 0.3,
         });
 
-  const centralCol = DECOR_COLLIDERS[0];
-  const obeliskCols = DECOR_COLLIDERS.slice(1);
+  const centralCol = CENTRAL_PILLAR;
+  const obeliskCols = OBELISKS;
 
   // Pilier central — segments réduits en low/ultra.
   const pillarSeg = q.simpleMaterials ? 8 : 12;
@@ -80,7 +106,7 @@ function createCyberDecor(
   const obMatInner = mkEmissive(v.obeliskInner, 0.9);
   const obMatOuter = mkEmissive(v.obeliskOuter, 0.9);
   disposables.push(obMatInner, obMatOuter);
-  const innerCount = Math.min(10, obeliskCols.length);
+  const innerCount = Math.min(INNER_OBELISKS, obeliskCols.length);
   const outerCount = obeliskCols.length - innerCount;
   const innerMesh = new THREE.InstancedMesh(obeliskGeo, obMatInner, Math.max(1, innerCount));
   const outerMesh = new THREE.InstancedMesh(obeliskGeo, obMatOuter, Math.max(1, outerCount));
@@ -157,63 +183,7 @@ function createCyberDecor(
     }
   }
 
-  // Bushes : tronc + 5 sphères accent (rich).
-  const bushFolMat = new THREE.MeshBasicMaterial({
-    color: v.bushFoliage,
-    transparent: true,
-    opacity: 0.85,
-  });
-  disposables.push(bushFolMat);
-  if (BUSHES.length > 0) {
-    const trunkSeg = q.simpleMaterials ? 8 : 12;
-    const trunkGeo = new THREE.CylinderGeometry(0.95, 1, 2.4, trunkSeg);
-    disposables.push(trunkGeo);
-    const trunkMesh = new THREE.InstancedMesh(trunkGeo, bushFolMat, BUSHES.length);
-    for (let i = 0; i < BUSHES.length; i++) {
-      const b = BUSHES[i];
-      tmpPos.set(b.x, 1.2, b.y);
-      tmpEuler.set(0, 0, 0);
-      tmpQuat.setFromEuler(tmpEuler);
-      tmpScale.set(b.radius, 1, b.radius);
-      tmpMat.compose(tmpPos, tmpQuat, tmpScale);
-      trunkMesh.setMatrixAt(i, tmpMat);
-    }
-    trunkMesh.instanceMatrix.needsUpdate = true;
-    trunkMesh.matrixAutoUpdate = false;
-    group.add(trunkMesh);
-
-    if (q.decorDetail === "rich") {
-      const bushAccentMat = new THREE.MeshBasicMaterial({
-        color: v.bushAccent,
-        transparent: true,
-        opacity: 0.55,
-      });
-      disposables.push(bushAccentMat);
-      const sphGeo = new THREE.SphereGeometry(1, 8, 6);
-      disposables.push(sphGeo);
-      const totalSph = BUSHES.length * 5;
-      const sphMesh = new THREE.InstancedMesh(sphGeo, bushAccentMat, totalSph);
-      let si = 0;
-      for (const b of BUSHES) {
-        for (let i = 0; i < 5; i++) {
-          const a = (i / 5) * Math.PI * 2;
-          const r = b.radius * 0.6;
-          const sx = b.x + Math.cos(a) * r;
-          const sy = b.y + Math.sin(a) * r;
-          tmpPos.set(sx, 1.6 + (i % 2) * 0.4, sy);
-          tmpEuler.set(0, 0, 0);
-          tmpQuat.setFromEuler(tmpEuler);
-          const rad = b.radius * 0.65;
-          tmpScale.set(rad, rad * 0.7, rad);
-          tmpMat.compose(tmpPos, tmpQuat, tmpScale);
-          sphMesh.setMatrixAt(si++, tmpMat);
-        }
-      }
-      sphMesh.instanceMatrix.needsUpdate = true;
-      sphMesh.matrixAutoUpdate = false;
-      group.add(sphMesh);
-    }
-  }
+  // Buissons : Glitch Fields (Bushes.ts, tâche 4.7).
 
   // Cubes flottants néon — animation rotation + bob.
   let cubeMesh: THREE.InstancedMesh | null = null;
@@ -267,7 +237,8 @@ function createCyberDecor(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SPIRIT VARIANT — sanctuaire doré, lanternes 3 couches, bosquets de
-// champignons + mousse.
+// champignons + mousse (voile, lucioles et structures : Bushes.ts,
+// Structures.ts).
 // ─────────────────────────────────────────────────────────────────────────────
 function createSpiritDecor(
   q: QualityConfig,
@@ -282,15 +253,15 @@ function createSpiritDecor(
     q.simpleMaterials
       ? mkBasic(color)
       : new THREE.MeshStandardMaterial({
-          color: 0x1a0f2e,
+          color: v.baseDark,
           emissive: color,
           emissiveIntensity: intensity,
           metalness: 0.2,
           roughness: 0.6,
         });
 
-  const centralCol = DECOR_COLLIDERS[0];
-  const obeliskCols = DECOR_COLLIDERS.slice(1);
+  const centralCol = CENTRAL_PILLAR;
+  const obeliskCols = OBELISKS;
 
   const pillarSeg = q.simpleMaterials ? 8 : 12;
   const coreGeo = new THREE.CylinderGeometry(0.6, centralCol.radius, 6, pillarSeg);
@@ -321,7 +292,7 @@ function createSpiritDecor(
   const obMatInner = mkEmissive(v.obeliskInner, 0.85);
   const obMatOuter = mkEmissive(v.obeliskOuter, 0.95);
   disposables.push(obMatInner, obMatOuter);
-  const innerCount = Math.min(10, obeliskCols.length);
+  const innerCount = Math.min(INNER_OBELISKS, obeliskCols.length);
   const outerCount = obeliskCols.length - innerCount;
   const innerMesh = new THREE.InstancedMesh(obeliskGeo, obMatInner, Math.max(1, innerCount));
   const outerMesh = new THREE.InstancedMesh(obeliskGeo, obMatOuter, Math.max(1, outerCount));
@@ -457,7 +428,7 @@ function createSpiritDecor(
       ? new THREE.MeshBasicMaterial({ color: v.mushroomStem })
       : new THREE.MeshStandardMaterial({
           color: v.mushroomStem,
-          emissive: 0x4a2f6e,
+          emissive: v.mushroomStemGlow,
           emissiveIntensity: 0.15,
           roughness: 0.85,
           metalness: 0.0,

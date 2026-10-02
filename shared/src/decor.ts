@@ -41,16 +41,110 @@ function generateClusters(): DecorCollider[] {
   return out;
 }
 
-// Pilier central + 3 anneaux d'obélisques + clusters intermédiaires.
-// Plus dense qu'avant pour casser les lignes de vue et donner de la
-// matière tactique. Le 1er anneau (40u) est proche du centre, là où la
-// majorité des combats se concentrent.
-export const DECOR_COLLIDERS: DecorCollider[] = [
-  { x: 0, y: 0, radius: 1.1 },
+export const CENTRAL_PILLAR: DecorCollider = { x: 0, y: 0, radius: 1.1 };
+
+// 3 anneaux d'obélisques + clusters intermédiaires. Le 1er anneau (40u)
+// est proche du centre, là où la majorité des combats se concentrent. Les
+// INNER_OBELISKS premiers prennent la couleur intérieure du thème.
+export const OBELISKS: DecorCollider[] = [
   ...generateObelisks(8, 40, 0.3),
   ...generateObelisks(10, 80, 0.8),
   ...generateObelisks(10, 160, 1.6),
   ...generateClusters(),
+];
+export const INNER_OBELISKS = 10;
+
+// --- Structures (tâche 4.7) ---
+// Repères de la carte, symétriques de part et d'autre de l'axe x = 0
+// (équité des deux camps en modes équipe), tous à moins de 145 u du
+// centre : dans l'arène d'un humain et de ses bots (171 u, tâche 4.5),
+// hors de la bande que les bots évitent au ras du mur. Ni dans la zone
+// dorée du centre, ni à moins de 25 u d'une base de drapeau, et toujours
+// un passage d'au moins 2 u entre deux obstacles (server/test/decor.test.ts).
+//   billboard : pylône (collider) et panneau holographique translucide en
+//               hauteur ; angle = direction vers laquelle le panneau fait face.
+//   arch      : deux piliers (colliders) et un linteau ; angle = axe du
+//               passage, qui se franchit.
+//   rack      : bloc (deux colliders le long de sa largeur) ; angle = axe
+//               de sa largeur.
+//   dronePad  : disque au sol et drone en vol, sans collider.
+//   shard     : cristal en lévitation, sans collider.
+export type StructureKind = "billboard" | "arch" | "rack" | "dronePad" | "shard";
+
+export interface MapStructure {
+  kind: StructureKind;
+  x: number;
+  y: number;
+  angle: number;
+}
+
+export const BILLBOARD_RADIUS = 0.9;
+export const ARCH_HALF_SPAN = 2.6;
+export const ARCH_PILLAR_RADIUS = 0.7;
+export const RACK_HALF_WIDTH = 0.6;
+export const RACK_RADIUS = 0.75;
+
+// La structure et son reflet (x → -x ; un angle a devient π - a).
+function mirrored(kind: StructureKind, x: number, y: number, angle: number): MapStructure[] {
+  return [
+    { kind, x, y, angle },
+    { kind, x: -x, y, angle: Math.PI - angle },
+  ];
+}
+
+// Trois arches à la suite, passage dans l'axe de la caméra (y) : vues de
+// face, en arc, et non de profil comme des dalles.
+function archRow(x: number, y: number): MapStructure[] {
+  return [-1, 0, 1].map((k) => ({ kind: "arch" as const, x, y: y + k * 4.5, angle: Math.PI / 2 }));
+}
+
+export const STRUCTURES: MapStructure[] = [
+  // Panneaux holographiques : face à la caméra (vers +y), pour se lire.
+  { kind: "billboard", x: 0, y: -88, angle: Math.PI / 2 },
+  ...mirrored("billboard", 132, 10, Math.PI / 2),
+  ...archRow(85, 30),
+  ...archRow(-85, 30),
+  // Racks par deux, un passage entre eux.
+  ...mirrored("rack", 42.5, -100, 0),
+  ...mirrored("rack", 47.5, -100, 0),
+  { kind: "rack", x: -2.5, y: 62, angle: 0 },
+  { kind: "rack", x: 2.5, y: 62, angle: 0 },
+  ...mirrored("dronePad", 115, 48, 0),
+  ...mirrored("dronePad", 48, 128, 0),
+  ...mirrored("shard", 25, -50, 0),
+  ...mirrored("shard", 135, -25, 0),
+  ...mirrored("shard", 70, 105, 0),
+];
+
+// Colliders d'une structure (aucun pour les pads et les cristaux).
+export function structureColliders(st: MapStructure): DecorCollider[] {
+  const c = Math.cos(st.angle);
+  const s = Math.sin(st.angle);
+  switch (st.kind) {
+    case "billboard":
+      return [{ x: st.x, y: st.y, radius: BILLBOARD_RADIUS }];
+    case "arch":
+      // Piliers de part et d'autre de l'axe du passage.
+      return [
+        { x: st.x - s * ARCH_HALF_SPAN, y: st.y + c * ARCH_HALF_SPAN, radius: ARCH_PILLAR_RADIUS },
+        { x: st.x + s * ARCH_HALF_SPAN, y: st.y - c * ARCH_HALF_SPAN, radius: ARCH_PILLAR_RADIUS },
+      ];
+    case "rack":
+      return [
+        { x: st.x - c * RACK_HALF_WIDTH, y: st.y - s * RACK_HALF_WIDTH, radius: RACK_RADIUS },
+        { x: st.x + c * RACK_HALF_WIDTH, y: st.y + s * RACK_HALF_WIDTH, radius: RACK_RADIUS },
+      ];
+    default:
+      return [];
+  }
+}
+
+// Pilier central, obélisques, puis structures : tout ce qui arrête un
+// corps (resolveDecorCollision, même calcul côté serveur et prédiction).
+export const DECOR_COLLIDERS: DecorCollider[] = [
+  CENTRAL_PILLAR,
+  ...OBELISKS,
+  ...STRUCTURES.flatMap(structureColliders),
 ];
 
 // --- Buissons ---
@@ -63,26 +157,36 @@ export interface Bush {
   radius: number;
 }
 
+// Symétriques de part et d'autre de x = 0 et à moins de 145 u du centre
+// (tâche 4.7) : à 171 u de rayon, l'arène d'un humain et de ses bots,
+// quatre des dix buissons d'avant étaient hors de l'arène.
 function generateBushes(): Bush[] {
   const seeds: Array<[number, number, number]> = [
-    [25, 65, 4.5], [-55, -40, 5.0], [85, -65, 4.0], [-95, 95, 5.5],
-    [140, 30, 4.5], [-130, -110, 4.5], [50, 175, 5.0], [-180, 0, 4.5],
-    [0, -180, 5.5], [180, 180, 4.0],
+    [28, 62, 4.5], [-28, 62, 4.5],
+    [62, -44, 5.0], [-62, -44, 5.0],
+    [104, 96, 5.5], [-104, 96, 5.5],
+    [122, -78, 4.5], [-122, -78, 4.5],
+    [0, -132, 5.5], [0, 108, 5.0],
   ];
   return seeds.map(([x, y, r]) => ({ x, y, radius: r }));
 }
 
 export const BUSHES: Bush[] = generateBushes();
 
-// Détecte si un point est dans un buisson.
-export function isInBush(x: number, y: number): boolean {
+// Indice du buisson qui contient ce point, -1 sinon.
+export function bushAt(x: number, y: number): number {
   for (let i = 0; i < BUSHES.length; i++) {
     const b = BUSHES[i];
     const dx = x - b.x;
     const dy = y - b.y;
-    if (dx * dx + dy * dy < b.radius * b.radius) return true;
+    if (dx * dx + dy * dy < b.radius * b.radius) return i;
   }
-  return false;
+  return -1;
+}
+
+// Détecte si un point est dans un buisson.
+export function isInBush(x: number, y: number): boolean {
+  return bushAt(x, y) >= 0;
 }
 
 // Marge au-delà du contact des orbites en deçà de laquelle un joueur caché

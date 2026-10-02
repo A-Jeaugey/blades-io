@@ -81,16 +81,21 @@ const FRAG_SIMPLE_NEON = /* glsl */ `
   }
 `;
 
+// Potato : couleur unie et grille de 20 u, le repère minimal pour sentir
+// sa vitesse (tâche 4.7) ; une comparaison par pixel, sans dérivée.
 const FRAG_FLAT_NEON = /* glsl */ `
   precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
+  uniform vec3 uGrid;
 
   void main() {
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 30.0, r);
-    gl_FragColor = vec4(uBase * edgeFade, 1.0);
+    vec2 g = abs(fract(vWorld / 20.0) - 0.5);
+    float line = step(0.485, max(g.x, g.y));
+    gl_FragColor = vec4(mix(uBase, uGrid, line) * edgeFade, 1.0);
   }
 `;
 
@@ -150,6 +155,11 @@ export const NEON_THEME: Theme = {
     bushAccent: 0x4ad277,
     groundPad: 0x00e5ff,
     ringHint: 0xff2ea8,
+    // Arches violettes, écrans cyan, LED vertes : pas de rose, celui du mur.
+    baseDark: 0x111122,
+    structureNeon: 0xb14bff,
+    structureScreen: 0x00e5ff,
+    structureLed: 0x4ad277,
   },
 
   ambient: {

@@ -168,16 +168,21 @@ const FRAG_SIMPLE_FORGE = /* glsl */ `
 `;
 
 // Flat — couleur unie + edge fade (Potato Mode).
+// Potato : couleur unie et grille de 20 u, le repère minimal pour sentir
+// sa vitesse (tâche 4.7) ; une comparaison par pixel, sans dérivée.
 const FRAG_FLAT_FORGE = /* glsl */ `
   precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
+  uniform vec3 uRock;
 
   void main() {
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 30.0, r);
-    gl_FragColor = vec4(uBase * edgeFade, 1.0);
+    vec2 g = abs(fract(vWorld / 20.0) - 0.5);
+    float line = step(0.485, max(g.x, g.y));
+    gl_FragColor = vec4(mix(uBase, uRock, line) * edgeFade, 1.0);
   }
 `;
 
@@ -249,6 +254,10 @@ export const FORGE_VERMEILLE_THEME: Theme = {
     bushAccent: LAVA_BRIGHT,    // braises rougeoyantes au cœur des tas
     groundPad: 0xff8a3e,        // sceaux orange — coulures de magma
     ringHint: IRON_RED,         // anneaux rouge sombre
+    baseDark: 0x1a0d08,         // fer noirci
+    structureNeon: EMBER_GOLD,  // arches et pylônes chauffés à blanc doré (pas le rouge du mur)
+    structureScreen: 0xff8a3e,  // écrans de braise
+    structureLed: LAVA_BRIGHT,  // voyants de lave
   },
 
   ambient: {

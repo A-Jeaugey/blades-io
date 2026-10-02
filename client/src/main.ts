@@ -44,6 +44,7 @@ import {
   FlagEvent,
   MapEventKind,
   TEAM_NONE,
+  bushAt,
   isInBush,
   isTeamMode,
   modeRespawns,
@@ -59,7 +60,7 @@ import { ServerClock } from "./net/ServerClock";
 import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
 import { SceneStack } from "./scene/Scene";
 import { BoundaryWall, GroundSurface, createGround, createBoundaryWall } from "./scene/Ground";
-import { createDecor } from "./scene/Decor";
+import { DecorHandle, createDecor } from "./scene/Decor";
 import { PostFX } from "./scene/PostFX";
 import { CameraRig } from "./scene/Camera";
 import { PlayerView } from "./entities/PlayerView";
@@ -169,7 +170,9 @@ class Game {
   private camera: CameraRig;
   private ground: GroundSurface;
   private wall: BoundaryWall;
-  private decor: { group: THREE.Object3D; update: (t: number) => void };
+  private decor: DecorHandle;
+  // Buisson où se trouve le joueur local (-1 : aucun), tâche 4.7.
+  private localBush = -1;
   private players = new Map<string, PlayerView>();
   private blades!: BladeRenderer;
   private crates!: CrateRenderer;
@@ -525,6 +528,7 @@ class Game {
       this.particles.setFlashIntensity(s.flashes);
       this.borderWarning.setFlashIntensity(s.flashes);
       this.wall.setFlashIntensity(s.flashes);
+      this.decor.setFlashIntensity(s.flashes);
     });
     this.settings.onQuit(() => {
       this.returnToMenu();
@@ -763,6 +767,11 @@ class Game {
 
     $(state).players.onRemove((_p: any, key: string) => {
       const v = this.players.get(key);
+      // Un joueur qui disparaît dans un buisson (le serveur ne l'envoie
+      // plus) : rafale de pixels là où il est entré (tâche 4.7).
+      if (v && key !== this.myId && bushAt(v.renderX, v.renderY) >= 0) {
+        this.particles.spawnSparks(v.renderX, 1.2, v.renderY, this.decor.bushBurstColor, 12, 3);
+      }
       if (v) { v.dispose(); v.trail.parent?.remove(v.trail); }
       this.players.delete(key);
       this.orbitSegments.delete(key);
@@ -1967,6 +1976,21 @@ class Game {
     }
   }
 
+  // Buisson du joueur local (tâche 4.7) : son dôme devient transparent ;
+  // rafale de pixels et salves de statique à l'entrée et à la sortie.
+  private updateLocalBush(localView: PlayerView | undefined): void {
+    const me = this.room?.state?.players?.get(this.myId);
+    const alive = !!localView && !!me?.alive && !this.dead;
+    const bush = alive ? bushAt(localView!.renderX, localView!.renderY) : -1;
+    if (bush === this.localBush) return;
+    if (alive) {
+      this.particles.spawnSparks(localView!.renderX, 1.2, localView!.renderY, this.decor.bushBurstColor, 14, 3);
+      this.sound.bushGlitch(bush >= 0);
+    }
+    this.localBush = bush;
+    this.decor.setInsideBush(bush);
+  }
+
   // Alerte d'approche de la bordure : vignette et bip, selon l'écart entre
   // l'orbite extérieure (les lames meurent avant le corps) et la zone
   // mortelle. Position rendue du joueur local : celle qu'il voit à l'écran.
@@ -2312,6 +2336,7 @@ class Game {
       }
       this.onboarding.update(now);
       this.decor.update(this.elapsed * 0.001);
+      this.updateLocalBush(localView);
       // Wisps ambient : centrés sur le joueur local pour qu'on en voie
       // toujours autour de soi. Au lobby (pas de localView) on les laisse
       // tourner autour de l'origine.

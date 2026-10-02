@@ -37,8 +37,10 @@ client/src/
 │   ├── Camera.ts        CameraRig — cadrage partagé (CAMERA_* dans shared/),
 │   │                    recul selon l'orbite et le format d'écran
 │   ├── Ground.ts        Sol shader (rich/simple/flat) — sources GLSL du thème
-│   ├── Decor.ts         Pilier central + obélisques + bushes + cubes/lanternes
+│   ├── Decor.ts         Pilier central + obélisques + cubes/lanternes
 │   │                    DISPATCH cyber/spirit selon theme.decor.kind
+│   ├── Bushes.ts        Buissons « Glitch Fields » (dôme, halo, particules)
+│   ├── Structures.ts    Panneaux holo, arches, racks, pads à drone, cristaux
 │   ├── PostFX.ts        EffectComposer (bloom + chroma + vignette + grain)
 │   ├── MapEventView.ts  Zone au sol d'un évènement de carte (pluie, zone dorée)
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
@@ -157,7 +159,7 @@ variant decor, lumières, matériaux des entités, particules ambient, musique.
 Tout ce qui change quand on passe d'une ambiance à une autre.
 
 **Ce qui NE change PAS entre thèmes** :
-- Positions des obstacles (`DECOR_COLLIDERS`, `BUSHES`, `FLOATING_CUBES` dans `shared/`)
+- Positions des obstacles (`DECOR_COLLIDERS`, `STRUCTURES`, `BUSHES`, `FLOATING_CUBES` dans `shared/`)
 - Mécaniques (vitesse, hitboxes, dégâts, tier thresholds…)
 - Layout de la map en général
 - Cadrage de la caméra (`CAMERA_*` dans `shared/src/constants.ts`) : il
@@ -273,10 +275,17 @@ modifiez les valeurs. Points sensibles :
 - **Ground shader** : 3 variantes obligatoires (`fragRich`, `fragSimple`,
   `fragFlat`) et les couleurs du sol dans `ground.colors` : `Ground.ts` les
   passe en uniforms (`base` → `uBase`, `crack` → `uCrack`), avec `uTime`
-  (rich) et `uRadius`. Pas de couleur en dur, seulement des `mix()`.
+  (rich) et `uRadius`. Pas de couleur en dur, seulement des `mix()`. Les
+  thèmes livrés tracent en `fragFlat` (potato) une grille de 20 u, le repère
+  minimal pour sentir sa vitesse.
 - **Vérifier** : `npm run check:themes` doit passer (la CI le lance).
 - **Decor variant** : choisissez un `kind` existant (`cyber` ou `spirit`) si
-  votre thème ressemble à l'un des deux. Sinon, voir étape 2.
+  votre thème ressemble à l'un des deux. Sinon, voir étape 2. Les
+  structures (tâche 4.7) prennent `baseDark`, `structureNeon`,
+  `structureScreen` et `structureLed` : loin de la couleur du mur
+  (`palette.boundary`). Les buissons, `bushFoliage` et `bushAccent` (cyber)
+  ou `mossColor`, `mushroomUnderglow`, `lanternEmissive` et `shrineHalo`
+  (spirit).
 - **CSS palette** : 8 variables. Pour la cohérence, choisissez 2 accents
   (cool + warm) qui contrastent.
 
@@ -524,6 +533,23 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   se vérifie contre la liste de faux positifs de
   `server/test/moderation.test.ts`. Signalements : `handleReport` dans
   `ArenaRoom`, table `reports` (migration 0010).
+- **Carte (tâche 4.7)** : `shared/src/decor.ts` décrit tout ce qui se
+  voit ou bloque, pareil pour tous les thèmes. `DECOR_COLLIDERS` = pilier
+  central, `OBELISKS`, puis les colliders des `STRUCTURES`
+  (`structureColliders`) : `Decor.ts` lit `CENTRAL_PILLAR` et `OBELISKS`,
+  jamais une tranche de `DECOR_COLLIDERS`. Structures et buissons sont
+  symétriques de part et d'autre de x = 0 (camps des modes équipe) et dans
+  l'arène d'un humain et de ses bots, hors de la bande que les bots
+  évitent ; une structure ajoutée doit passer `server/test/decor.test.ts`
+  (passage d'au moins 2 u entre obstacles, loin de la zone dorée et des
+  bases). Rendu : `Structures.ts` fusionne tout ce qui ne bouge pas en
+  trois maillages (corps, néons à couleurs par sommet, écrans) ; en
+  qualité haute seulement, écrans qui défilent, LED qui clignotent (selon
+  le réglage des flashs), drones et cristaux animés. `Bushes.ts` : dôme
+  shader en haute et moyenne qualité, uni en basse et en potato ; il
+  devient transparent pour le joueur qui est dedans (`setInsideBush`,
+  depuis `main.ts`), avec rafale de particules et son à l'entrée et à la
+  sortie.
 - **Cosmétiques (phase 6)** : catalogue dans `shared/src/cosmetics.ts`
   (emplacements skin, bladeSkin, trail, killFx ; débloqués au niveau ou
   vendus via `SHOP_ITEMS`), apparence dans `client/src/cosmetics/looks.ts`.

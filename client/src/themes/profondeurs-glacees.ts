@@ -212,16 +212,21 @@ const FRAG_SIMPLE_GLACEES = /* glsl */ `
 `;
 
 // Flat — couleur unie + edge fade (Potato Mode).
+// Potato : couleur unie et grille de 20 u, le repère minimal pour sentir
+// sa vitesse (tâche 4.7) ; une comparaison par pixel, sans dérivée.
 const FRAG_FLAT_GLACEES = /* glsl */ `
   precision mediump float;
   varying vec2 vWorld;
   uniform float uRadius;
   uniform vec3 uBase;
+  uniform vec3 uMid;
 
   void main() {
     float r = length(vWorld);
     float edgeFade = smoothstep(uRadius, uRadius - 30.0, r);
-    gl_FragColor = vec4(uBase * edgeFade, 1.0);
+    vec2 g = abs(fract(vWorld / 20.0) - 0.5);
+    float line = step(0.485, max(g.x, g.y));
+    gl_FragColor = vec4(mix(uBase, uMid, line) * edgeFade, 1.0);
   }
 `;
 
@@ -295,6 +300,10 @@ export const PROFONDEURS_GLACEES_THEME: Theme = {
     bushAccent: CRYSTAL_BRIGHT,       // cristal au cœur des congères
     groundPad: AURORA_GREEN,          // sceaux verts — flaques d'aurore
     ringHint: AURORA_VIOLET,          // anneaux d'évocation violets
+    baseDark: 0x0c1822,               // glace noire
+    structureNeon: AURORA_VIOLET,     // arches d'aurore
+    structureScreen: AURORA_GREEN,    // écrans d'aurore verte
+    structureLed: CRYSTAL_BRIGHT,     // éclats de cristal
   },
 
   ambient: {
