@@ -9,12 +9,11 @@ import {
   BladeRarity,
   DECOR_COLLIDERS,
   GROUND_BLADE_BLINK_MS,
-  MAP_RADIUS,
   RARITY_HP,
   RARITY_SPAWN_WEIGHTS,
-  WALL_KILL_THICKNESS,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
+import { zoneInner } from "./spawnPoint";
 import { Blade } from "../state/Blade";
 import { randomId } from "../utils/ids";
 
@@ -57,7 +56,8 @@ function insideAnyDecor(x: number, y: number, margin: number): boolean {
 }
 
 function randomPositionAwayFromPlayers(state: ArenaState): { x: number; y: number } | null {
-  const innerRadius = MAP_RADIUS - WALL_KILL_THICKNESS - 1;
+  // Dans l'arène du moment (resserrée en fin de manche, tâche 7.1).
+  const innerRadius = zoneInner(state, 1);
   for (let tries = 0; tries < 30; tries++) {
     const r = Math.sqrt(Math.random()) * innerRadius;
     const a = Math.random() * Math.PI * 2;

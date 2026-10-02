@@ -107,6 +107,8 @@
         <div id="onboard-hint" class="onboard-hint" aria-live="polite"></div>
         <!-- Redémarrage annoncé par le serveur (tâche T.3). -->
         <div id="restart-banner" class="restart-banner hidden" role="status"></div>
+        <!-- Minuterie d'une partie qui a une fin (manches, cf. ui/MatchUi.ts). -->
+        <div id="match-timer" class="match-timer hidden" role="timer" aria-live="off"></div>
         <!-- Caméra sur le tueur (tâche 3.5), avant la carte de fin de vie. -->
         <div id="killcam" class="killcam hidden" aria-live="polite">
           <div class="kc-label"></div>
@@ -149,10 +151,10 @@
             <span class="bio2-rail-title" data-i18n="lobby.patchNotes">PATCH NOTES</span>
           </div>
           <ul class="bio2-rail-list">
-            <li data-i18n-html="lobby.patch1"><b>NEW</b> profile · your stats and last games</li>
-            <li data-i18n-html="lobby.patch2"><b>NEW</b> colorblind palette · adjustable shake and flashes</li>
-            <li data-i18n-html="lobby.patch3"><b>NEW</b> French and English</li>
-            <li data-i18n-html="lobby.patch4"><b>NEW</b> bots: easy, normal, hard</li>
+            <li data-i18n-html="lobby.patch1"><b>NEW</b> rounds · 5 minutes, shrinking arena, podium</li>
+            <li data-i18n-html="lobby.patch2"><b>NEW</b> cosmetics · skins, trails, daily deals</li>
+            <li data-i18n-html="lobby.patch3"><b>NEW</b> levels, challenges and seasons</li>
+            <li data-i18n-html="lobby.patch4"><b>NEW</b> profile · your stats and last games</li>
           </ul>
           <div class="bio2-rail-foot">
             <span class="bio2-tb-key" data-i18n="lobby.build">BUILD</span>
@@ -401,6 +403,7 @@
                 <li data-i18n-html="howto.seasons">Leaderboards of the day, the week, the season and all time, public games only. A season lasts six weeks: at its end, the top ten earn trophies (1,000 for the first, 750, 500, then 250).</li>
                 <li data-i18n-html="howto.challenges">Every day, three challenges (easy, medium, hard), and one per week: the same for everyone, renewed at midnight Paris time. Your lives in public rooms count; rewards are trophies. Find them in PROFILE.</li>
                 <li data-i18n-html="howto.trophies2">They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.</li>
+                <li data-i18n-html="howto.rounds"><b>ROUNDS</b> (game mode, in the lobby): 5-minute rounds, and the arena shrinks during the last minute. Your points add up over all your lives in the round; the top 3 earn 150, 100 and 50 trophies (public games).</li>
                 <li data-i18n-html="howto.cosmetics">Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>, where three are 20% off each day (FEATURED) and every item can be tried on in 3D. They never change hitboxes, rarity colors or the rings on the ground.</li>
               </ul>
             </section>
@@ -536,6 +539,18 @@
           <footer class="boutique-foot">
             <span class="boutique-foot-hint" data-i18n="shop.footHint">Earn more trophies by playing: kills and survival pay out every match.</span>
           </footer>
+        </div>
+      </div>
+
+      <!-- Podium de fin de partie (manches, cf. ui/MatchUi.ts). -->
+      <div id="podium" class="podium hidden" role="dialog" aria-labelledby="podium-title">
+        <div class="podium-card">
+          <h2 id="podium-title" data-i18n="match.over">ROUND OVER</h2>
+          <ol id="podium-steps" class="podium-steps"></ol>
+          <!-- Annoncé une fois ; le compte à rebours, lui, ne l'est pas. -->
+          <p id="podium-me" class="podium-me" aria-live="polite"></p>
+          <p id="podium-next" class="podium-next"></p>
+          <button id="podium-menu" type="button" data-i18n="death.backToMenu">BACK TO MENU</button>
         </div>
       </div>
 

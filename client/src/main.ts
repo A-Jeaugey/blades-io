@@ -16,6 +16,8 @@ import {
   THROW_PROJECTILE_MAX_RANGE,
   TIER_UP_SHAKE,
   ChallengeDoneEvent,
+  MatchEndEvent,
+  MatchPhase,
   ChatEvent,
   ChatMutedEvent,
   ReportAck,
@@ -46,7 +48,7 @@ import { Connection, JoinOptions, resolveServerEndpoint, RoomNotFoundError } fro
 import { ServerClock } from "./net/ServerClock";
 import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
 import { SceneStack } from "./scene/Scene";
-import { createGround, createBoundaryWall } from "./scene/Ground";
+import { BoundaryWall, createGround, createBoundaryWall } from "./scene/Ground";
 import { createDecor } from "./scene/Decor";
 import { PostFX } from "./scene/PostFX";
 import { CameraRig } from "./scene/Camera";
@@ -67,6 +69,7 @@ import { Minimap } from "./ui/Minimap";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
 import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
+import { MatchUi } from "./ui/MatchUi";
 import { getBest, submitScore } from "./ui/personalBest";
 import { recordLocalLife } from "./ui/localStats";
 import { ProfilePanel } from "./ui/ProfilePanel";
@@ -97,9 +100,10 @@ import { wallet } from "./auth/wallet";
 // le buffer. Avant : 150ms, sentait le lag à chaque direction change
 // (le perso continue d'avancer "dans le passé" 150ms après l'input).
 const RENDER_DELAY = 80;
-// Au-delà de ce rayon, une lame détruite l'a été par le mur (orbite qui
-// dépasse la zone mortelle, projectile qui l'atteint).
-const WALL_ZAP_RADIUS = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;
+// Au-delà de ce rayon (moins celui de l'arène du moment), une lame
+// détruite l'a été par le mur (orbite qui dépasse la zone mortelle,
+// projectile qui l'atteint).
+const WALL_ZAP_MARGIN = WALL_KILL_THICKNESS + 0.5;
 // Après la mort (tâche 3.5) : durée de la caméra sur le tueur avant la
 // carte récapitulative, pause plus courte pour une mort à la bordure, et
 // constante de temps du glissement de la caméra vers le tueur (s).
@@ -151,7 +155,7 @@ class Game {
   private postFx: PostFX;
   private camera: CameraRig;
   private ground: { mesh: THREE.Mesh; update: (t: number) => void };
-  private wall: { object: THREE.Object3D; update: (t: number) => void };
+  private wall: BoundaryWall;
   private decor: { group: THREE.Object3D; update: (t: number) => void };
   private players = new Map<string, PlayerView>();
   private blades!: BladeRenderer;
@@ -265,6 +269,8 @@ class Game {
   private aimIndicator = new AimIndicator();
   private combatFeedback = new CombatFeedback();
   private killFeed = new KillFeed();
+  // Partie à fin (manches, tâche 7.1) : minuterie et podium.
+  private match = new MatchUi(() => void this.returnToMenu());
   // Aller-retour réseau mesuré par ping/pong : médiane des dernières
   // mesures (ms), null tant qu'aucune réponse n'est arrivée. La médiane
   // écarte une mesure prise pendant un chargement ou une pause du GC.
@@ -628,6 +634,13 @@ class Game {
     this.sentViewRadius = 0;
     this.nextViewCheckAt = 0;
     room.onMessage("summary", (summary: RoomSummary) => { this.summary = summary; });
+    // Fin de partie (manches) puis partie suivante, que le serveur lance
+    // seul : tout le monde réapparaît.
+    this.match.reset();
+    room.onMessage("matchEnd", (ev: MatchEndEvent) => this.onMatchEnd(ev));
+    $(state).listen("phase", (phase: number, previous: number | undefined) => {
+      if (phase === MatchPhase.Playing && previous === MatchPhase.Over) this.onMatchStart();
+    });
     this.restartAt = 0;
     room.onMessage("restart", (msg: { at: number }) => {
       this.restartAt = typeof msg?.at === "number" ? msg.at : 0;
@@ -753,7 +766,7 @@ class Game {
       // Lame désintégrée par le mur : position au-delà du bord de l'arène
       // (orbite ou projectile entré dans la zone mortelle). Effet dédié,
       // pour qu'on comprenne d'où vient la perte.
-      if (Math.hypot(msg.x, msg.y) >= WALL_ZAP_RADIUS) {
+      if (Math.hypot(msg.x, msg.y) >= this.arenaRadius() - WALL_ZAP_MARGIN) {
         this.particles.spawnSparks(msg.x, 1.4, msg.y, this.theme.palette.boundary, 30, 9);
         this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 10, 4);
         if (msg.ownerId === this.myId) {
@@ -1286,6 +1299,17 @@ class Game {
     document.getElementById("killcam")?.classList.add("hidden");
   }
 
+  // Minuterie de la partie ; la dernière minute d'une manche est annoncée.
+  private updateMatchUi(serverNowMs: number): void {
+    const state = this.room?.state;
+    if (!state) return;
+    if (this.match.update(state.phase ?? MatchPhase.Playing, state.phaseEndsAt ?? 0, serverNowMs)) {
+      this.toasts.push(t("match.shrinkToast"));
+      this.sound.borderWarning(1);
+      this.haptics.play("hitTaken");
+    }
+  }
+
   // Bandeaux en jeu, 4 s chacun, dans l'ordre.
   private updateToast(now: number): void {
     if (now < this.toastUntil) return;
@@ -1384,6 +1408,41 @@ class Game {
     return entries;
   }
 
+  // Rayon de l'arène du moment : celui de la carte, resserré en fin de
+  // manche (ArenaState.mapRadius, tâche 7.1).
+  private arenaRadius(): number {
+    const r = this.room?.state?.mapRadius;
+    return typeof r === "number" && r > 0 ? r : MAP_RADIUS;
+  }
+
+  // Entracte d'une partie à fin : rien ne bouge, plus d'inputs.
+  private matchOver(): boolean {
+    return this.room?.state?.phase === MatchPhase.Over;
+  }
+
+  // Fin de partie : la vie en cours compte pour le record ; le podium
+  // remplace la caméra sur le tueur et l'écran de mort.
+  private onMatchEnd(ev: MatchEndEvent): void {
+    const me = this.room?.state?.players?.get(this.myId);
+    if (me?.alive && !this.dead) this.submitLife(me);
+    this.death.hide();
+    this.endKillCam();
+    this.resetPrediction();
+    this.match.showPodium(ev, this.myId);
+    this.sound.challengeDone();
+  }
+
+  // Partie suivante : le serveur a remis tout le monde en jeu, avec les
+  // lames de départ ; comme une réapparition, sans la demander.
+  private onMatchStart(): void {
+    this.match.hidePodium();
+    this.death.hide();
+    this.endKillCam();
+    this.dead = false;
+    this.bestSubmitted = false;
+    this.resetPrediction();
+  }
+
   private respawn(): void {
     this.death.hide();
     this.endKillCam();
@@ -1400,6 +1459,7 @@ class Game {
     if (meAlive?.alive && !this.dead) this.submitLife(meAlive);
     this.death.hide();
     this.endKillCam();
+    this.match.reset();
     this.restartAt = 0;
     document.getElementById("restart-banner")?.classList.add("hidden");
     this.borderWarning.hide();
@@ -1448,7 +1508,7 @@ class Game {
   }
 
   private sendInput(): void {
-    if (!this.room) return;
+    if (!this.room || this.matchOver()) return;
     const { dx, dy, boost, throwPressed, aimX, aimY } = this.input.getInput();
     if (throwPressed) this.throwLatched = true;
     this.inputSeq = (this.inputSeq + 1) >>> 0;
@@ -1504,7 +1564,7 @@ class Game {
     const state = this.room?.state;
     const me = state?.players?.get(this.myId);
     if (!me) return;
-    if (!me.alive || this.dead) { this.resetPrediction(); return; }
+    if (!me.alive || this.dead || this.matchOver()) { this.resetPrediction(); return; }
     const ack: AckState = {
       seq: me.lastSeq,
       x: me.x,
@@ -1674,7 +1734,7 @@ class Game {
   private updateBorderWarning(localView: PlayerView | undefined, dt: number): void {
     const t = this.elapsed * 0.001;
     const me = this.room?.state?.players?.get(this.myId);
-    if (!localView || !me || !me.alive) {
+    if (!localView || !me || !me.alive || this.matchOver()) {
       this.borderIntensity = 0;
       this.borderWarning.update(0, 0, 0, t, dt);
       return;
@@ -1682,7 +1742,7 @@ class Game {
     const x = localView.renderX;
     const y = localView.renderY;
     const r = Math.hypot(x, y);
-    const gap = MAP_RADIUS - WALL_KILL_THICKNESS - r - outerOrbitRadius(me.bladeCount);
+    const gap = this.arenaRadius() - WALL_KILL_THICKNESS - r - outerOrbitRadius(me.bladeCount);
     const intensity = Math.max(0, Math.min(1, 1 - gap / BORDER_WARNING_DISTANCE));
     this.borderIntensity = intensity;
     let dirX = 0;
@@ -1782,7 +1842,7 @@ class Game {
       const db = (b.x - me.x) ** 2 + (b.y - me.y) ** 2;
       return da - db;
     });
-    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries);
+    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius());
   }
 
   // Pilote la résolution dynamique et le downgrade auto de preset.
@@ -1970,6 +2030,8 @@ class Game {
       this.camera.update(dt);
       this.ground.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);
+      this.wall.setRadius(this.arenaRadius());
+      this.updateMatchUi(serverNowMs);
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));

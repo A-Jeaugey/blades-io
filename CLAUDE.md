@@ -72,7 +72,8 @@ client/src/
 │                        ProfilePanel + localStats (profil : stats du
 │                        compte ou de l'appareil), LeaderboardView
 │                        (classements à onglets : lobby et profil),
-│                        share (partage natif ou lien copié, invitations)
+│                        share (partage natif ou lien copié, invitations),
+│                        MatchUi (minuterie et podium d'une manche)
 ├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
@@ -427,7 +428,16 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `en.ts` et `fr.ts` (le compilateur exige les trois) ; le sélecteur du
   lobby apparaît dès qu'il y a deux modes à proposer. Colonne `game_mode`
   (migration 0011) écrite seulement hors `ffa`, pour que l'arène
-  s'enregistre aussi sans la migration.
+  s'enregistre aussi sans la migration. Manches (tâche 7.1,
+  `server/src/modes/rounds.ts`) : 5 minutes, points de toutes les vies de
+  la manche (`standing`), trophées du podium (`rankBonus`, crédités par la
+  room en public), minuterie et podium côté client (`ui/MatchUi.ts`).
+  **Rayon de l'arène** : `state.mapRadius` (synchronisé) se resserre
+  pendant la dernière minute d'une manche ; tout ce qui dépend du bord le
+  lit, jamais `MAP_RADIUS` : mur tueur, apparitions et butin
+  (`zoneInner`, `systems/spawnPoint.ts`), lancers, bots
+  (`botSafeRadius`), et côté client `arenaRadius()` (mur, minimap, alerte
+  de bord). Seuls le sol et ses décors gardent la taille de la carte.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client

@@ -1,4 +1,5 @@
 import { Schema, type, view, MapSchema } from "@colyseus/schema";
+import { MAP_RADIUS } from "@bladeio/shared";
 import { Player } from "./Player";
 import { Blade } from "./Blade";
 import { Crate } from "./Crate";
@@ -12,7 +13,8 @@ export class ArenaState extends Schema {
   @view() @type({ map: Blade }) blades = new MapSchema<Blade>();
   @type({ map: Crate }) crates = new MapSchema<Crate>();
   @type({ map: PowerUp }) powerups = new MapSchema<PowerUp>();
-  @type("float32") mapRadius: number = 0;
+  // Rayon de l'arène : celui de la carte, resserré en fin de manche (7.1).
+  @type("float32") mapRadius: number = MAP_RADIUS;
   @type("uint32") tick: number = 0;
   // Date.now() du serveur au tick courant. Les échéances (*Until,
   // spawnedAt) sont des dates du serveur : le client les compare à cette

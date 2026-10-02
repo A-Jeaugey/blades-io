@@ -348,6 +348,9 @@ canvas#game {
   left: 50%;
   top: calc(var(--safe-t, 0px) + 64px);
   transform: translateX(-50%);
+  /* max-content : sinon la largeur disponible s'arrête au bord de l'écran
+     depuis le milieu (left: 50 %), et le texte s'empilait sur 5 lignes. */
+  width: max-content;
   max-width: min(92vw, 520px);
   padding: 8px 14px;
   border: 1px solid var(--cyan);
@@ -1246,6 +1249,122 @@ button:hover {
 }
 .restart-banner.hidden { display: none; }
 
+/* Minuterie d'une manche (tâche 7.1) : en haut au centre, entre l'état du
+   joueur et la minimap ; rouge pendant la dernière minute, quand l'arène se
+   resserre. */
+.match-timer {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--fg-bright);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.match-timer.urgent {
+  border-color: rgba(var(--danger-rgb), 0.9);
+  background: rgba(var(--danger-rgb), 0.22);
+  box-shadow: 0 0 14px rgba(var(--danger-rgb), 0.45);
+}
+.match-timer.hidden { display: none; }
+.match-timer .mt-time { font-variant-numeric: tabular-nums; }
+
+/* Podium de fin de manche : trois marches (2e, 1er, 3e), la ligne du
+   joueur, le compte à rebours de la suivante. */
+#podium {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: radial-gradient(circle at 50% 30%, rgba(var(--accent-cool-rgb), 0.06), transparent 70%),
+    rgba(0, 0, 0, 0.6);
+  z-index: 11;
+}
+#podium.hidden { display: none; }
+.podium-card {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 22px 24px 18px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  box-shadow: 0 0 40px rgba(var(--accent-cool-rgb), 0.25);
+}
+.podium-card h2 {
+  margin: 0 0 16px;
+  font-size: 22px;
+  letter-spacing: 4px;
+  color: var(--cyan);
+}
+.podium-steps {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.podium-step {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 6px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px 4px 0 0;
+  background: rgba(var(--accent-cool-rgb), 0.06);
+}
+.podium-step-1 { min-height: 132px; border-color: var(--cyan); background: rgba(var(--accent-cool-rgb), 0.14); }
+.podium-step-2 { min-height: 112px; }
+.podium-step-3 { min-height: 96px; }
+.podium-step.is-me { box-shadow: inset 0 0 0 2px var(--pink); }
+.podium-rank {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--cyan);
+}
+.podium-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg-bright);
+}
+.podium-step .lb-bot { margin: 0; }
+.podium-points { font-size: 13px; color: var(--fg-bright); }
+.podium-kills { font-size: 12px; color: var(--fg-muted); }
+.podium-me {
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--fg-bright);
+}
+.podium-next {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Caméra sur le tueur : bandeau sous le centre de l'écran (le tueur est au
    centre), au-dessus des contrôles tactiles. */
 .killcam {
@@ -1347,6 +1466,15 @@ button:hover {
   #boost-info {
     display: none;
   }
+  /* Minuterie de manche sous le classement replié, entre l'état du joueur
+     et la minimap ; le temps seul. Bandeaux en dessous. Le classement
+     déplié passe par-dessus, le temps d'un coup d'œil. */
+  .match-timer { top: 60px; padding: 3px 9px; font-size: 13px; }
+  .match-timer .mt-label { display: none; }
+  #top-right:has(#leaderboard:not(.collapsed)) ~ .match-timer { visibility: hidden; }
+  .challenge-toast { top: calc(var(--safe-t, 0px) + 92px); font-size: 13px; letter-spacing: .5px; }
+  .podium-card { padding: 18px 14px 14px; }
+  .podium-card h2 { font-size: 18px; letter-spacing: 2px; }
   #kill-feed {
     position: fixed;
     top: 140px;
@@ -1384,6 +1512,7 @@ button:hover {
     left: 50%;
     right: auto;
     transform: translateX(-50%);
+    z-index: 1;
     font-size: 10px;
     min-width: 0;
     max-width: calc(100vw - 190px);
@@ -1772,6 +1901,7 @@ button:hover {
 /* Modes de jeu (tâche 7.3) : mêmes boutons que l'entrée, autant de colonnes
    que de modes proposés. */
 .bio2-gamemodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.bio2-gamemodes .bio2-mode { margin-top: 0; }
 .bio2-mode {
   display:flex; flex-direction: column; align-items: flex-start; gap: 4px;
   padding: 10px 12px;
@@ -3384,6 +3514,7 @@ button:hover {
     top: 10px;
     left: 50%;
     transform: translateX(-50%);
+    z-index: 1;
     font-size: 11px;
     min-width: 0;
     max-width: min(320px, calc(100% - 340px));
@@ -3391,6 +3522,10 @@ button:hover {
   }
   .lb-row { grid-template-columns: 1fr 40px 32px; gap: 3px; padding: 1px 0; }
   #top-left { top: 68px; }
+  /* Minuterie de manche sous le classement replié, centré lui aussi ;
+     cachée quand on le déplie (il est translucide). */
+  .match-timer { top: 60px; }
+  #top-right:has(#leaderboard:not(.collapsed)) ~ .match-timer { visibility: hidden; }
   /* Chat : à gauche de THROW, dans la grappe du pouce droit (il touchait la
      minimap). */
   .chat-fab { right: 258px; bottom: 71px; }

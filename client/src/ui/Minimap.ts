@@ -47,7 +47,8 @@ export class Minimap {
     this.meFill = rgba(theme.palette.playerLocal.primary, 1);
   }
 
-  draw(me: MinimapPlayer, others: MinimapPlayer[], legendaries: MinimapBlade[]): void {
+  // arenaRadius : rayon de l'arène du moment (resserrée en fin de manche).
+  draw(me: MinimapPlayer, others: MinimapPlayer[], legendaries: MinimapBlade[], arenaRadius = MAP_RADIUS): void {
     const ctx = this.ctx;
     const S = this.size;
     ctx.clearRect(0, 0, S, S);
@@ -66,7 +67,7 @@ export class Minimap {
     // bord, qui tuait jusqu'ici sans jamais apparaître sur la carte.
     const ax = S / 2 - me.x * scale;
     const ay = S / 2 - me.y * scale;
-    const ar = (MAP_RADIUS - WALL_KILL_THICKNESS) * scale;
+    const ar = Math.max(0, arenaRadius - WALL_KILL_THICKNESS) * scale;
     ctx.save();
     ctx.beginPath();
     ctx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);

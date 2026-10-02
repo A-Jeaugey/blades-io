@@ -54,7 +54,8 @@ class KillRaceMode implements GameMode {
     this.kills.push([victim.id, killer?.id ?? null, cause]);
     this.over = true;
   }
-  standingScore(p: Player): number { return p.kills * 100; }
+  standing(p: Player) { return { score: p.kills * 100, kills: p.kills, deaths: 0, bestBlades: p.maxBladeCount }; }
+  rankBonus(rank: number): number { return rank === 0 ? 40 : 0; }
   tick(): void { if (this.over) this.host.endMatch(5000); }
   onMatchStart(): void { this.over = false; this.starts++; }
 }
@@ -146,7 +147,7 @@ test("fin de partie : classement, vies enregistrées, entracte immobile, puis pa
   assert.equal(r.state.phaseEndsAt, clock.now + 5000);
   const [end] = r.eventsOf("matchEnd");
   assert.equal(end.nextAt, r.state.phaseEndsAt);
-  assert.deepEqual(end.standings.map((row: any[]) => [row[0], row[2]]), [["winner", 100], ["loser", 0], ["idle", 0]]);
+  assert.deepEqual(end.standings.map((row: any) => [row.id, row.score, row.kills, row.bonus]), [["winner", 100, 1, 40], ["loser", 0, 0, 0], ["idle", 0, 0, 0]]);
   // Vies en cours closes par la fin de partie, une seule fois.
   assert.deepEqual(lives.map((l) => [l.cause, l.gameMode]).sort(), [["match_end", "ffa"], ["match_end", "ffa"]]);
   assert.deepEqual(recorded.map((m) => m.userId), ["u-winner"]);

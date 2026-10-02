@@ -7,6 +7,15 @@ export interface Point {
   y: number;
 }
 
+// Ce que le classement retient d'un joueur (résumé de la room, podium).
+export interface PlayerStanding {
+  // Score du mode (arène : vie en cours ; manches : toute la manche).
+  score: number;
+  kills: number;
+  deaths: number;
+  bestBlades: number;
+}
+
 // Ce que la room met à la disposition d'un mode.
 export interface ModeHost {
   readonly state: ArenaState;
@@ -31,8 +40,11 @@ export interface GameMode {
   canRespawn(p: Player): boolean;
   // Élimination, une fois le butin et le score du tueur réglés.
   onKill(victim: Player, killer: Player | null, cause: KillCause): void;
-  // Score du classement (résumé de la room, podium d'un mode à fin).
-  standingScore(p: Player): number;
+  // Ligne du classement (résumé de la room, podium d'un mode à fin).
+  standing(p: Player): PlayerStanding;
+  // Trophées du rang (0 = premier) à la fin d'une partie, crédités par la
+  // room aux humains des parties publiques.
+  rankBonus(rank: number): number;
   // Une fois par tick de jeu, simulation faite : minuteries, fin de partie
   // (host.endMatch). Pas appelé pendant l'entracte.
   tick(now: number): void;

@@ -3,7 +3,6 @@ import {
   BladeThrownEvent,
   ProjectileImpactEvent,
   GROUND_BLADE_TTL_MS,
-  MAP_RADIUS,
   PLAYER_BODY_RADIUS,
   RARITY_DAMAGE,
   RARITY_HP,
@@ -137,7 +136,8 @@ export function updateProjectiles(dt: number, state: ArenaState, cb: ThrowCallba
   const toDestroy: Blade[] = [];
   const toLand: Blade[] = [];
   const maxRangeSq = THROW_PROJECTILE_MAX_RANGE * THROW_PROJECTILE_MAX_RANGE;
-  const wallR = MAP_RADIUS - WALL_KILL_THICKNESS - 0.2;
+  // Rayon de l'arène du moment (resserré en fin de manche, tâche 7.1).
+  const wallR = state.mapRadius - WALL_KILL_THICKNESS - 0.2;
   state.blades.forEach((b) => {
     if (!b.isProjectile) return;
     b.x += b.vx * dt;

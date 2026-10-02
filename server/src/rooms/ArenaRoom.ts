@@ -93,7 +93,7 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, ProjectileImpactEvent, gameModeOf, levelForXp } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -200,6 +200,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       endMatch: (intermissionMs) => this.endMatch(intermissionMs),
     };
     this.mode = createMode(modeId, host);
+    // Première partie : un mode à fin y règle sa minuterie.
+    this.mode.onMatchStart(Date.now());
     // NB: pas de setPrivate(true) sur les rooms à code. Colyseus exclut
     // hardcoded les rooms privées de joinOrCreate (private:false dans la
     // requête matchmaker), donc setPrivate casserait le rejoin par code.
@@ -868,11 +870,13 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   }
 
   // Fin de partie d'un mode qui en a une (ModeHost.endMatch) : classement
-  // figé et annoncé, vies en cours enregistrées comme si elles finissaient
-  // là, puis entracte (simulation à l'arrêt) jusqu'à la partie suivante.
+  // figé et annoncé, trophées du rang crédités, vies en cours enregistrées
+  // comme si elles finissaient là, puis entracte (simulation à l'arrêt)
+  // jusqu'à la partie suivante.
   private endMatch(intermissionMs: number): void {
     if (this.state.phase !== MatchPhase.Playing) return;
     const now = Date.now();
+    const standings = this.standings();
     this.state.phase = MatchPhase.Over;
     this.state.phaseEndsAt = now + Math.max(0, intermissionMs);
     this.state.players.forEach((p) => {
@@ -880,15 +884,34 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       this.recordLifeEnd(p, "match_end", null, p.bladeCount, null);
       this.persistMatchIfAuthed(p);
     });
-    const ev: MatchEndEvent = { standings: this.standings(), nextAt: this.state.phaseEndsAt };
+    const ev: MatchEndEvent = { standings, nextAt: this.state.phaseEndsAt };
     this.emit("matchEnd", ev);
   }
 
-  // Classement de tous les joueurs selon le mode, du premier au dernier.
-  private standings(): MatchEndEvent["standings"] {
-    const rows: MatchEndEvent["standings"] = [];
-    this.state.players.forEach((p) => rows.push([p.id, p.name, this.mode.standingScore(p), p.isBot]));
-    return rows.sort((a, b) => b[2] - a[2]);
+  // Classement de tous les joueurs selon le mode, du premier au dernier,
+  // avec les trophées du rang (crédités ici).
+  private standings(): MatchStanding[] {
+    const ranked: Array<{ p: Player; row: MatchStanding }> = [];
+    this.state.players.forEach((p) => {
+      ranked.push({ p, row: { id: p.id, name: p.name, bot: p.isBot, ...this.mode.standing(p), bonus: 0 } });
+    });
+    ranked.sort((a, b) => b.row.score - a.row.score);
+    ranked.forEach(({ p, row }, rank) => {
+      row.bonus = this.creditRankBonus(p, this.mode.rankBonus(rank));
+    });
+    return ranked.map(({ row }) => row);
+  }
+
+  // Trophées du rang, comme ceux d'une vie : partie publique, humain avec
+  // un portefeuille (compte ou invité au jeton signé). Renvoie le montant
+  // réellement crédité.
+  private creditRankBonus(p: Player, amount: number): number {
+    if (amount <= 0 || p.isBot || this.isPrivate) return 0;
+    if (p.userId) trackWrite(creditWallet(p.userId, amount));
+    else if (p.guestId) trackWrite(creditGuestWallet(p.guestId, amount));
+    else return 0;
+    this.gainXp(p, amount);
+    return amount;
   }
 
   // Entracte : rien ne bouge. Les inputs sont acquittés sans pas, comme
@@ -931,7 +954,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     this.state.players.forEach((p) => {
       if (p.alive && !isInBush(p.x, p.y)) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
       if (p.id === this.leaderId) summary.leader = [summary.board.length, bountyFor(p.score)];
-      summary.board.push([p.id, p.name, this.mode.standingScore(p), p.bladeCount, p.isBot]);
+      summary.board.push([p.id, p.name, this.mode.standing(p).score, p.bladeCount, p.isBot]);
     });
     this.state.blades.forEach((b) => {
       if (!b.ownerId && !b.isProjectile && b.rarity === BladeRarity.Legendary) {

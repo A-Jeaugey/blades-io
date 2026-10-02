@@ -1,6 +1,6 @@
 import type { Player } from "../state/Player";
 import { pickSpawnPoint, randomSpawnPoint } from "../systems/spawnPoint";
-import type { GameMode, ModeHost, Point } from "./GameMode";
+import type { GameMode, ModeHost, PlayerStanding, Point } from "./GameMode";
 
 // L'arène sans fin, le jeu d'origine : apparition à l'écart des menaces pour
 // les humains, n'importe où pour les bots ; réapparition libre ; classement
@@ -22,8 +22,12 @@ export class FfaMode implements GameMode {
 
   onKill(): void {}
 
-  standingScore(p: Player): number {
-    return p.score;
+  standing(p: Player): PlayerStanding {
+    return { score: p.score, kills: p.kills, deaths: 0, bestBlades: p.maxBladeCount };
+  }
+
+  rankBonus(): number {
+    return 0;
   }
 
   tick(): void {}

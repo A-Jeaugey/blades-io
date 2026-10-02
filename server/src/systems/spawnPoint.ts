@@ -1,6 +1,5 @@
 import {
   DECOR_COLLIDERS,
-  MAP_RADIUS,
   PLAYER_BODY_RADIUS,
   SPAWN_CANDIDATES,
   SPAWN_CLEARANCE_BASE,
@@ -16,6 +15,16 @@ import { ArenaState } from "../state/ArenaState";
 export interface Point {
   x: number;
   y: number;
+}
+
+// Marge entre un point d'apparition et le mur : resserré, il avance (tâche
+// 7.1) ; l'apparition protège des murs SPAWN_PROTECTION_MS, puis il faut
+// avoir le temps de rentrer.
+const SPAWN_WALL_MARGIN = 20;
+
+// Rayon utile de l'arène du moment, marge au mur déduite.
+export function zoneInner(state: ArenaState, margin: number): number {
+  return Math.max(0, state.mapRadius - WALL_KILL_THICKNESS - margin);
 }
 
 function inDecor(x: number, y: number): boolean {
@@ -35,7 +44,8 @@ export function spawnClearance(bladeCount: number): number {
 }
 
 // Point d'apparition d'un joueur (tâche 3.2) : le meilleur de
-// SPAWN_CANDIDATES tirages uniformes dans le disque de rayon SPAWN_RADIUS.
+// SPAWN_CANDIDATES tirages uniformes dans le disque de rayon SPAWN_RADIUS,
+// ou dans l'arène resserrée d'une fin de manche (7.1), loin de son mur.
 // Un point est sûr si chaque joueur vivant est au-delà de sa distance
 // requise (spawnClearance). Parmi les points sûrs, celui qui a le plus de
 // lames au sol à portée (de quoi grossir tout de suite) ; s'il n'y en a
@@ -50,12 +60,13 @@ export function pickSpawnPoint(state: ArenaState): Point {
     if (!b.ownerId && !b.isProjectile) loot.push({ x: b.x, y: b.y });
   });
   const lootR2 = SPAWN_LOOT_RADIUS * SPAWN_LOOT_RADIUS;
+  const spawnR = Math.min(SPAWN_RADIUS, zoneInner(state, SPAWN_WALL_MARGIN));
 
   let best: Point | null = null;
   let bestSafe = false;
   let bestScore = -Infinity;
   for (let i = 0; i < SPAWN_CANDIDATES; i++) {
-    const r = Math.sqrt(Math.random()) * SPAWN_RADIUS;
+    const r = Math.sqrt(Math.random()) * spawnR;
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r;
     const y = Math.sin(a) * r;
@@ -91,7 +102,7 @@ export function pickSpawnPoint(state: ArenaState): Point {
 // 25 u au moins des joueurs vivants. Les bots se répartissent sur toute la
 // carte au lieu de se concentrer dans la zone des nouveaux venus.
 export function randomSpawnPoint(state: ArenaState): Point {
-  const innerRadius = MAP_RADIUS - WALL_KILL_THICKNESS - 5;
+  const innerRadius = zoneInner(state, 5);
   for (let tries = 0; tries < 30; tries++) {
     const r = Math.sqrt(Math.random()) * innerRadius * 0.8;
     const a = Math.random() * Math.PI * 2;

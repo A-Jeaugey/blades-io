@@ -3,7 +3,6 @@ import {
   BOT_MIN_PLAYERS,
   BOT_NAMES,
   BOT_THINK_INTERVAL,
-  MAP_RADIUS,
   PLAYER_SPEED,
   SPAWN_GRACE_CHASE_RADIUS,
   SPAWN_GRACE_RAMP_MS,
@@ -18,8 +17,11 @@ import { Player } from "../state/Player";
 import { reachOf } from "./interest";
 
 // Rayon de sécurité : marge confortable pour que ni le corps, ni les lames
-// orbitantes ne touchent la zone de mort.
-const BOT_SAFE_RADIUS = MAP_RADIUS - WALL_KILL_THICKNESS - 8;
+// orbitantes ne touchent la zone de mort. Il suit le rayon de l'arène, qui
+// se resserre à la fin d'une manche (tâche 7.1).
+function botSafeRadius(arena: ArenaState): number {
+  return arena.mapRadius - WALL_KILL_THICKNESS - 8;
+}
 
 // Marge entre l'orbite d'un bot et celle d'un joueur en période de grâce
 // quand le bot choisit où aller récolter.
@@ -96,10 +98,10 @@ function isBeginner(p: Player): boolean {
 }
 
 // Clamp un point cible dans la zone safe.
-function clampToSafe(x: number, y: number): { x: number; y: number } {
+function clampToSafe(x: number, y: number, safeRadius: number): { x: number; y: number } {
   const d = Math.hypot(x, y);
-  if (d <= BOT_SAFE_RADIUS) return { x, y };
-  const scale = BOT_SAFE_RADIUS / d;
+  if (d <= safeRadius) return { x, y };
+  const scale = safeRadius / d;
   return { x: x * scale, y: y * scale };
 }
 
@@ -324,7 +326,7 @@ export class BotController {
           this.chasers.set(st.currentTargetId, p.id);
         }
       }
-      this.applyInput(p, st, now);
+      this.applyInput(p, st, now, botSafeRadius(arena));
       // Évalue un throw opportuniste à chaque tick (le cooldown est géré
       // par processThrows). Pas de coût dispendieux : une boucle bornée
       // sur les joueurs + caisses, après alignement on shortcut.
@@ -439,7 +441,7 @@ export class BotController {
     const scores = [];
 
     // ── Priorité absolue : éviter le mur ──
-    const wallAction = this.scoreAvoidWall(bot);
+    const wallAction = this.scoreAvoidWall(bot, arena);
     if (wallAction) scores.push(wallAction);
 
     const fleeAction = this.scoreFlee(bot, arena, st);
@@ -463,7 +465,7 @@ export class BotController {
     const bestAction = scores[0];
 
     // Clamp la cible dans la safe zone pour ne jamais viser hors de la map.
-    const safe = clampToSafe(bestAction.x, bestAction.y);
+    const safe = clampToSafe(bestAction.x, bestAction.y, botSafeRadius(arena));
     st.targetX = safe.x;
     st.targetY = safe.y;
     st.actionType = bestAction.type;
@@ -746,7 +748,7 @@ export class BotController {
 
     if (distToTarget < 5 || st.actionType !== "wander") {
       for (let tries = 0; tries < 4; tries++) {
-        const r = Math.random() * (MAP_RADIUS - WALL_KILL_THICKNESS - 10);
+        const r = Math.random() * (arena.mapRadius - WALL_KILL_THICKNESS - 10);
         const a = Math.random() * Math.PI * 2;
         tx = Math.cos(a) * r;
         ty = Math.sin(a) * r;
@@ -761,15 +763,15 @@ export class BotController {
   }
 
   // Score « éviter le mur ». Se déclenche quand le bot entre dans la zone
-  // de danger (entre BOT_SAFE_RADIUS - 5 et KILL_RADIUS). Plus il est
+  // de danger (entre botSafeRadius - 5 et le rayon de mort). Plus il est
   // proche du bord, plus le score est élevé (dépasse le flee).
-  private scoreAvoidWall(bot: Player) {
+  private scoreAvoidWall(bot: Player, arena: ArenaState) {
     const distFromCenter = Math.hypot(bot.x, bot.y);
-    const dangerStart = BOT_SAFE_RADIUS - 5;
+    const dangerStart = botSafeRadius(arena) - 5;
 
     if (distFromCenter < dangerStart) return null;
 
-    const killRadius = MAP_RADIUS - WALL_KILL_THICKNESS;
+    const killRadius = arena.mapRadius - WALL_KILL_THICKNESS;
     const urgency = Math.min(1, (distFromCenter - dangerStart) / (killRadius - dangerStart));
 
     // Viser vers le centre, proportionnel à l'urgence.
@@ -785,7 +787,7 @@ export class BotController {
     };
   }
 
-  private applyInput(bot: Player, st: BotState, now: number): void {
+  private applyInput(bot: Player, st: BotState, now: number, safeRadius: number): void {
     const dx = st.targetX - bot.x;
     const dy = st.targetY - bot.y;
     const d = Math.hypot(dx, dy);
@@ -821,7 +823,7 @@ export class BotController {
     // (knockback, inertie). Si on est proche et qu'on se dirige vers
     // l'extérieur, on redirige immédiatement vers le centre.
     const distFromCenter = Math.hypot(bot.x, bot.y);
-    if (distFromCenter > BOT_SAFE_RADIUS - 3 && distFromCenter > 0.001) {
+    if (distFromCenter > safeRadius - 3 && distFromCenter > 0.001) {
       // Produit scalaire direction · radiale : >0 = on s'éloigne du centre
       const radX = bot.x / distFromCenter;
       const radY = bot.y / distFromCenter;
