@@ -5,6 +5,10 @@ function rgba(color: number, alpha: number): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
 }
 
+// Portée minimale de la minimap (u) : en fin de manche, l'arène se
+// resserre jusqu'à 80 u.
+const MIN_RANGE = 90;
+
 export interface MinimapPlayer {
   id: string;
   x: number;
@@ -104,7 +108,11 @@ export class Minimap {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    const scale = (S / 2 - 6) / MAP_RADIUS;
+    // Portée : l'arène du moment autour de soi. Avant, toute la carte (250 u)
+    // quelle que soit l'arène : à ~170 u, elle n'occupait que le milieu de
+    // la minimap, cerclée de zone mortelle, et les joueurs s'y tassaient.
+    const range = Math.min(MAP_RADIUS, Math.max(MIN_RANGE, arenaRadius));
+    const scale = (S / 2 - 6) / range;
     // Bord de l'arène et zone mortelle au-delà. La minimap est centrée sur
     // le joueur : le cercle se rapproche du centre quand on approche du
     // bord, qui tuait jusqu'ici sans jamais apparaître sur la carte.
@@ -146,7 +154,7 @@ export class Minimap {
       const screenX = S / 2 + dx * scale;
       const screenY = S / 2 + dy * scale;
       const d = Math.hypot(dx, dy);
-      if (d > MAP_RADIUS) continue;
+      if (d > range) continue;
       ctx.fillStyle = p.side === "ally" ? this.allyFill : p.side === "foe" ? this.foeFill : this.othersFill;
       ctx.beginPath();
       if (p.side === "ally") {
