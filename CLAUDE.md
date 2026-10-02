@@ -693,14 +693,19 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   obligatoire pour ce projet).
 - Branches de feature `claude/<task-name>` créées par les sessions, à
   cleaner après merge (depuis la machine du dev, pas le sandbox).
-- Le déploiement de production est auto-hébergé (tâche T.3) :
-  `auto-deploy.sh` construit `main` dans une release à part (`npm ci`, build
-  complet, tests), bascule le lien `~/bladeio-current`, redémarre via pm2
-  (`ecosystem.config.js`) avec un préavis de 60 s aux joueurs, vérifie
-  `/healthz` et revient à la release précédente en cas d'échec. Le timer de
-  `systemd/` le lance chaque jour à 5 h : un push sur `main` n'est plus
-  déployé tout de suite (`systemctl start bladeio-autodeploy.service` pour
-  déployer maintenant). Attendre que la CI soit verte sur la branche avant
-  de fusionner.
-  Les fichiers Render/Vercel/Docker restent des alternatives documentées
-  dans le README, pas la cible actuelle.
+- La production est une seedbox Whatbox, sans root, sans systemd ni pm2 :
+  le jeu tourne depuis un clone de `main` (`~/blades`), lancé par un petit
+  script (Node 22 par nvm, `node server/dist/index.js`) que le cron relance
+  au démarrage et toutes les 10 min s'il est tombé. Le domaine passe par les
+  « Managed Links » de Whatbox (nginx géré par l'hébergeur, WebSockets
+  activés, `X-Forwarded-For` transmis : `TRUST_PROXY` par défaut convient).
+  Rien n'est déployé automatiquement, fusionner dans `main` ne change pas la
+  production : mise à jour à la main et sur place (`git pull --ff-only`,
+  `npm ci`, build, tests, puis arrêt et relance du serveur ;
+  `RESTART_NOTICE_MS=60000` dans le `.env` donne aux joueurs leur préavis),
+  procédure dans le README (« Seedbox without root »). Attendre que la CI
+  soit verte avant de fusionner.
+  `auto-deploy.sh` (release construite à part, bascule, pm2, santé, retour
+  arrière ; tâche T.3), `ecosystem.config.js` et `systemd/` servent sur un
+  VPS avec root ; les fichiers Render/Vercel/Docker restent des
+  alternatives documentées dans le README.

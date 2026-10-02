@@ -247,7 +247,7 @@ is purely opt-in.
 
 ## Deployment
 
-You have three sensible options. Self-hosted is what production runs on.
+You have three sensible options. Production runs on a shared seedbox without root (see [Seedbox without root](#seedbox-without-root) below).
 
 ### 1. Self-host (recommended)
 
@@ -298,6 +298,38 @@ sudo systemctl restart caddy
 Prereqs: an A record pointing your domain at the server, and ports 80/443 open. Caddy takes care of the Let's Encrypt cert automatically.
 
 > **No public IP?** [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) routes traffic out from your box without any port forwarding.
+
+#### Seedbox without root
+
+Production runs on a shared seedbox (Whatbox): no root, no systemd, no pm2, but Node through nvm, cron, and an HTTPS proxy managed by the provider. The game lives in a single checkout of `main`, updated in place.
+
+- **Start.** A small script, run by cron at boot and every 10 minutes, starts the server if it is not running:
+
+  ```bash
+  #!/bin/bash
+  # ~/start-blades.sh — crontab: "@reboot ~/start-blades.sh" and "*/10 * * * * ~/start-blades.sh"
+  export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 22 > /dev/null
+  pgrep -f "server/dist/index.js" > /dev/null && exit 0
+  cd ~/blades && nohup node server/dist/index.js >> ~/blades.log 2>&1 &
+  ```
+
+- **HTTPS.** The provider's proxy (Whatbox "managed links", WebSockets enabled) points the domain at the server's `PORT` and forwards `X-Forwarded-For`, so the default `TRUST_PROXY=1` is right.
+- **`.env`.** Besides the Supabase keys and `SERVER_GUEST_SECRET`: `PORT` (the port the proxy points at), `PUBLIC_URL` (link previews), and `RESTART_NOTICE_MS=60000`, so that stopping the server gives players a 60 s countdown instead of cutting their match.
+
+**Update** (nothing is deployed automatically):
+
+```bash
+export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use 22
+cd ~/blades
+git pull --ff-only origin main
+npm ci && npm run build && npm test     # stop here if anything fails: the running server is untouched
+pid=$(pgrep -f "node server/dist/index.js")
+kill $pid; while kill -0 $pid 2>/dev/null; do sleep 1; done   # up to 60 s with players online
+~/start-blades.sh
+curl -s "http://localhost:$(sed -n 's/^PORT=//p' .env | tr -d '"\r ')/healthz"; echo
+```
+
+Roll back with `git reset --hard <previous commit>`, then the same build and restart.
 
 ### 2. Cloud free tier (Render + Vercel)
 

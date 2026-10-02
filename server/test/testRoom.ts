@@ -22,6 +22,11 @@ export class TestRoom {
     room._listing = { name: "arena", metadata: undefined };
     room.autoDispose = false;
     room.__init();
+    // Verrou posé à l'annonce d'un redémarrage : sans matchmaker, Colyseus
+    // 0.18 n'a nulle part où l'enregistrer et lève une erreur. La room se
+    // verrouille sans l'enregistrer, comme quand elle est pleine.
+    const lock = room.lock;
+    room.lock = () => lock.call(room, true);
     room.broadcast = (type: string, message: any) => {
       this.events.push({ type, message });
     };
