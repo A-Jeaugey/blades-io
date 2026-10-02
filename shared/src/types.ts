@@ -190,6 +190,21 @@ export interface ChatMutedEvent {
   seconds: number;
 }
 
+// Client → Server : triche de test, tapée dans le chat (/blades). Le serveur
+// ne l'accepte qu'en salon privé, où rien ne compte, et seulement s'il est
+// lancé avec CHEATS=1.
+export interface CheatMessage {
+  blades?: number;
+  rarity?: BladeRarity;
+}
+
+// Server → Client : lames ajoutées, ou raison du refus.
+export interface CheatResult {
+  ok: boolean;
+  blades?: number;
+  reason?: "disabled" | "public" | "dead" | "full";
+}
+
 
 
 export type RoomMessageType =

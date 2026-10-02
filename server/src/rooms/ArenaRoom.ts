@@ -37,6 +37,7 @@ import {
   MAX_INPUT_RATE,
   MAX_INPUT_VIOLATIONS,
   CLOSE_CODE_INPUT_FLOOD,
+  MAX_BLADES_PER_PLAYER,
   MAX_PLAYERS_PER_ROOM,
   NAME_MAX_LENGTH,
   NAME_MIN_LENGTH,
@@ -57,6 +58,8 @@ import {
   CHAT_STRIKES_TO_MUTE,
   CHAT_STRIKE_WINDOW_MS,
   ChatMutedEvent,
+  CheatMessage,
+  CheatResult,
   REPORT_LIMIT_COUNT,
   REPORT_LIMIT_WINDOW_MS,
   REPORT_REASON_MAX_LENGTH,
@@ -129,6 +132,9 @@ function sanitizeName(raw: string): string {
 // dimensionné pour une room pleine, respawns simultanés compris (une vue
 // complète pèse moins de 20 Ko).
 Encoder.BUFFER_SIZE = 1024 * 1024;
+
+// Triche de test : lames données par /blades sans nombre.
+const CHEAT_DEFAULT_BLADES = 50;
 
 // Lames d'un joueur au début d'un échange : en orbite, plus celles perdues
 // en clash dans les FIGHT_WINDOW_MS précédentes.
@@ -256,6 +262,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     this.onMessage<RespawnMessage>("respawn", (client, msg) => this.handleRespawn(client, msg));
     this.onMessage<ChatMessage>("chat", (client, msg) => this.handleChat(client, msg));
     this.onMessage<ReportMessage>("report", (client, msg) => this.handleReport(client, msg));
+    this.onMessage<CheatMessage>("cheat", (client, msg) => this.handleCheat(client, msg));
     this.onMessage<ViewMessage>("view", (client, msg) => this.interest.setRadius(client.sessionId, msg?.r));
     // Ping affiché dans le HUD (tâche 3.4) : le numéro reçu est renvoyé tel
     // quel, le client mesure l'aller-retour.
@@ -323,6 +330,29 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     };
     if (msg?.action === true) event.action = true;
     this.broadcast("chat", event);
+  }
+
+  // Triche de test (/blades dans le chat) : des lames en orbite tout de
+  // suite. Seulement en salon privé, où rien ne compte (ni trophées, ni
+  // classement, ni défis), et si le serveur l'autorise : CHEATS=1 dans son
+  // environnement, absent par défaut. Lu à chaque appel, pour les tests.
+  private handleCheat(client: Client, msg: CheatMessage): void {
+    const p = this.state.players.get(client.sessionId);
+    if (!p) return;
+    const reply = (result: CheatResult) => client.send("cheat", result);
+    if (process.env.CHEATS !== "1") return reply({ ok: false, reason: "disabled" });
+    if (!this.isPrivate) return reply({ ok: false, reason: "public" });
+    if (!p.alive) return reply({ ok: false, reason: "dead" });
+    // Même plafond que le ramassage (bladeCount suit chaque ajout).
+    const space = MAX_BLADES_PER_PLAYER - p.bladeCount;
+    if (space <= 0) return reply({ ok: false, reason: "full" });
+    const asked = Math.floor(Number(msg?.blades));
+    const n = Math.min(asked > 0 ? asked : CHEAT_DEFAULT_BLADES, space);
+    const rarity = typeof msg?.rarity === "number" && RARITY_HP[msg.rarity as BladeRarity] !== undefined
+      ? (msg.rarity as BladeRarity)
+      : BladeRarity.Common;
+    for (let i = 0; i < n; i++) this.giveBlade(p, rarity);
+    reply({ ok: true, blades: n });
   }
 
   // Signalement d'un joueur (tâche 5.6) : journalisé avec ses derniers
@@ -441,15 +471,15 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
     this.state.players.set(client.sessionId, p);
-    if (!waits) for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+    if (!waits) for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.giveBlade(p);
     this.interest.addViewer(client, p);
   }
 
-  private spawnInitialBladeFor(p: Player): void {
+  private giveBlade(p: Player, rarity: BladeRarity = BladeRarity.Common): void {
     const b = new Blade();
     b.id = randomId();
-    b.rarity = BladeRarity.Common;
-    b.hp = RARITY_HP[BladeRarity.Common];
+    b.rarity = rarity;
+    b.hp = RARITY_HP[rarity];
     this.state.blades.set(b.id, b);
     attachBladeToPlayer(this.state, p, b);
   }
@@ -780,7 +810,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.lifeBiggerKills = 0; p.lifeLeaderKills = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
-    for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+    for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.giveBlade(p);
   }
 
   // Vie à enregistrer en cas de départ : en jeu, pas pendant l'entracte
@@ -1152,7 +1182,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
         this.mode.onJoin(bot);
         return this.mode.spawnPoint(bot);
       });
-      for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+      for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.giveBlade(p);
       bots++;
     }
   }

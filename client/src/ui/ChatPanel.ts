@@ -1,4 +1,4 @@
-import { CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent, ReportAck } from "@bladeio/shared";
+import { BladeRarity, CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent, CheatResult, ReportAck } from "@bladeio/shared";
 import { I18nKey, onLangChange, t } from "../i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,6 +39,14 @@ export interface ChatPlayer {
 
 const HELP: I18nKey[] = ["chat.help1", "chat.help2", "chat.help3", "chat.help4"];
 
+// Triche de test (/blades) : noms de rareté acceptés, sans accents ni casse.
+const RARITY_NAMES = new Map<string, BladeRarity>([
+  ["c", BladeRarity.Common], ["common", BladeRarity.Common], ["commune", BladeRarity.Common],
+  ["r", BladeRarity.Rare], ["rare", BladeRarity.Rare],
+  ["e", BladeRarity.Epic], ["epic", BladeRarity.Epic], ["epique", BladeRarity.Epic],
+  ["l", BladeRarity.Legendary], ["legendary", BladeRarity.Legendary], ["legendaire", BladeRarity.Legendary],
+]);
+
 export class ChatPanel {
   private root: HTMLElement;
   private logEl: HTMLElement;
@@ -54,6 +62,8 @@ export class ChatPanel {
   // joueurs masqués pour cette partie (id → pseudo), côté client seulement.
   private players: () => ChatPlayer[] = () => [];
   private report: (targetId: string, reason: string) => void = () => {};
+  // Triche de test, que le serveur n'accepte qu'en salon privé.
+  private cheat: (blades: number | undefined, rarity: BladeRarity | undefined) => void = () => {};
   private muted = new Map<string, string>();
   private fadeTimer: number | null = null;
   private isOpenFlag = false;
@@ -167,6 +177,10 @@ export class ChatPanel {
     this.report = fn;
   }
 
+  setCheatCallback(fn: (blades: number | undefined, rarity: BladeRarity | undefined) => void): void {
+    this.cheat = fn;
+  }
+
   // Affiche le panel + focus l'input. Appelé par le keydown global Entrée
   // ou potentiellement par un bouton mobile (à brancher plus tard).
   open(): void {
@@ -261,6 +275,17 @@ export class ChatPanel {
       if (!p) return;
       if (p.bot) return this.system(t("chat.botReport"));
       try { this.report(p.id, rest.join(" ")); } catch { /* noop */ }
+    } else if (cmd === "blades" || cmd === "lames") {
+      // Absente de /help : une triche de test, pas une commande de joueur.
+      let blades: number | undefined;
+      let rarity: BladeRarity | undefined;
+      for (const arg of [name, ...rest].filter((a) => a.length > 0)) {
+        const key = arg.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+        if (/^\d+$/.test(key) && Number(key) > 0) blades = Number(key);
+        else if (RARITY_NAMES.has(key)) rarity = RARITY_NAMES.get(key);
+        else return this.system(t("chat.usageBlades"));
+      }
+      try { this.cheat(blades, rarity); } catch { /* noop */ }
     } else {
       this.system(t("chat.unknownCommand", { cmd: head }));
     }
@@ -293,6 +318,17 @@ export class ChatPanel {
       unknown: "chat.reportUnknown",
     };
     this.system(t(key[status]));
+  }
+
+  onCheat(result: CheatResult): void {
+    if (result.ok) return this.system(t("chat.cheatOk", { n: result.blades ?? 0 }));
+    const key: Record<NonNullable<CheatResult["reason"]>, I18nKey> = {
+      disabled: "chat.cheatDisabled",
+      public: "chat.cheatPublic",
+      dead: "chat.cheatDead",
+      full: "chat.cheatFull",
+    };
+    this.system(t(key[result.reason ?? "disabled"]));
   }
 
   // Silence imposé par le serveur (messages masqués répétés).

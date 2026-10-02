@@ -557,6 +557,13 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   se vérifie contre la liste de faux positifs de
   `server/test/moderation.test.ts`. Signalements : `handleReport` dans
   `ArenaRoom`, table `reports` (migration 0010).
+- **Triche de test** : `/blades [nombre] [rareté]` (alias `/lames`, absente
+  de `/help`) dans le chat ajoute des lames en orbite, 50 par défaut, dans
+  la limite de `MAX_BLADES_PER_PLAYER`. Le serveur (`handleCheat`,
+  `ArenaRoom`) ne l'accepte qu'avec `CHEATS=1` dans son environnement
+  (absent par défaut), en salon privé, où rien ne compte (ni trophées, ni
+  classement, ni défis, ni record local, télémétrie marquée
+  `room_private`), et d'un joueur en vie. Test : `server/test/cheat.test.ts`.
 - **Carte (tâche 4.7)** : `shared/src/decor.ts` décrit tout ce qui se
   voit ou bloque, pareil pour tous les thèmes. `DECOR_COLLIDERS` = pilier
   central, `OBELISKS`, puis les colliders des `STRUCTURES`

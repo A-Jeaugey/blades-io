@@ -20,6 +20,8 @@ import {
   MatchPhase,
   ChatEvent,
   ChatMutedEvent,
+  CheatMessage,
+  CheatResult,
   ReportAck,
   InputMessage,
   TierUpEvent,
@@ -510,6 +512,13 @@ class Game {
     this.chat.setPlayerSource(() => (this.summary?.board ?? []).map(([id, name, , , bot]) => ({ id, name, bot })));
     this.chat.setReportCallback((targetId, reason) => {
       try { this.room?.send("report", { targetId, reason }); } catch { /* noop */ }
+    });
+    // Triche de test (/blades) : le serveur décide (salon privé, CHEATS=1).
+    this.chat.setCheatCallback((blades, rarity) => {
+      const msg: CheatMessage = {};
+      if (blades !== undefined) msg.blades = blades;
+      if (rarity !== undefined) msg.rarity = rarity;
+      try { this.room?.send("cheat", msg); } catch { /* noop */ }
     });
     this.login = new LoginScreen((res) => this.start(res));
     this.death = new DeathScreen(
@@ -1089,6 +1098,7 @@ class Game {
     });
     room.onMessage("reportAck", (msg: ReportAck) => this.chat.onReportAck(msg.status));
     room.onMessage("chatMuted", (msg: ChatMutedEvent) => this.chat.onMuted(msg.seconds));
+    room.onMessage("cheat", (msg: CheatResult) => this.chat.onCheat(msg));
     room.onLeave((code: number) => {
       // Ignorer cet événement s'il provient d'une ancienne room (ex: on a 
       // cliqué sur "Back to menu" puis "Enter" très vite, et le onLeave de
