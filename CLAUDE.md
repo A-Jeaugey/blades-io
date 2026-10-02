@@ -40,6 +40,7 @@ client/src/
 │   ├── Decor.ts         Pilier central + obélisques + bushes + cubes/lanternes
 │   │                    DISPATCH cyber/spirit selon theme.decor.kind
 │   ├── PostFX.ts        EffectComposer (bloom + chroma + vignette + grain)
+│   ├── MapEventView.ts  Zone au sol d'un évènement de carte (pluie, zone dorée)
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
 │   └── palette.ts       Façade rétrocompat sur le thème actif
 ├── entities/
@@ -466,6 +467,22 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   nametags, minimap, classement, podium) ; variables CSS `--ally-rgb` et
   `--foe-rgb` ; drapeaux `entities/FlagView.ts` (le sien carré, celui d'en
   face triangulaire), état `ui/FlagHud.ts`, évènements `flag` dans le fil.
+- **Évènements de carte (tâche 4.4)** : `server/src/systems/mapEvents.ts`
+  (`MapEventSystem`), réglages dans `shared/src/mapEvents.ts`, dans les
+  modes où `GameModeInfo.mapEvents` est vrai (arène, manches, match à
+  mort). Un à la fois, synchronisé par `state.mapEvent` (type, zone,
+  annonce `startsAt`, fin `endsAt`, caisse `crateId`) : le client en tire
+  bannière, zone au sol (`scene/MapEventView.ts`), marqueur de minimap et
+  badge POINTS ×2. Pluie de lames (lames à échéance, comme le butin),
+  caisse légendaire (`Crate.legendary`, butin fixe dans
+  `CrateSystem.destroyCrate`), zone dorée : `update()` passe après le
+  calcul des scores et ajoute une seconde fois l'écart de score de chaque
+  joueur dedans. La minuterie ne part qu'avec un humain dans la room, sans
+  aucun tirage avant : une room de bots seuls (bancs) joue à l'identique.
+  Chaque évènement fini écrit une ligne `map_events` (migration 0012 ;
+  `select * from map_events_summary;` : part des joueurs venus jusqu'à
+  lui). Les bots y vont par `botGoal`, combiné avec celui du mode (le plus
+  pressant des deux).
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client

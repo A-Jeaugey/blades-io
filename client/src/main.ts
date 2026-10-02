@@ -42,6 +42,7 @@ import {
   PowerUpType,
   CTF_BASE_RADIUS,
   FlagEvent,
+  MapEventKind,
   TEAM_NONE,
   isInBush,
   isTeamMode,
@@ -66,6 +67,7 @@ import { BladeRenderer, PlayerPositionProvider } from "./entities/BladeView";
 import { CrateRenderer } from "./entities/CrateView";
 import { PowerUpRenderer } from "./entities/PowerUpView";
 import { FlagRenderer, FlagSnapshot } from "./entities/FlagView";
+import { MapEventSnapshot, MapEventView } from "./scene/MapEventView";
 import { ParticlePool } from "./fx/Particles";
 import { Haptics } from "./fx/Haptics";
 import { AmbientWisps } from "./scene/AmbientWisps";
@@ -74,7 +76,7 @@ import { Hud } from "./ui/Hud";
 import { LoginScreen, LoginResult } from "./ui/LoginScreen";
 import { DeathScreen } from "./ui/DeathScreen";
 import { Leaderboard, LeaderboardEntry } from "./ui/Leaderboard";
-import { Minimap, MinimapFlag, MinimapPlayer } from "./ui/Minimap";
+import { Minimap, MinimapEvent, MinimapFlag, MinimapPlayer } from "./ui/Minimap";
 import { FLAG_FEED_KEYS, FlagHud, FlagStatus } from "./ui/FlagHud";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
@@ -178,6 +180,10 @@ class Game {
   private flagCarrierPos = { x: 0, y: 0 };
   // « Ton drapeau doit être à ta base » : une fois par drapeau emporté.
   private needHomeShown = false;
+  // Évènements de carte (tâche 4.4) : zone au sol, type annoncé en dernier.
+  private mapEventView!: MapEventView;
+  private mapEventSnap: MapEventSnapshot = { kind: MapEventKind.None, x: 0, y: 0, radius: 0, startsAt: 0, endsAt: 0 };
+  private lastEventKind: number = MapEventKind.None;
   // Durée max observée pour chaque effet actif local — sert à normaliser
   // la barre du badge dans le HUD (sinon on ne sait pas combien il restait
   // au départ).
@@ -359,6 +365,8 @@ class Game {
     this.crates = new CrateRenderer(this.quality);
     this.powerups = new PowerUpRenderer(this.quality);
     this.flagsView = new FlagRenderer(this.sceneStack.scene, this.quality);
+    this.mapEventView = new MapEventView(this.quality);
+    this.sceneStack.scene.add(this.mapEventView.root);
     this.particles = new ParticlePool(this.quality.maxParticles, this.quality.particleScale);
     this.wisps = new AmbientWisps(this.quality);
     this.ground = createGround(this.quality);
@@ -507,6 +515,7 @@ class Game {
       this.haptics.enabled = s.vibration;
       this.camera.shake.intensity = shakeIntensity(s);
       this.blades.setFlashIntensity(s.flashes);
+      this.mapEventView.setFlashIntensity(s.flashes);
       this.particles.setFlashIntensity(s.flashes);
       this.borderWarning.setFlashIntensity(s.flashes);
     });
@@ -776,6 +785,9 @@ class Game {
     $(state).blades.onAdd((b: any, key: string) => {
       bladeChanged(b, key);
       $(b).onChange(() => bladeChanged(b, key));
+      // Pluie de lames : chaque lame qui tombe dans la zone jette des
+      // étincelles à sa couleur.
+      if (!b.ownerId && !b.isProjectile) this.rainSpark(b.x, b.y, b.rarity as BladeRarity);
     }, true);
     $(state).blades.onRemove((_b: any, key: string) => {
       if (this.blades.isOrbiting(key) || this.pendingBlades.has(key)) this.deferBlade(key, () => this.blades.remove(key));
@@ -783,7 +795,7 @@ class Game {
     });
 
     $(state).crates.onAdd((c: any, key: string) => {
-      this.crates.add(key, c.x, c.y, c.hp, c.maxHp);
+      this.crates.add(key, c.x, c.y, c.hp, c.maxHp, !!c.legendary);
     }, true);
     $(state).crates.onRemove((_c: any, key: string) => {
       this.crates.remove(key);
@@ -1574,6 +1586,33 @@ class Game {
     }
   }
 
+  // Évènement de carte (tâche 4.4) : bannière et son à son annonce (ou à
+  // l'arrivée en cours d'évènement), zone au sol à chaque image.
+  private updateMapEvent(serverNowMs: number): void {
+    const src = this.room?.state?.mapEvent;
+    const ev = this.mapEventSnap;
+    ev.kind = src?.kind ?? MapEventKind.None;
+    ev.x = src?.x ?? 0;
+    ev.y = src?.y ?? 0;
+    ev.radius = src?.radius ?? 0;
+    ev.startsAt = src?.startsAt ?? 0;
+    ev.endsAt = src?.endsAt ?? 0;
+    this.mapEventView.update(ev, serverNowMs, this.elapsed * 0.001);
+    if (ev.kind === this.lastEventKind) return;
+    this.lastEventKind = ev.kind;
+    const key = MAP_EVENT_TOASTS[ev.kind];
+    if (!key || this.matchOver()) return;
+    this.toasts.push(t(key));
+    this.sound.tierUp(1);
+  }
+
+  private rainSpark(x: number, y: number, rarity: BladeRarity): void {
+    const ev = this.room?.state?.mapEvent;
+    if (!ev || ev.kind !== MapEventKind.Rain || this.serverNow() < ev.startsAt - 200) return;
+    if (Math.hypot(x - ev.x, y - ev.y) > ev.radius + 0.5) return;
+    this.particles.spawnSparks(x, 2.5, y, this.theme.palette.rarityColor[rarity], 6, 3);
+  }
+
   // Partie suivante : le serveur a remis tout le monde en jeu, avec les
   // lames de départ ; comme une réapparition, sans la demander.
   private onMatchStart(): void {
@@ -1659,6 +1698,9 @@ class Game {
     this.powerups.clear();
     this.flagsView.clear();
     this.flagHud.hide();
+    this.lastEventKind = MapEventKind.None;
+    this.mapEventSnap.kind = MapEventKind.None;
+    this.mapEventView.update(this.mapEventSnap, 0, 0);
     this.dead = false;
     // Bloque ici jusqu'à confirmation de fermeture (timeout 1.5s pour ne
     // pas geler indéfiniment si la connexion est cassée). Le login n'est
@@ -1978,6 +2020,11 @@ class Game {
     updateFx("hud.fxSpin", this.theme.palette.powerUpColor[PowerUpType.Spin], me.spinUntil ?? 0);
     updateFx("hud.fxMagnet", this.theme.palette.powerUpColor[PowerUpType.Magnet], me.magnetUntil ?? 0);
     updateFx("hud.fxShield", this.theme.palette.powerUpColor[PowerUpType.Shield], me.shieldUntil ?? 0);
+    // Zone dorée (tâche 4.4) : points ×2 tant qu'on y est.
+    const ev = this.mapEventSnap;
+    const inGolden = ev.kind === MapEventKind.Golden && me.alive && dnow >= ev.startsAt && dnow < ev.endsAt &&
+      Math.hypot(me.x - ev.x, me.y - ev.y) <= ev.radius;
+    updateFx("hud.fxGolden", this.theme.palette.rarityColor[BladeRarity.Legendary], inGolden ? ev.endsAt : 0);
 
     const now = performance.now();
     if (now - this.lastHudUpdate < 100) return;
@@ -2022,7 +2069,12 @@ class Game {
         flags.push({ x: f.x, y: f.y, baseX: base.x, baseY: base.y, ally: f.team === mine, atBase: f.atBase });
       }
     }
-    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags);
+    const events: MinimapEvent[] = [];
+    const mev = this.mapEventSnap;
+    if (mev.kind !== MapEventKind.None) {
+      events.push({ kind: mev.kind, x: mev.x, y: mev.y, radius: mev.radius, active: this.serverNow() >= mev.startsAt });
+    }
+    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events);
   }
 
   // Pilote la résolution dynamique et le downgrade auto de preset.
@@ -2216,6 +2268,7 @@ class Game {
       this.wall.setRadius(this.arenaRadius());
       this.updateMatchUi(serverNowMs);
       this.updateFlags(myTeam, dt, serverNowMs);
+      this.updateMapEvent(serverNowMs);
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
@@ -2308,6 +2361,13 @@ new Game();
 
 // Badge d'effet d'un power-up (aucun pour Blades, instantané) : la clé de
 // son libellé sert aussi d'identifiant du badge.
+// Bannière de chaque évènement de carte.
+const MAP_EVENT_TOASTS: Partial<Record<number, I18nKey>> = {
+  [MapEventKind.Rain]: "event.rain",
+  [MapEventKind.Crate]: "event.crate",
+  [MapEventKind.Golden]: "event.golden",
+};
+
 // Libellé du score des équipes dans la minuterie, par mode.
 const TEAM_SCORE_LABELS: Partial<Record<string, I18nKey>> = {
   tdm: "match.score.tdm",

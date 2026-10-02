@@ -1,4 +1,4 @@
-import { BladeRarity, MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
+import { BladeRarity, MAP_RADIUS, MapEventKind, WALL_KILL_THICKNESS } from "@bladeio/shared";
 import { THREAT_COLORS, getActiveTheme } from "../themes";
 
 function rgba(color: number, alpha: number): string {
@@ -13,6 +13,16 @@ export interface MinimapPlayer {
   // Modes équipe (tâche 7.2) : allié (losange) ou adversaire ; absent hors
   // équipe.
   side?: "ally" | "foe";
+}
+
+// Évènement de carte (tâche 4.4) : zone (pluie, zone dorée) ou caisse.
+export interface MinimapEvent {
+  kind: number;
+  x: number;
+  y: number;
+  radius: number;
+  // Après l'annonce : zone pleine.
+  active: boolean;
 }
 
 // Drapeau de la capture du drapeau : où il est, à qui, et sa base.
@@ -44,6 +54,8 @@ export class Minimap {
   private meFill: string;
   private allyFill: string;
   private foeFill: string;
+  private rainColor: number;
+  private goldColor: number;
 
   constructor() {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
@@ -63,6 +75,9 @@ export class Minimap {
     // Équipes : couleurs des anneaux (le sien, celui des autres).
     this.allyFill = rgba(theme.palette.playerLocal.accent, 1);
     this.foeFill = rgba(theme.palette.playerRemote.accent, 1);
+    // Évènements : couleurs de rareté, comme leur zone au sol.
+    this.rainColor = theme.palette.rarityColor[BladeRarity.Rare];
+    this.goldColor = theme.palette.rarityColor[BladeRarity.Legendary];
   }
 
   // arenaRadius : rayon de l'arène du moment (resserrée en fin de manche).
@@ -72,6 +87,7 @@ export class Minimap {
     legendaries: MinimapBlade[],
     arenaRadius = MAP_RADIUS,
     flags: MinimapFlag[] = [],
+    events: MinimapEvent[] = [],
   ): void {
     const ctx = this.ctx;
     const S = this.size;
@@ -108,6 +124,8 @@ export class Minimap {
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
+    // Évènements de carte, sous les joueurs.
+    for (const ev of events) this.drawEvent(ev, me, scale);
     // Autres joueurs ; en équipe, les alliés en losange (la forme en plus
     // de la couleur, tâche 3.8).
     for (const p of others) {
@@ -217,5 +235,55 @@ export class Minimap {
       ctx.closePath();
     }
     ctx.fill();
+  }
+
+  // Pluie : cercle en pointillés ; zone dorée : double cercle ; caisse
+  // légendaire : étoile. Pleins une fois actifs ; ramenés au bord quand ils
+  // sont hors de portée de la minimap (direction à suivre).
+  private drawEvent(ev: MinimapEvent, me: MinimapPlayer, scale: number): void {
+    const ctx = this.ctx;
+    const S = this.size;
+    const edge = S / 2 - 8;
+    let dx = (ev.x - me.x) * scale;
+    let dy = (ev.y - me.y) * scale;
+    const d = Math.hypot(dx, dy);
+    const clamped = d > edge;
+    if (clamped) {
+      dx *= edge / d;
+      dy *= edge / d;
+    }
+    const x = S / 2 + dx;
+    const y = S / 2 + dy;
+    const color = ev.kind === MapEventKind.Rain ? this.rainColor : this.goldColor;
+    if (ev.kind === MapEventKind.Crate) {
+      ctx.fillStyle = rgba(color, 1);
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const r = i % 2 === 0 ? 6 : 2.6;
+        if (i === 0) ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        else ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    const r = clamped ? 5 : Math.max(4, ev.radius * scale);
+    ctx.strokeStyle = rgba(color, 1);
+    ctx.lineWidth = 1.5;
+    if (ev.kind === MapEventKind.Rain) ctx.setLineDash([3, 2]);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (ev.active) {
+      ctx.fillStyle = rgba(color, 0.3);
+      ctx.fill();
+    }
+    if (ev.kind === MapEventKind.Golden) {
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 }

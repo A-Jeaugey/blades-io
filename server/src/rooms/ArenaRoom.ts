@@ -83,9 +83,10 @@ import { PickupSystem, attachBladeToPlayer } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
 import { EventScope, InterestManager } from "../systems/interest";
 import { RestartAware, registerRoom, restartDeadline, trackWrite, unregisterRoom } from "../shutdown";
-import { LifeEnd, recordLife } from "../telemetry";
+import { LifeEnd, recordLife, recordMapEvent } from "../telemetry";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
+import { MapEventSystem } from "../systems/mapEvents";
 import { PowerUpSystem } from "../systems/powerups";
 import { updateScore } from "../systems/scoring";
 import {
@@ -93,7 +94,7 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasMapEvents } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -144,6 +145,9 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   private orbitCache = new OrbitPositionCache();
   private bots = new BotController();
   private crates = new CrateSystem();
+  // Évènements de carte (tâche 4.4), dans les modes qui en ont.
+  private mapEvents = new MapEventSystem();
+  private mapEventsOn = false;
   private powerups = new PowerUpSystem();
   // Options de la room (set au onCreate à partir des joinOptions du 1er
   // client, ou rempli par filterBy).
@@ -201,10 +205,19 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       emit: (type, payload) => this.emit(type, payload),
     };
     this.mode = createMode(modeId, host);
+    this.mapEventsOn = modeHasMapEvents(modeId);
     // Objectifs des bots propres au mode (modes équipe : adversaires,
-    // drapeaux), en balance avec leurs autres envies.
+    // drapeaux) et aux évènements de carte, en balance avec leurs autres
+    // envies : le plus pressant des deux.
     const mode = this.mode;
-    if (mode.botGoal) this.bots.setGoals((bot) => mode.botGoal!(bot));
+    const events = this.mapEventsOn ? this.mapEvents : null;
+    if (mode.botGoal || events) {
+      this.bots.setGoals((bot) => {
+        const a = mode.botGoal?.(bot) ?? null;
+        const b = events?.botGoal(bot, this.state) ?? null;
+        return a && b ? (a.score >= b.score ? a : b) : a ?? b;
+      });
+    }
     // Première partie : un mode à fin y règle sa minuterie.
     this.mode.onMatchStart(Date.now());
     // NB: pas de setPrivate(true) sur les rooms à code. Colyseus exclut
@@ -873,6 +886,14 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
     this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
+    // Après les scores : la zone dorée double ce qui vient d'être gagné.
+    if (this.mapEventsOn) {
+      this.mapEvents.update(this.state, Date.now(), this.state.phaseEndsAt, (o) => recordMapEvent({
+        ...o,
+        roomPrivate: this.isPrivate,
+        gameMode: this.mode.id,
+      }));
+    }
     this.updateLeader(dt);
     if (!this.mode.keepsEliminatedBots?.()) this.bots.cleanupDead(this.state);
     // Règles du mode : minuteries, fin de partie.
@@ -955,6 +976,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     this.state.phaseEndsAt = 0;
     this.state.players.forEach((p) => this.startLife(p));
     this.mode.onMatchStart(Date.now());
+    this.mapEvents.reset(this.state);
   }
 
   // Ce que la zone d'intérêt ne donne plus : classement complet, joueurs de

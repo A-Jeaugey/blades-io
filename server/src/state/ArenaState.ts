@@ -5,6 +5,7 @@ import { Blade } from "./Blade";
 import { Crate } from "./Crate";
 import { PowerUp } from "./PowerUp";
 import { Flag } from "./Flag";
+import { MapEvent } from "./MapEvent";
 
 export class ArenaState extends Schema {
   // Filtrés par client (zone d'intérêt, cf. systems/interest.ts) : chacun ne
@@ -36,4 +37,6 @@ export class ArenaState extends Schema {
   @type("uint16") teamScore2: number = 0;
   // Drapeaux de la capture du drapeau (un par équipe), vide sinon.
   @type([Flag]) flags = new ArraySchema<Flag>();
+  // Évènement de carte en cours (tâche 4.4).
+  @type(MapEvent) mapEvent = new MapEvent();
 }

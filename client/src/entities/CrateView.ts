@@ -1,11 +1,15 @@
 import * as THREE from "three";
-import { CRATE_SCALE } from "@bladeio/shared";
+import { BladeRarity, CRATE_SCALE } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
+
+const LEGENDARY_SCALE = 1.35;
 
 interface CrateEntry {
   id: string;
   mesh: THREE.Group;
+  // Hauteur du centre : la caisse légendaire, plus grosse, flotte plus haut.
+  baseY: number;
   hp: number;
   maxHp: number;
   bobPhase: number;
@@ -20,6 +24,10 @@ export class CrateRenderer {
   private materials: THREE.Material[] = [];
   private innerMat: THREE.Material;
   private wireMat: THREE.LineBasicMaterial | null = null;
+  // Caisse légendaire (évènement de carte, tâche 4.4) : couleur de la
+  // rareté légendaire, plus grosse.
+  private legendaryMat: THREE.Material;
+  private legendaryWireMat: THREE.LineBasicMaterial | null = null;
   private wireframeEnabled: boolean;
 
   constructor(q: QualityConfig) {
@@ -40,6 +48,18 @@ export class CrateRenderer {
           opacity: 0.5,
         });
     this.materials.push(this.innerMat);
+    const gold = t.palette.rarityColor[BladeRarity.Legendary];
+    this.legendaryMat = simpleMaterials
+      ? new THREE.MeshBasicMaterial({ color: gold, transparent: true, opacity: 0.55 })
+      : new THREE.MeshPhongMaterial({
+          color: gold,
+          emissive: gold,
+          emissiveIntensity: 0.7,
+          shininess: 80,
+          transparent: true,
+          opacity: 0.6,
+        });
+    this.materials.push(this.legendaryMat);
     if (this.wireframeEnabled) {
       this.wireGeo = new THREE.EdgesGeometry(this.boxGeo);
       this.wireMat = new THREE.LineBasicMaterial({
@@ -47,23 +67,27 @@ export class CrateRenderer {
         transparent: true,
         opacity: 0.9,
       });
-      this.materials.push(this.wireMat);
+      this.legendaryWireMat = new THREE.LineBasicMaterial({ color: gold, transparent: true, opacity: 0.95 });
+      this.materials.push(this.wireMat, this.legendaryWireMat);
     }
   }
 
-  add(id: string, x: number, y: number, hp: number, maxHp: number): void {
+  add(id: string, x: number, y: number, hp: number, maxHp: number, legendary = false): void {
     if (this.entries.has(id)) return;
     const group = new THREE.Group();
-    const inner = new THREE.Mesh(this.boxGeo, this.innerMat);
+    const inner = new THREE.Mesh(this.boxGeo, legendary ? this.legendaryMat : this.innerMat);
     group.add(inner);
-    if (this.wireframeEnabled && this.wireGeo && this.wireMat) {
-      const wire = new THREE.LineSegments(this.wireGeo, this.wireMat);
+    const wireMat = legendary ? this.legendaryWireMat : this.wireMat;
+    if (this.wireframeEnabled && this.wireGeo && wireMat) {
+      const wire = new THREE.LineSegments(this.wireGeo, wireMat);
       group.add(wire);
     }
-    group.position.set(x, CRATE_SCALE, y);
+    if (legendary) group.scale.setScalar(LEGENDARY_SCALE);
+    const baseY = CRATE_SCALE * (legendary ? LEGENDARY_SCALE : 1);
+    group.position.set(x, baseY, y);
     this.root.add(group);
     this.entries.set(id, {
-      id, mesh: group, hp, maxHp,
+      id, mesh: group, baseY, hp, maxHp,
       bobPhase: Math.random() * Math.PI * 2,
       shake: 0,
     });
@@ -92,7 +116,7 @@ export class CrateRenderer {
     this.entries.forEach((e) => {
       e.bobPhase += dt;
       const bob = Math.sin(elapsedSec * 1.6 + e.bobPhase) * 0.15;
-      e.mesh.position.y = CRATE_SCALE + bob;
+      e.mesh.position.y = e.baseY + bob;
       e.mesh.rotation.y += dt * 0.6;
       if (e.shake > 0) {
         e.shake *= Math.exp(-dt / 0.12);

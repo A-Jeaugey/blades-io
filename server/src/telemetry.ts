@@ -105,3 +105,49 @@ function warn(message: string): void {
   lastWarnAt = now;
   console.warn("[blade.io] life_stats insert failed:", message);
 }
+
+// Évènement de carte fini (tâche 4.4) : une ligne dans map_events
+// (migration 0012) avec la part des joueurs venus jusqu'à lui.
+export interface MapEventRecord {
+  roomPrivate: boolean;
+  gameMode: GameModeId;
+  kind: "rain" | "crate" | "golden";
+  durationMs: number;
+  humans: number;
+  humansReached: number;
+  bots: number;
+  botsReached: number;
+}
+
+export function recordMapEvent(rec: MapEventRecord): void {
+  trackWrite(insertMapEvent(rec));
+}
+
+async function insertMapEvent(rec: MapEventRecord): Promise<void> {
+  const admin = getAdminClient();
+  if (!admin) return;
+  try {
+    const { error } = await admin.from("map_events").insert({
+      room_private: rec.roomPrivate,
+      game_mode: rec.gameMode,
+      kind: rec.kind,
+      duration_ms: Math.max(0, Math.round(rec.durationMs)),
+      humans: small(rec.humans),
+      humans_reached: small(rec.humansReached),
+      bots: small(rec.bots),
+      bots_reached: small(rec.botsReached),
+    });
+    if (error) warnEvents(error.message);
+  } catch (e) {
+    warnEvents((e as Error).message);
+  }
+}
+
+// Comme pour life_stats : un avertissement par minute au plus.
+let lastEventWarnAt = 0;
+function warnEvents(message: string): void {
+  const now = Date.now();
+  if (now - lastEventWarnAt < 60_000) return;
+  lastEventWarnAt = now;
+  console.warn("[blade.io] map_events insert failed:", message);
+}

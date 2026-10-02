@@ -39,6 +39,7 @@ export const en = {
   "hud.fxSpin": "SPIN",
   "hud.fxMagnet": "MAGNET",
   "hud.fxShield": "SHIELD",
+  "hud.fxGolden": "POINTS ×2",
   "hud.leaderboard": "TROPHIES",
   "hud.bot": "BOT",
   // Partie à fin (manches, tâche 7.1)
@@ -88,6 +89,9 @@ export const en = {
   "flag.toast.needHome": "Your flag must be home before you can score",
   "flag.toast.scored": "Point for your team!",
   "flag.toast.conceded": "They scored",
+  "event.rain": "Blade rain in 5 s: check the map!",
+  "event.crate": "A legendary crate just appeared: check the map!",
+  "event.golden": "Golden zone in the center in 5 s: points ×2 for 30 s",
 
   // Fil des éliminations
   "feed.border": "BORDER",
@@ -258,10 +262,10 @@ export const en = {
   "profile.durS": "{s} s",
   "profile.durMin": "{m} min {s} s",
   "profile.durH": "{h} h {m} min",
-  "lobby.patch1": "<b>NEW</b> team modes · deathmatch, last team, capture the flag",
-  "lobby.patch2": "<b>NEW</b> rounds · 5 minutes, shrinking arena, podium",
-  "lobby.patch3": "<b>NEW</b> cosmetics · skins, trails, daily deals",
-  "lobby.patch4": "<b>NEW</b> levels, challenges and seasons",
+  "lobby.patch1": "<b>NEW</b> map events · blade rain, legendary crate, golden zone",
+  "lobby.patch2": "<b>NEW</b> team modes · deathmatch, last team, capture the flag",
+  "lobby.patch3": "<b>NEW</b> rounds · 5 minutes, shrinking arena, podium",
+  "lobby.patch4": "<b>NEW</b> cosmetics · skins, trails, daily deals",
   "lobby.build": "BUILD",
   "lobby.topTrophies": "TOP\u00a0TROPHIES",
   "lobby.loading": "loading…",
@@ -379,6 +383,7 @@ export const en = {
   "howto.trophies2": "They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.",
   "howto.rounds": "<b>ROUNDS</b> (game mode, in the lobby): 5-minute rounds, and the arena shrinks during the last minute. Your points add up over all your lives in the round; the top 3 earn 150, 100 and 50 trophies (public games).",
   "howto.teams": "<b>TEAM MODES</b> (private rooms, bots optional): two teams, ◆ marks yours (ring, name, map). <b>TEAM DEATHMATCH</b>: first team to 30 kills. <b>LAST TEAM STANDING</b>: no respawn, the arena shrinks in the last minute; when you are out, you watch a teammate. <b>CAPTURE THE FLAG</b>: take their flag and bring it to your base while yours is home; touch your dropped flag to send it back. 3 captures win.",
+  "howto.events": "<b>MAP EVENTS</b> (arena, rounds, team deathmatch), every 90 to 120 s, with a banner: a <b>blade rain</b> on a zone shown 5 s before (dashed circle on the minimap), a <b>legendary crate</b> (★ on the minimap, ten times sturdier, a legendary and a pile of rare blades inside), or a <b>golden zone</b> in the center (double circle): for 30 s, every point you earn inside counts double.",
   "howto.cosmetics": "Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>, where three are 20% off each day (FEATURED) and every item can be tried on in 3D. They never change hitboxes, rarity colors or the rings on the ground.",
   "howto.resetTips": "SHOW IN-GAME TIPS AGAIN",
 

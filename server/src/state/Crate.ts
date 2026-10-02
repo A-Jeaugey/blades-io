@@ -8,4 +8,7 @@ export class Crate extends Schema {
   @type("float32") y: number = 0;
   @type("uint16") hp: number = 0;
   @type("uint16") maxHp: number = 0;
+  // Caisse légendaire d'un évènement de carte (tâche 4.4) : plus solide,
+  // butin à part.
+  @type("boolean") legendary: boolean = false;
 }

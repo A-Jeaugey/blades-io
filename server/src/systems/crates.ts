@@ -13,6 +13,7 @@ import {
   PRIVATE_ROOM_DENSITY_MULT,
   DECOR_COLLIDERS,
   GROUND_BLADE_TTL_MS,
+  LEGENDARY_CRATE_LOOT,
   RARITY_HP,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -100,13 +101,16 @@ export class CrateSystem {
     }
   }
 
+  // Caisse légendaire (évènement de carte, tâche 4.4) : son butin fixe,
+  // projeté plus loin, sinon le tirage habituel.
   destroyCrate(state: ArenaState, c: Crate): void {
-    const n = CRATE_DROP_MIN + Math.floor(Math.random() * (CRATE_DROP_MAX - CRATE_DROP_MIN + 1));
+    const loot = c.legendary ? LEGENDARY_CRATE_LOOT : null;
+    const n = loot ? loot.length : CRATE_DROP_MIN + Math.floor(Math.random() * (CRATE_DROP_MAX - CRATE_DROP_MIN + 1));
     const now = Date.now();
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
-      const speed = CRATE_DROP_SPEED * (0.5 + Math.random() * 0.5);
-      const rarity = pickCrateRarity();
+      const speed = CRATE_DROP_SPEED * (0.5 + Math.random() * 0.5) * (loot ? 1.5 : 1);
+      const rarity = loot ? loot[i] : pickCrateRarity();
       const b = new Blade();
       b.id = randomId();
       b.rarity = rarity;

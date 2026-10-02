@@ -17,27 +17,34 @@ export interface GameModeInfo {
   // On réapparaît après une élimination (dernière équipe en vie : non,
   // on regarde la fin de la manche).
   respawns: boolean;
+  // Évènements de carte (tâche 4.4) : pas dans les modes à objectif
+  // (dernière équipe en vie, drapeau), qu'ils détourneraient.
+  mapEvents: boolean;
 }
 
 // L'arène sans fin, le jeu d'origine.
 export const DEFAULT_GAME_MODE: GameModeId = "ffa";
 
 export const GAME_MODES: readonly GameModeInfo[] = [
-  { id: "ffa", quickPlay: true, privateRoom: true, shrinks: false, respawns: true },
+  { id: "ffa", quickPlay: true, privateRoom: true, shrinks: false, respawns: true, mapEvents: true },
   // Manches chronométrées (tâche 7.1). Décision D5 : en salon privé et dans
   // une file publique à part, en attendant la télémétrie
   // (life_stats_by_mode, migration 0011).
-  { id: "rounds", quickPlay: true, privateRoom: true, shrinks: true, respawns: true },
+  { id: "rounds", quickPlay: true, privateRoom: true, shrinks: true, respawns: true, mapEvents: true },
   // Modes équipe (tâche 7.2) : en salon privé, entre amis, bots en option
   // (le remplissage par des bots rééquilibre les équipes). La partie rapide
   // garde l'arène et les manches, pour ne pas disperser les joueurs.
-  { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true },
-  { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false },
-  { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true },
+  { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: true },
+  { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false, mapEvents: false },
+  { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false },
 ];
 
 export function modeShrinks(id: string): boolean {
   return GAME_MODES.some((m) => m.id === id && m.shrinks);
+}
+
+export function modeHasMapEvents(id: string): boolean {
+  return GAME_MODES.some((m) => m.id === id && m.mapEvents);
 }
 
 export function modeRespawns(id: string): boolean {

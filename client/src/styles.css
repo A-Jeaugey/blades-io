@@ -1616,7 +1616,18 @@ body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0
   .fs-chip { padding: 2px 7px; font-size: 11px; }
   body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0px) + 210px); }
   #top-right:has(#leaderboard:not(.collapsed)) ~ .match-timer { visibility: hidden; }
-  .challenge-toast { top: calc(var(--safe-t, 0px) + 92px); font-size: 13px; letter-spacing: .5px; }
+  /* Entre le bloc d'état (à gauche) et le bord droit : centrée, une
+     bannière longue passait sur l'état du joueur. */
+  .challenge-toast {
+    top: calc(var(--safe-t, 0px) + 92px);
+    left: 96px;
+    right: 10px;
+    transform: none;
+    width: auto;
+    max-width: none;
+    font-size: 13px;
+    letter-spacing: .5px;
+  }
   .podium-card { padding: 18px 14px 14px; }
   .podium-card h2 { font-size: 18px; letter-spacing: 2px; }
   /* Calé à droite, sous la minimap : centré, il passait sur le badge du

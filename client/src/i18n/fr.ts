@@ -41,6 +41,7 @@ export const fr: Record<keyof typeof en, string> = {
   "hud.fxSpin": "ROTATION",
   "hud.fxMagnet": "AIMANT",
   "hud.fxShield": "BOUCLIER",
+  "hud.fxGolden": "POINTS ×2",
   "hud.leaderboard": "TROPHÉES",
   "hud.bot": "BOT",
   // Partie à fin (manches, tâche 7.1)
@@ -90,6 +91,9 @@ export const fr: Record<keyof typeof en, string> = {
   "flag.toast.needHome": "Ton drapeau doit être à ta base pour marquer",
   "flag.toast.scored": "Point pour ton équipe !",
   "flag.toast.conceded": "Ils marquent",
+  "event.rain": "Pluie de lames dans 5 s : regarde la carte !",
+  "event.crate": "Une caisse légendaire vient d'apparaître : regarde la carte !",
+  "event.golden": "Zone dorée au centre dans 5 s : points ×2 pendant 30 s",
 
   // Fil des éliminations
   "feed.border": "BORDURE",
@@ -260,10 +264,10 @@ export const fr: Record<keyof typeof en, string> = {
   "profile.durS": "{s} s",
   "profile.durMin": "{m} min {s} s",
   "profile.durH": "{h} h {m} min",
-  "lobby.patch1": "<b>NOUVEAU</b> modes équipe · match à mort, dernière équipe, drapeau",
-  "lobby.patch2": "<b>NOUVEAU</b> manches · 5 minutes, arène qui se resserre, podium",
-  "lobby.patch3": "<b>NOUVEAU</b> cosmétiques · skins, traînées, offres du jour",
-  "lobby.patch4": "<b>NOUVEAU</b> niveaux, défis et saisons",
+  "lobby.patch1": "<b>NOUVEAU</b> évènements · pluie de lames, caisse légendaire, zone dorée",
+  "lobby.patch2": "<b>NOUVEAU</b> modes équipe · match à mort, dernière équipe, drapeau",
+  "lobby.patch3": "<b>NOUVEAU</b> manches · 5 minutes, arène qui se resserre, podium",
+  "lobby.patch4": "<b>NOUVEAU</b> cosmétiques · skins, traînées, offres du jour",
   "lobby.build": "VERSION",
   "lobby.topTrophies": "TOP\u00a0TROPHÉES",
   "lobby.loading": "chargement…",
@@ -381,6 +385,7 @@ export const fr: Record<keyof typeof en, string> = {
   "howto.trophies2": "Ils sont aussi ton XP : les dépenser ne fait pas baisser ton niveau, affiché à côté de ton pseudo. Nouveaux titres aux niveaux 5, 10, 20, 30, 50, 75 et 100.",
   "howto.rounds": "<b>MANCHES</b> (mode de jeu, au lobby) : des manches de 5 minutes, et l'arène se resserre pendant la dernière. Tes points s'additionnent sur toutes tes vies de la manche ; les trois premiers gagnent 150, 100 et 50 trophées (parties publiques).",
   "howto.teams": "<b>MODES ÉQUIPE</b> (salons privés, bots en option) : deux équipes, ◆ marque la tienne (anneau, pseudo, carte). <b>MATCH À MORT</b> : la première équipe à 30 éliminations. <b>DERNIÈRE ÉQUIPE</b> : sans réapparition, l'arène se resserre pendant la dernière minute ; éliminé, tu suis un coéquipier. <b>CAPTURE DU DRAPEAU</b> : prends leur drapeau et rapporte-le à ta base pendant que le tien y est ; touche ton drapeau tombé pour le renvoyer chez toi. 3 captures pour gagner.",
+  "howto.events": "<b>ÉVÈNEMENTS DE CARTE</b> (arène, manches, match à mort), toutes les 90 à 120 s, avec une bannière : une <b>pluie de lames</b> sur une zone montrée 5 s avant (cercle en pointillés sur la minimap), une <b>caisse légendaire</b> (★ sur la minimap, dix fois plus solide, une légendaire et un paquet de lames rares dedans) ou une <b>zone dorée</b> au centre (double cercle) : pendant 30 s, tout point gagné dedans compte double.",
   "howto.cosmetics": "Cosmétiques : skins, styles de lames, traînées et effets d'élimination, vus de tous. Ils se débloquent en montant de niveau (du niveau 2 au 30) ou s'achètent en <b>BOUTIQUE</b>, où trois sont à -20\u00a0% chaque jour (À LA UNE) et où tout s'essaie en 3D. Ils ne changent jamais les hitbox, les couleurs de rareté ni les anneaux au sol.",
   "howto.resetTips": "REVOIR LES CONSEILS EN JEU",
 
