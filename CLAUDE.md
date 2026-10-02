@@ -119,7 +119,9 @@ client/src/
 - **Zone d'intérêt** (`server/src/systems/interest.ts`) : chaque client ne
   reçoit que les joueurs et les lames proches (`@view()` sur
   `players`/`blades`, rayon annoncé par le client via le message `view`,
-  borné par `VIEW_RADIUS_*`), et jamais un joueur caché dans un buisson
+  borné par `viewRadiusLimit` de `shared/src/camera.ts` : `VIEW_RADIUS_MAX`,
+  plus en proportion du recul de caméra que donnent au joueur ses propres
+  lames, appliqué à chaque calcul), et jamais un joueur caché dans un buisson
   tant que les orbites ne peuvent pas se toucher (`isHiddenFrom`, aussi
   appliqué aux bots). Le client ne doit donc jamais supposer qu'il a tous
   les joueurs : classement, rang et minimap viennent du message `summary`
@@ -564,8 +566,11 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   (absent par défaut), en salon privé, où rien ne compte (ni trophées, ni
   classement, ni défis, ni record local, télémétrie marquée
   `room_private`), et d'un joueur en vie. Test : `server/test/cheat.test.ts`.
-- **Grosses orbites** : `narrowPhaseClash` (`systems/collisions.ts`) ne
-  teste que les lames de la zone où deux orbites se recouvrent
+- **Grosses orbites** : plafond `MAX_BLADES_PER_PLAYER` = 2000 lames
+  (21 anneaux, 17,8 u de rayon), bien au-delà d'une partie normale (au
+  banc de 60 bots, le plus gros plafonne vers 20 lames) ; la triche y va
+  d'un coup. `narrowPhaseClash` (`systems/collisions.ts`) ne teste que les
+  lames de la zone où deux orbites se recouvrent
   (`contactLens`, rayon mesuré sur les positions du tick) : filtre exact,
   mêmes clashs dans le même ordre que le test de toutes les paires (test
   « grosses orbites » de `collisions.test.ts`). Pendant les collisions, les
@@ -700,7 +705,11 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   on perd la perception des menaces ; le top-down strict est laid). La
   distance suit l'orbite et le format d'écran (`CameraRig`) ; tout ce qui
   dépend de la distance à la caméra (brouillard, plan lointain) doit la
-  suivre aussi (`SceneStack.setViewDistance`).
+  suivre aussi (`SceneStack.setViewDistance`). Recul selon l'orbite :
+  `cameraZoom` (`shared/src/camera.ts`), jusqu'à ×2 pour que l'orbite du
+  plafond de lames tienne à l'écran ; le serveur en déduit la zone
+  d'intérêt maximale d'un joueur (`viewRadiusLimit`) : changer l'un change
+  l'autre.
 
 ---
 

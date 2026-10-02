@@ -42,10 +42,13 @@ export const PLAYER_BODY_COLLISION = 1.0;
 // Marge ajoutée au rayon de l'orbite pour le push-out joueur-joueur (les
 // orbites se touchent juste, sans se chevaucher).
 export const PLAYER_ORBIT_PUSH_MARGIN = 0.05;
-// Effectivement déplafonné : 500 = au-delà de ce qu'un joueur peut atteindre
-// dans une partie normale. Le but du jeu reste "monter le plus haut score"
-// (= maxBladeCount, leaderboard) — pas de plafond artificiel à 120.
-export const MAX_BLADES_PER_PLAYER = 500;
+// Effectivement déplafonné : bien au-delà de ce qu'une partie normale permet
+// (au banc de 60 bots, le plus gros plafonne vers 20 lames). Le but du jeu
+// reste "monter le plus haut score" (= maxBladeCount, leaderboard). À 2000
+// lames, 21 anneaux et 17,8 u de rayon : la caméra recule jusque-là
+// (CAMERA_ZOOM_MAX) et le serveur encaisse le contact de deux orbites
+// pleines (narrowPhaseClash ne teste que leur zone de recouvrement).
+export const MAX_BLADES_PER_PLAYER = 2000;
 export const INITIAL_BLADE_COUNT = 3;
 export const BOOST_DRAIN_INTERVAL = 0.5; // une lame toutes les 0.5s de boost
 export const LOW_BLADE_WARNING = 3;
@@ -188,10 +191,13 @@ export const CAMERA_DISTANCE = 27;
 // en portrait, on voit plus loin devant soi que sur un écran large.
 export const CAMERA_MIN_VIEW_WIDTH = 41;
 // Recul avec l'orbite extérieure : +6 % de distance par unité de rayon
-// au-delà du premier anneau (1,8 u), plafonné à +40 % (vers 9 u de rayon).
+// au-delà du premier anneau (1,8 u), plafonné à +100 % (vers 18,5 u de
+// rayon) : l'orbite du plafond de lames (17,8 u) tient à l'écran, avec 24 u
+// visibles sous le joueur en 16:9. Arrêté à +40 %, elle en débordait par le
+// bas. Formule : cameraZoom (camera.ts).
 export const CAMERA_ZOOM_ORBIT_BASE = 1.8;
 export const CAMERA_ZOOM_PER_UNIT = 0.06;
-export const CAMERA_ZOOM_MAX = 1.4;
+export const CAMERA_ZOOM_MAX = 2.0;
 
 // --- Throw (lancer de lame) ---
 // Cooldown entre deux lancers (ms). Volontairement court (0.5 s) : il faut
@@ -275,12 +281,15 @@ export const SPAWN_GRACE_CHASE_RADIUS = 15;
 // --- Zone d'intérêt (tâche 2.4) ---
 // Chaque client ne reçoit que les joueurs et les lames proches de lui.
 // Rayon : distance au point du sol visible le plus éloigné de l'écran,
-// annoncée par le client (50 u en 16:9 au plus près, ~133 u pour un
-// téléphone en portrait au recul maximal), bornée ici, plus une marge pour
+// annoncée par le client (50 u en 16:9 au plus près, ~136 u pour un
+// téléphone en portrait au recul ×1,4), bornée ici, plus une marge pour
 // que rien n'apparaisse au bord de l'écran. Valeur par défaut jusqu'à la
-// première annonce.
+// première annonce. Borne : VIEW_RADIUS_MAX jusqu'au recul
+// VIEW_RADIUS_MAX_ZOOM, puis en proportion du recul de la caméra du joueur
+// (viewRadiusLimit, ~196 u au plafond de lames).
 export const VIEW_RADIUS_MIN = 50;
 export const VIEW_RADIUS_MAX = 140;
+export const VIEW_RADIUS_MAX_ZOOM = 1.4;
 export const VIEW_RADIUS_DEFAULT = 100;
 export const VIEW_RADIUS_MARGIN = 8;
 // Résumé de la room (classement, minimap) envoyé à tous, sans les joueurs

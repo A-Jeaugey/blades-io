@@ -4,9 +4,7 @@ import {
   CAMERA_FOV_DEG,
   CAMERA_MIN_VIEW_WIDTH,
   CAMERA_PITCH_DEG,
-  CAMERA_ZOOM_MAX,
-  CAMERA_ZOOM_ORBIT_BASE,
-  CAMERA_ZOOM_PER_UNIT,
+  cameraZoom,
 } from "@bladeio/shared";
 import { ScreenShake } from "../fx/ScreenShake";
 
@@ -23,11 +21,6 @@ const HALF_FOV_TAN = Math.tan((CAMERA_FOV_DEG * Math.PI) / 360);
 export function aspectDistanceFactor(aspect: number): number {
   const width = 2 * CAMERA_DISTANCE * HALF_FOV_TAN * aspect;
   return Math.max(1, CAMERA_MIN_VIEW_WIDTH / width);
-}
-
-// Recul selon le rayon de l'orbite extérieure du joueur suivi.
-export function orbitZoom(outerRadius: number): number {
-  return Math.min(CAMERA_ZOOM_MAX, 1 + Math.max(0, outerRadius - CAMERA_ZOOM_ORBIT_BASE) * CAMERA_ZOOM_PER_UNIT);
 }
 
 // Cadrage : constantes de gameplay partagées (shared/), identiques pour tous
@@ -58,7 +51,7 @@ export class CameraRig {
 
   // Rayon de l'orbite extérieure du joueur suivi (0 hors partie).
   setOrbitRadius(outerRadius: number): void {
-    this.zoomTarget = orbitZoom(outerRadius);
+    this.zoomTarget = cameraZoom(outerRadius);
   }
 
   get viewDistance(): number {

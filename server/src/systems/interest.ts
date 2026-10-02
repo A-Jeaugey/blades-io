@@ -2,14 +2,15 @@ import { Client } from "@colyseus/core";
 import { StateView } from "@colyseus/schema";
 import {
   BUSH_REVEAL_MARGIN,
+  MAX_BLADES_PER_PLAYER,
   VIEW_RADIUS_DEFAULT,
   VIEW_RADIUS_MARGIN,
-  VIEW_RADIUS_MAX,
   VIEW_RADIUS_MIN,
   isInBush,
   outerOrbitRadius,
   tierBladeHitbox,
   sameTeam,
+  viewRadiusLimit,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
@@ -45,6 +46,9 @@ interface Viewer {
   playerId: string;
   // Rayon annoncé par le client (borné), marge non comprise.
   radius: number;
+  // Rayon appliqué au dernier calcul : l'annonce, bornée par le recul de
+  // caméra que ses lames donnent au joueur (viewRadiusLimit).
+  effective: number;
   // Centre de la zone au dernier calcul.
   cx: number;
   cy: number;
@@ -72,6 +76,9 @@ interface PlayerEntry {
 // Lames au sol et en vol, rangées par case pour ne parcourir que les cases
 // proches de chaque client.
 const CELL = 24;
+// Plus grand rayon qu'un client puisse annoncer : celui d'un joueur au
+// plafond de lames.
+const RADIUS_CAP = viewRadiusLimit(MAX_BLADES_PER_PLAYER);
 const cellKey = (cx: number, cy: number): number => (cx + 512) * 1024 + (cy + 512);
 
 export class InterestManager {
@@ -94,6 +101,7 @@ export class InterestManager {
       view,
       playerId: player.id,
       radius: VIEW_RADIUS_DEFAULT,
+      effective: VIEW_RADIUS_DEFAULT,
       cx: player.x,
       cy: player.y,
       players: new Set([player]),
@@ -117,11 +125,14 @@ export class InterestManager {
   }
 
   // Rayon annoncé par le client (ViewMessage), borné : un client modifié
-  // n'obtient pas plus qu'un écran de téléphone en portrait.
+  // n'obtient pas plus qu'un écran de téléphone en portrait, au recul que
+  // ses lames donnent à la caméra. Cette borne-là s'applique à chaque
+  // calcul (updateViewer) : un joueur qui perd ses lames la perd aussi,
+  // même sans nouvelle annonce.
   setRadius(sessionId: string, r: unknown): void {
     const v = this.viewers.get(sessionId);
     if (!v || typeof r !== "number" || !Number.isFinite(r)) return;
-    v.radius = Math.max(VIEW_RADIUS_MIN, Math.min(VIEW_RADIUS_MAX, r));
+    v.radius = Math.max(VIEW_RADIUS_MIN, Math.min(RADIUS_CAP, r));
   }
 
   update(state: ArenaState): void {
@@ -166,7 +177,8 @@ export class InterestManager {
     const cy = me.y;
     v.cx = cx;
     v.cy = cy;
-    const r = v.radius + VIEW_RADIUS_MARGIN;
+    v.effective = Math.min(v.radius, viewRadiusLimit(me.p.bladeCount));
+    const r = v.effective + VIEW_RADIUS_MARGIN;
     const players = v.nextPlayers;
     const blades = v.nextBlades;
     players.clear();
@@ -253,7 +265,7 @@ export class InterestManager {
       if (b && v.blades.has(b)) return true;
     }
     if (scope.at) {
-      const r = v.radius + VIEW_RADIUS_MARGIN;
+      const r = v.effective + VIEW_RADIUS_MARGIN;
       const dx = scope.at.x - v.cx;
       const dy = scope.at.y - v.cy;
       if (dx * dx + dy * dy <= r * r) return true;

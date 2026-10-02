@@ -3,11 +3,11 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { Decoder } from "@colyseus/schema";
-import { BUSHES, VIEW_RADIUS_MAX, VIEW_RADIUS_MIN } from "@bladeio/shared";
+import { BUSHES, MAX_BLADES_PER_PLAYER, VIEW_RADIUS_MAX, VIEW_RADIUS_MIN, viewRadiusLimit } from "@bladeio/shared";
 import { ArenaState } from "../src/state/ArenaState";
 import { Player } from "../src/state/Player";
 import { InterestManager } from "../src/systems/interest";
-import { FakeClock, addGroundBlade, addPlayer, giveBlade, seedRandom } from "./helpers";
+import { FakeClock, addGroundBlade, addPlayer, giveBlade, ownedBlades, seedRandom } from "./helpers";
 import { TestRoom } from "./testRoom";
 
 let clock: FakeClock;
@@ -182,6 +182,16 @@ test("zone d'intérêt : rayon annoncé par le client, borné", () => {
   assert.ok(!received(r, "me").players.has("other"));
   interest.setRadius("me", Number.NaN);
   interest.setRadius("me", "200");
+  r.tick(2); // vues recalculées un tick sur deux
+  assert.ok(!received(r, "me").players.has("other"));
+  // Un géant reçoit ce que montre sa caméra, qui recule avec son orbite...
+  assert.ok(viewRadiusLimit(MAX_BLADES_PER_PLAYER) > VIEW_RADIUS_MAX + 40);
+  interest.setRadius("me", 1e6);
+  r.room.giveBlades(me, MAX_BLADES_PER_PLAYER - me.bladeCount);
+  r.tick(2); // vues recalculées un tick sur deux
+  assert.ok(received(r, "me").players.has("other"));
+  // ... et le perd avec ses lames, sans nouvelle annonce.
+  for (const blade of ownedBlades(r.state, me).slice(3)) r.room.handleBladeDestroyed(blade);
   r.tick(2); // vues recalculées un tick sur deux
   assert.ok(!received(r, "me").players.has("other"));
 });

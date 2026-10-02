@@ -44,8 +44,8 @@ test("triche : 50 lames par défaut en salon privé, de la rareté demandée", (
 test("triche : plafond de lames, même pour deux demandes dans le même tick", () => {
   const r = new TestRoom(clock, { code: "TESTS" });
   const p = r.join("a");
-  cheat(r, "a", { blades: 400 });
-  assert.deepEqual(cheat(r, "a", { blades: 400 }), [{ ok: true, blades: MAX_BLADES_PER_PLAYER - INITIAL_BLADE_COUNT - 400 }]);
+  cheat(r, "a", { blades: MAX_BLADES_PER_PLAYER - INITIAL_BLADE_COUNT - 100 });
+  assert.deepEqual(cheat(r, "a", { blades: 400 }), [{ ok: true, blades: 100 }]);
   assert.equal(ownedBlades(r.state, p).length, MAX_BLADES_PER_PLAYER);
   assert.deepEqual(cheat(r, "a", { blades: 1 }), [{ ok: false, reason: "full" }]);
 });

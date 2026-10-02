@@ -37,7 +37,7 @@ import {
   PickupEvent,
   PlayerKilledEvent,
   RoomSummary,
-  VIEW_RADIUS_MAX,
+  viewRadiusLimit,
   ProjectileImpactEvent,
   POWERUP_DURATION,
   PowerUpPickupEvent,
@@ -2044,7 +2044,8 @@ class Game {
   // (format d'écran, recul selon l'orbite), à 4 u près.
   private announceView(now: number): void {
     this.nextViewCheckAt = now + 500;
-    const r = Math.min(VIEW_RADIUS_MAX, Math.ceil(this.camera.visibleExtent()));
+    const blades = this.room?.state?.players?.get(this.myId)?.bladeCount ?? 0;
+    const r = Math.min(viewRadiusLimit(blades), Math.ceil(this.camera.visibleExtent()));
     if (Math.abs(r - this.sentViewRadius) < 4) return;
     this.sentViewRadius = r;
     this.room?.send("view", { r });
