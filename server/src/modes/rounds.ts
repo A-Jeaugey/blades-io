@@ -1,5 +1,4 @@
 import {
-  MAP_RADIUS,
   ROUND_DURATION_MS,
   ROUND_INTERMISSION_MS,
   ROUND_PODIUM_BONUS,
@@ -74,10 +73,11 @@ export class RoundsMode implements GameMode {
   }
 
   // Le rayon suit la minuterie (synchronisé : le client dessine le mur
-  // là où il tue) ; la manche finit à l'échéance.
+  // là où il tue), à partir de celui de la population (4.5) ; la manche
+  // finit à l'échéance.
   tick(now: number): void {
     const state = this.host.state;
-    const radius = roundArenaRadius(MAP_RADIUS, now, state.phaseEndsAt);
+    const radius = roundArenaRadius(this.host.baseRadius, now, state.phaseEndsAt);
     if (state.mapRadius !== radius) state.mapRadius = radius;
     if (now >= state.phaseEndsAt) this.host.endMatch(ROUND_INTERMISSION_MS);
   }
@@ -86,6 +86,6 @@ export class RoundsMode implements GameMode {
     this.records.clear();
     const state = this.host.state;
     state.phaseEndsAt = now + ROUND_DURATION_MS;
-    state.mapRadius = MAP_RADIUS;
+    state.mapRadius = this.host.baseRadius;
   }
 }

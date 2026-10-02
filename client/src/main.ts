@@ -48,6 +48,7 @@ import {
   isTeamMode,
   modeRespawns,
   modeShrinks,
+  ROUND_SHRINK_MS,
   sameTeam,
   teamBase,
   tierClashShake,
@@ -57,7 +58,7 @@ import { Connection, JoinOptions, resolveServerEndpoint, RoomNotFoundError } fro
 import { ServerClock } from "./net/ServerClock";
 import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
 import { SceneStack } from "./scene/Scene";
-import { BoundaryWall, createGround, createBoundaryWall } from "./scene/Ground";
+import { BoundaryWall, GroundSurface, createGround, createBoundaryWall } from "./scene/Ground";
 import { createDecor } from "./scene/Decor";
 import { PostFX } from "./scene/PostFX";
 import { CameraRig } from "./scene/Camera";
@@ -166,7 +167,7 @@ class Game {
   private sceneStack: SceneStack;
   private postFx: PostFX;
   private camera: CameraRig;
-  private ground: { mesh: THREE.Mesh; update: (t: number) => void };
+  private ground: GroundSurface;
   private wall: BoundaryWall;
   private decor: { group: THREE.Object3D; update: (t: number) => void };
   private players = new Map<string, PlayerView>();
@@ -184,6 +185,11 @@ class Game {
   private mapEventView!: MapEventView;
   private mapEventSnap: MapEventSnapshot = { kind: MapEventKind.None, x: 0, y: 0, radius: 0, startsAt: 0, endsAt: 0 };
   private lastEventKind: number = MapEventKind.None;
+  // Resserrement de l'arène annoncé (tâche 4.5) : échéance déjà signalée,
+  // et rayon où le mur s'arrêtera, montré au sol et sur la minimap (0 :
+  // aucun).
+  private lastShrinkAt = 0;
+  private shownArenaTarget = 0;
   // Durée max observée pour chaque effet actif local — sert à normaliser
   // la barre du badge dans le HUD (sinon on ne sait pas combien il restait
   // au départ).
@@ -518,6 +524,7 @@ class Game {
       this.mapEventView.setFlashIntensity(s.flashes);
       this.particles.setFlashIntensity(s.flashes);
       this.borderWarning.setFlashIntensity(s.flashes);
+      this.wall.setFlashIntensity(s.flashes);
     });
     this.settings.onQuit(() => {
       this.returnToMenu();
@@ -1586,6 +1593,27 @@ class Game {
     }
   }
 
+  // Arène qui se resserre faute de joueurs (tâche 4.5) : la future limite
+  // au sol et sur la minimap, bannière et bip à l'annonce. Pas pendant la
+  // dernière minute d'une manche : le mur y va plus loin que ce repère, et
+  // « vers le centre » est déjà annoncé.
+  private updateArenaShrink(serverNowMs: number): void {
+    const state = this.room?.state;
+    const at: number = state?.arenaShrinkAt ?? 0;
+    const target: number = state?.arenaTarget ?? 0;
+    const roundEnding = modeShrinks(state?.mode ?? "ffa")
+      && state?.phase === MatchPhase.Playing
+      && (state?.phaseEndsAt ?? 0) - serverNowMs <= ROUND_SHRINK_MS;
+    const shown = at > 0 && target > 0 && target < this.arenaRadius() - 0.5 && !roundEnding && !this.matchOver();
+    this.shownArenaTarget = shown ? target : 0;
+    this.wall.setTarget(this.shownArenaTarget, serverNowMs < at);
+    if (at === this.lastShrinkAt) return;
+    this.lastShrinkAt = at;
+    if (!shown || serverNowMs >= at) return;
+    this.toasts.push(t("arena.shrinkNotice", { s: Math.max(1, Math.round((at - serverNowMs) / 1000)) }));
+    this.sound.borderWarning(0.5);
+  }
+
   // Évènement de carte (tâche 4.4) : bannière et son à son annonce (ou à
   // l'arrivée en cours d'évènement), zone au sol à chaque image.
   private updateMapEvent(serverNowMs: number): void {
@@ -2074,7 +2102,7 @@ class Game {
     if (mev.kind !== MapEventKind.None) {
       events.push({ kind: mev.kind, x: mev.x, y: mev.y, radius: mev.radius, active: this.serverNow() >= mev.startsAt });
     }
-    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events);
+    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events, this.shownArenaTarget);
   }
 
   // Pilote la résolution dynamique et le downgrade auto de preset.
@@ -2266,6 +2294,8 @@ class Game {
       this.ground.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);
       this.wall.setRadius(this.arenaRadius());
+      this.ground.setRadius(this.arenaRadius());
+      this.updateArenaShrink(serverNowMs);
       this.updateMatchUi(serverNowMs);
       this.updateFlags(myTeam, dt, serverNowMs);
       this.updateMapEvent(serverNowMs);

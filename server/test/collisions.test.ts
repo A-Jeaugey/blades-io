@@ -213,6 +213,43 @@ test("corps à corps : deux joueurs sans lame meurent tous les deux", () => {
   assert.deepEqual(new Set(r.kills.map((k) => k.victim.id)), new Set([a.id, b.id]));
 });
 
+test("débutant en grâce : les bots ne le tuent pas, un humain si ; après, si", () => {
+  // Première partie, 10 s de grâce (tâche 4.5) : « les bots te laissent
+  // tranquille », lames et corps compris.
+  const bot = addPlayer(state, { x: 0, y: 0, blades: 1, isBot: true });
+  const newbie = addPlayer(state, { x: 2.5, y: 0 });
+  newbie.newcomer = true;
+  newbie.graceUntil = clock.now + 5000;
+  const blade = ownedBlades(state, bot)[0];
+  cache.set(blade.id, 1.8, 0);
+  let r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(r.kills.length, 0);
+  // Corps à corps contre un bot sans lame (le bot armé à l'écart) :
+  // personne ne meurt.
+  bot.x = -50;
+  cache.set(blade.id, -48.2, 0);
+  const bare = addPlayer(state, { x: 3.3, y: 0, isBot: true });
+  r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(r.kills.length, 0);
+  state.players.delete(bare.id);
+  bot.x = 0;
+  cache.set(blade.id, 1.8, 0);
+  // Un humain, lui, le tue.
+  bot.isBot = false;
+  r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.deepEqual(r.kills.map((k) => k.victim.id), [newbie.id]);
+  // Grâce finie : un bot aussi.
+  newbie.alive = true;
+  bot.isBot = true;
+  newbie.graceUntil = 0;
+  r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.deepEqual(r.kills.map((k) => k.victim.id), [newbie.id]);
+});
+
 test("caisse : dégâts de la rareté, destruction à 0 PV", () => {
   const a = addPlayer(state, { x: 0, y: 0, rarity: BladeRarity.Legendary, blades: 1 });
   cache.set(ownedBlades(state, a)[0].id, 1.8, 0);

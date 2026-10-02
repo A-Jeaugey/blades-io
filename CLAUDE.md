@@ -435,12 +435,45 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `server/src/modes/rounds.ts`) : 5 minutes, points de toutes les vies de
   la manche (`standing`), trophées du podium (`rankBonus`, crédités par la
   room en public), minuterie et podium côté client (`ui/MatchUi.ts`).
-  **Rayon de l'arène** : `state.mapRadius` (synchronisé) se resserre
-  pendant la dernière minute d'une manche ; tout ce qui dépend du bord le
-  lit, jamais `MAP_RADIUS` : mur tueur, apparitions et butin
-  (`zoneInner`, `systems/spawnPoint.ts`), lancers, bots
-  (`botSafeRadius`), et côté client `arenaRadius()` (mur, minimap, alerte
-  de bord). Seuls le sol et ses décors gardent la taille de la carte.
+  **Rayon de l'arène** : `state.mapRadius` (synchronisé) suit la
+  population (tâche 4.5, ci-dessous) et se resserre pendant la dernière
+  minute d'une manche ; tout ce qui dépend du bord le lit, jamais
+  `MAP_RADIUS` : mur tueur, apparitions et butin (`zoneInner`,
+  `systems/spawnPoint.ts`), lancers, bots (`botSafeRadius`), et côté
+  client `arenaRadius()` (mur, sol, minimap, alerte de bord). Le sol et
+  ses décors gardent la taille de la carte ; le sol s'éteint au-delà du
+  mur.
+- **Arène à la taille de sa population (tâche 4.5)** : rayon
+  `populationRadius(n)` (`shared/src/arena.ts`) : ~155 u à 3 joueurs,
+  171 u pour un humain et ses dix bots, la carte entière (250 u) à 60 ;
+  n est la plus haute population, bots compris, des 20 dernières
+  secondes. `ArenaSizer` (`server/src/systems/arenaSize.ts`) en tire le
+  rayon de base (`ModeHost.baseRadius`) dans les modes `adaptiveArena`
+  (arène, manches) ; les modes équipe gardent `MAP_RADIUS` (camps à
+  160 u du centre). Le mur recule tout de suite (4 u/s au moins, la
+  moitié de l'écart par seconde pour un afflux) ; il n'avance qu'après un
+  préavis de 10 s (`arenaShrinkAt` et `arenaTarget` dans l'état), à
+  1,5 u/s, bien moins vite qu'un joueur (11 u/s). Une room naît petite et
+  grandit avec ses arrivées : sans place dégagée, un bot apparaît au plus
+  à l'écart (`randomSpawnPoint`), jamais empilé au centre. Pendant le
+  préavis, ce qui apparaît vise déjà la cible (`zoneRadius`) ; caisses et
+  power-ups restés dehors sont retirés (`applyWallDamage`). Client :
+  bannière, future limite en tirets au sol (`BoundaryWall.setTarget`) et
+  sur la minimap, sol éteint au-delà du mur (`GroundSurface.setRadius`).
+  Le butin garde la densité de la carte entière : plafonds des lames au
+  sol, des caisses et des power-ups multipliés par la part de surface de
+  l'arène (`areaShare`). Il n'apparaît jamais dans la bande que les bots
+  évitent (`LOOT_WALL_MARGIN`, `systems/spawnPoint.ts`), et un bot ne vise
+  rien au-delà (`botReachRadius`, `systems/bots.ts`) : sinon il oscillait
+  entre sa cible et le mur, et dans une petite arène tous les bots
+  finissaient collés au bord, sans plus rien ramasser ni affronter.
+  Pendant la rampe de grâce d'un humain, seuls les bots faciles le
+  poursuivent, dans un rayon proportionnel à la taille de l'arène ; un
+  débutant garde sa grâce sur un contact (un lancer ou une élimination la
+  lèvent), et pendant sa grâce les bots ne peuvent pas le tuer
+  (`sparedByBots`, `systems/collisions.ts`, appliqué aussi aux lancers) ;
+  prendre le drapeau adverse lève la grâce. Les bancs lisent le bord du moment (`state.mapRadius`), jamais
+  `MAP_RADIUS`.
 - **Modes équipe (tâche 7.2)** : `Player.team` (0 hors équipe, 1 ou 2) et
   `sameTeam()` (`shared/src/modes.ts`). Deux alliés ne se touchent jamais :
   ni clash, ni lame ou corps qui tue (`systems/collisions.ts`), ni

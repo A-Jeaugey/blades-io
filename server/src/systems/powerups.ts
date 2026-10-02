@@ -16,7 +16,7 @@ import {
   RARITY_HP,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
-import { zoneInner } from "./spawnPoint";
+import { LOOT_WALL_MARGIN, areaShare, zoneInner } from "./spawnPoint";
 import { Blade } from "../state/Blade";
 import { Player } from "../state/Player";
 import { PowerUp } from "../state/PowerUp";
@@ -61,7 +61,7 @@ function insideAnyDecor(x: number, y: number, margin: number): boolean {
 
 function pickSpawnPoint(state: ArenaState): { x: number; y: number } | null {
   // Dans l'arène du moment (resserrée en fin de manche, tâche 7.1).
-  const innerRadius = zoneInner(state, 4);
+  const innerRadius = zoneInner(state, LOOT_WALL_MARGIN);
   for (let tries = 0; tries < 30; tries++) {
     const r = Math.sqrt(Math.random()) * innerRadius;
     const a = Math.random() * Math.PI * 2;
@@ -101,7 +101,8 @@ export class PowerUpSystem {
     this.timer += dt;
     if (this.timer >= POWERUP_SPAWN_INTERVAL) {
       this.timer = 0;
-      const want = targetCount(state.players.size, isPrivate);
+      // Densité de la carte entière, quelle que soit la taille de l'arène.
+      const want = Math.round(targetCount(state.players.size, isPrivate) * areaShare(state));
       const have = state.powerups.size;
       // Burst 4 pour remplir vite au début + combler rapidement les pickups.
       const spawns = Math.min(4, Math.max(0, want - have));

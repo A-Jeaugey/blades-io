@@ -3,6 +3,7 @@ import {
   BOT_MIN_PLAYERS,
   BOT_NAMES,
   BOT_THINK_INTERVAL,
+  MAP_RADIUS,
   PLAYER_SPEED,
   SPAWN_GRACE_CHASE_RADIUS,
   SPAWN_GRACE_RAMP_MS,
@@ -16,12 +17,28 @@ import {
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
 import { reachOf } from "./interest";
+import { zoneInner } from "./spawnPoint";
 
 // Rayon de sécurité : marge confortable pour que ni le corps, ni les lames
 // orbitantes ne touchent la zone de mort. Il suit le rayon de l'arène, qui
 // se resserre à la fin d'une manche (tâche 7.1).
 function botSafeRadius(arena: ArenaState): number {
   return arena.mapRadius - WALL_KILL_THICKNESS - 8;
+}
+
+// Au-delà, l'évitement du mur reprend la main (scoreAvoidWall, dès
+// botSafeRadius - 5) : un bot n'y vise rien. Sinon il oscille entre sa
+// cible et le mur sans jamais l'atteindre ; dans l'arène à la taille de sa
+// population (tâche 4.5), tous les bots d'une room finissaient collés à
+// cette limite, sans plus rien ramasser ni affronter. Le butin apparaît
+// en deçà (LOOT_WALL_MARGIN, systems/spawnPoint.ts).
+function botReachRadius(arena: ArenaState): number {
+  return botSafeRadius(arena) - 6;
+}
+
+function reachable(arena: ArenaState, x: number, y: number): boolean {
+  const r = botReachRadius(arena);
+  return x * x + y * y <= r * r;
 }
 
 // Marge entre l'orbite d'un bot et celle d'un joueur en période de grâce
@@ -436,12 +453,16 @@ export class BotController {
 
   // Rayon dans lequel un bot prend ce joueur en chasse : nul pendant la
   // grâce, puis croissant jusqu'au rayon du bot (selon son niveau) pendant
-  // la rampe (un nouveau venu n'est d'abord remarqué que de près).
-  private chaseRadiusFor(other: Player, nowMs: number, full: number): number {
+  // la rampe (un nouveau venu n'est d'abord remarqué que de près). Pendant
+  // la rampe, « de près » suit la taille de l'arène (tâche 4.5) : dans une
+  // arène plus petite, donc plus dense, autant de bots le remarquent que
+  // dans la carte entière.
+  private chaseRadiusFor(other: Player, nowMs: number, full: number, arena: ArenaState): number {
     if (other.graceUntil > nowMs) return 0;
     if (other.graceRampUntil <= nowMs) return full;
     const t = 1 - (other.graceRampUntil - nowMs) / SPAWN_GRACE_RAMP_MS;
-    return Math.min(full, SPAWN_GRACE_CHASE_RADIUS + (full - SPAWN_GRACE_CHASE_RADIUS) * Math.max(0, Math.min(1, t)));
+    const ramp = SPAWN_GRACE_CHASE_RADIUS + (full - SPAWN_GRACE_CHASE_RADIUS) * Math.max(0, Math.min(1, t));
+    return Math.min(full, ramp * Math.min(1, arena.mapRadius / MAP_RADIUS));
   }
 
   // Nouveau venu : débutant, ou joueur dans les 50 s qui suivent son
@@ -642,7 +663,7 @@ export class BotController {
         if (bot.bladeCount < other.bladeCount * BOUNTY_HUNT_RATIO) return;
       } else if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
       const profile = profileAgainst(st, other);
-      const radius = this.chaseRadiusFor(other, nowMs, profile.chaseRadius);
+      const radius = this.chaseRadiusFor(other, nowMs, profile.chaseRadius, arena);
       if (radius <= 0) return;
       if (this.hiddenFrom(bot, other)) return;
 
@@ -699,9 +720,15 @@ export class BotController {
 
   // Un bot difficile laisse les débutants tranquilles : ni poursuite, ni
   // lancer (les difficiles n'apparaissent plus quand il y en a, mais ceux
-  // qui étaient là restent).
+  // qui étaient là restent). Pendant la rampe de grâce d'un humain, seuls
+  // les bots faciles, qu'on distance et qui abandonnent, s'en prennent à
+  // lui : quand les bots ne restaient plus collés au bord de l'arène
+  // (tâche 4.5), on mourait deux à cinq fois plus souvent avant 30 s. Pas
+  // de répit gratuit : lancer ou toucher quelqu'un met fin à la rampe.
   private leavesAlone(bot: Player, st: BotState, other: Player): boolean {
-    return st.skill === BotSkill.Hard && isBeginner(other);
+    if (other.isBot) return false;
+    if (st.skill === BotSkill.Hard && isBeginner(other)) return true;
+    return st.skill !== BotSkill.Easy && other.graceRampUntil > Date.now();
   }
 
   private scoreFarmBlades(bot: Player, arena: ArenaState, st: BotState) {
@@ -716,6 +743,7 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > farmRadius) return;
+      if (!reachable(arena, b.x, b.y)) return;
       if (this.nearGraced(bot, b.x, b.y)) return;
 
       let score = 40 - d * 0.5;
@@ -745,6 +773,7 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > 60) return;
+      if (!reachable(arena, c.x, c.y)) return;
       if (this.nearGraced(bot, c.x, c.y)) return;
 
       let score = 35 - d * 0.5;
@@ -771,6 +800,7 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > 70) return;
+      if (!reachable(arena, pu.x, pu.y)) return;
       if (this.nearGraced(bot, pu.x, pu.y)) return;
 
       let score = 60 - d * 0.5;
@@ -795,7 +825,7 @@ export class BotController {
 
     if (distToTarget < 5 || st.actionType !== "wander") {
       for (let tries = 0; tries < 4; tries++) {
-        const r = Math.random() * (arena.mapRadius - WALL_KILL_THICKNESS - 10);
+        const r = Math.random() * Math.max(0, Math.min(zoneInner(arena, 10), botReachRadius(arena) - 4));
         const a = Math.random() * Math.PI * 2;
         tx = Math.cos(a) * r;
         ty = Math.sin(a) * r;

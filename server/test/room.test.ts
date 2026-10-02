@@ -93,7 +93,8 @@ test("drops : clignotent puis disparaissent, les lames ambiantes restent", () =>
   const victim = armed(r, "victim", 20);
   const far = r.join("far");
   victim.x = 0; victim.y = -20;
-  far.x = 150; far.y = 150;
+  // Loin, mais dans l'arène à la taille de deux joueurs (tâche 4.5).
+  far.x = 100; far.y = 100;
   // far est le leader : la victime lâche 70 % de ses lames (le leader lâche
   // tout, tâche 4.2).
   far.kills = 5;
@@ -393,7 +394,10 @@ test("mur : une lame désintégrée est signalée au-delà du bord de l'arène",
   // (WALL_ZAP_RADIUS dans client/src/main.ts) : ce test fige ce contrat.
   const r = new TestRoom(clock);
   const p = armed(r, "p1", 3);
-  const killRadius = MAP_RADIUS - WALL_KILL_THICKNESS;
+  // Le bord du moment : l'arène suit la population (tâche 4.5), le temps
+  // qu'elle atteigne la taille d'un joueur.
+  r.tick(60);
+  const killRadius = r.state.mapRadius - WALL_KILL_THICKNESS;
   p.x = killRadius - 1; // corps dans l'arène, orbite (1,8 u) qui déborde
   p.y = 0;
   // Un tour d'orbite complet (≤ 1,6 s au plus lent), quelle que soit la

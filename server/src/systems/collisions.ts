@@ -113,6 +113,16 @@ interface OwnerBucket {
   blades: OrbitingEntry[];
 }
 
+// Débutant (première partie) pendant sa grâce : les bots ne peuvent pas le
+// tuer (lames, corps, lancers). « Pendant 10 s, les bots te laissent
+// tranquille », à la lettre : ceux qui ne le visaient pas le tuaient encore
+// en le croisant (une poursuite, une fuite, un power-up), plus souvent
+// dans l'arène dense à la taille de sa population (tâche 4.5). Les clashs
+// lui coûtent toujours des lames ; le mur et les humains, la vie.
+export function sparedByBots(p: Player, nowMs: number): boolean {
+  return p.newcomer && !p.isBot && p.graceUntil > nowMs;
+}
+
 // lastHitAt : cooldown par paire (lame|lame ou lame|caisse), en secondes.
 // Tenu par la room : une Map de module aurait été partagée entre toutes
 // les rooms du process.
@@ -257,10 +267,12 @@ export function resolveCollisions(
     // Spawn protection : la cible ne peut pas être tuée pendant l'invuln.
     if (target.spawnProtected) continue;
     let killed = false;
+    const spared = sparedByBots(target.player, nowMs);
     for (const owner of owners) {
       if (owner.id === target.id || sameTeam(owner.team, target.team)) continue;
       // L'attaquant est protégé → ses lames ne font pas de dégât.
       if (owner.spawnProtected) continue;
+      if (spared && owner.player.isBot) continue;
       // Broad phase : la cible peut-elle être à portée d'une lame ?
       const cdx = owner.x - target.x;
       const cdy = owner.y - target.y;
@@ -302,6 +314,10 @@ export function resolveCollisions(
       const dy = a.y - b.y;
       if (dx * dx + dy * dy > BODY_COLLISION * BODY_COLLISION) continue;
       if (!a.player.alive || !b.player.alive) continue;
+      // Débutant en grâce contre un bot : aucun des deux ne meurt (le
+      // débutant est épargné, et il ne tue pas un bot sans lame d'un
+      // simple contact pendant ce temps).
+      if ((sparedByBots(a.player, nowMs) && b.player.isBot) || (sparedByBots(b.player, nowMs) && a.player.isBot)) continue;
       if (a.empty && b.empty) {
         cb.onPlayerKilled(a.player, b.player);
         cb.onPlayerKilled(b.player, a.player);

@@ -1,5 +1,6 @@
 import {
   DECOR_COLLIDERS,
+  MAP_RADIUS,
   PLAYER_BODY_RADIUS,
   SPAWN_CANDIDATES,
   SPAWN_CLEARANCE_BASE,
@@ -18,14 +19,42 @@ export interface Point {
   y: number;
 }
 
+// Marge entre le butin (lames ambiantes, caisses, power-ups) et le mur :
+// au-delà, les bots ne vont pas (bande d'évitement du mur, cf.
+// botReachRadius dans systems/bots.ts). Du butin qui y apparaissait leur
+// restait inaccessible et s'y accumulait (les lames ambiantes n'expirent
+// pas, le plafond se remplissait de lames hors d'atteinte) ; dans l'arène
+// à la taille de sa population (tâche 4.5), tous les bots d'une room
+// finissaient collés à cette limite, à le viser sans jamais l'atteindre.
+export const LOOT_WALL_MARGIN = 16;
+
 // Marge entre un point d'apparition et le mur : resserré, il avance (tâche
 // 7.1) ; l'apparition protège des murs SPAWN_PROTECTION_MS, puis il faut
 // avoir le temps de rentrer.
 const SPAWN_WALL_MARGIN = 20;
 
-// Rayon utile de l'arène du moment, marge au mur déduite.
+// Rayon de l'arène pour ce qui y apparaît (joueurs, lames, caisses,
+// power-ups, évènements) : celui du moment, ou la cible d'un resserrement
+// annoncé (tâche 4.5), pour ne rien faire naître dans la bande que le mur
+// va reprendre.
+export function zoneRadius(state: ArenaState): number {
+  return state.arenaTarget > 0 ? Math.min(state.mapRadius, state.arenaTarget) : state.mapRadius;
+}
+
+// Part de la carte qu'occupe l'arène (tâche 4.5) : les plafonds du butin
+// (lames ambiantes, caisses, power-ups), réglés pour la carte entière, en
+// suivent pour garder la même densité. À plafonds fixes, l'arène d'un
+// humain et de ses bots (171 u) doublait la densité : les bots, aimantés
+// par les power-ups toujours à portée, ne chassaient plus guère, et le
+// leader changeait deux fois moins souvent.
+export function areaShare(state: ArenaState): number {
+  const r = zoneRadius(state);
+  return Math.min(1, (r * r) / (MAP_RADIUS * MAP_RADIUS));
+}
+
+// Rayon utile de l'arène, marge au mur déduite.
 export function zoneInner(state: ArenaState, margin: number): number {
-  return Math.max(0, state.mapRadius - WALL_KILL_THICKNESS - margin);
+  return Math.max(0, zoneRadius(state) - WALL_KILL_THICKNESS - margin);
 }
 
 function inDecor(x: number, y: number): boolean {
@@ -112,23 +141,32 @@ export function pickSpawnPoint(state: ArenaState, camp?: SpawnCamp): Point {
 
 // Point d'apparition d'un bot : uniforme dans presque toute l'arène, à
 // 25 u au moins des joueurs vivants. Les bots se répartissent sur toute la
-// carte au lieu de se concentrer dans la zone des nouveaux venus.
+// carte au lieu de se concentrer dans la zone des nouveaux venus. Sans
+// point assez dégagé, le plus à l'écart des tirages : au centre, comme
+// avant, ils s'empilaient dès que l'arène était pleine (petite arène d'une
+// room qui se remplit d'un coup, tâche 4.5).
 export function randomSpawnPoint(state: ArenaState): Point {
   const innerRadius = zoneInner(state, 5);
+  let best: Point | null = null;
+  let bestGap = -1;
   for (let tries = 0; tries < 30; tries++) {
     const r = Math.sqrt(Math.random()) * innerRadius * 0.8;
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r;
     const y = Math.sin(a) * r;
     if (inDecor(x, y)) continue;
-    let ok = true;
+    let gap2 = Infinity;
     state.players.forEach((p) => {
       if (!p.alive) return;
       const dx = p.x - x;
       const dy = p.y - y;
-      if (dx * dx + dy * dy < 25 * 25) ok = false;
+      gap2 = Math.min(gap2, dx * dx + dy * dy);
     });
-    if (ok) return { x, y };
+    if (gap2 >= 25 * 25) return { x, y };
+    if (gap2 > bestGap) {
+      bestGap = gap2;
+      best = { x, y };
+    }
   }
-  return resolveDecorCollision(0, 0, PLAYER_BODY_RADIUS);
+  return best ?? resolveDecorCollision(0, 0, PLAYER_BODY_RADIUS);
 }

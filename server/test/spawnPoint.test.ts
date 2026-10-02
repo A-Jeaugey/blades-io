@@ -126,6 +126,22 @@ test("grâce : un clash avec un bot lancé à sa poursuite ne la lève pas", () 
   assert.equal(p.graceRampUntil, 0);
 });
 
+test("grâce : un débutant la garde sur un contact, pas sur un lancer", () => {
+  // Première partie : un contact est presque toujours un frôlement ; dans
+  // l'arène à la taille de sa population (tâche 4.5), il perdait sa grâce
+  // avant 10 s une fois sur deux.
+  const r = new TestRoom(clock);
+  const p = r.join("p1", {}, { protected: true, newcomer: true });
+  const other = r.join("p2");
+  r.room.endGraceOnContact(p, other);
+  assert.ok(p.graceUntil > clock.now);
+  assert.ok(p.graceRampUntil > clock.now);
+  // Un joueur qui revient la perd, lui (le contact peut être une attaque).
+  const back = r.join("p3", {}, { protected: true });
+  r.room.endGraceOnContact(back, other);
+  assert.equal(back.graceUntil, 0);
+});
+
 test("grâce : s'arrête à la première élimination", () => {
   const r = new TestRoom(clock);
   const p = r.join("p1", {}, { protected: true });

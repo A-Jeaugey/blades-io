@@ -12,6 +12,7 @@ import {
 import { ArenaState } from "../src/state/ArenaState";
 import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
+import { PowerUp } from "../src/state/PowerUp";
 import { BotController, BotPersonality, BotSkill } from "../src/systems/bots";
 import { updateMovement } from "../src/systems/movement";
 import { processThrows } from "../src/systems/throws";
@@ -95,6 +96,30 @@ test("près du bord, un bot n'avance jamais vers l'extérieur", () => {
   clock.advance(DT * 1000);
   bots.update(DT, state);
   assert.ok(bot.inputDy > 0.99, `inputDy = ${bot.inputDy}`);
+});
+
+test("mur : un bot ne vise pas le butin hors de sa portée, au ras du mur", () => {
+  // Arène d'un humain et de ses bots (tâche 4.5). L'évitement du mur prend
+  // la main dès mapRadius - 15 : un butin au-delà attirait le bot, qui en
+  // était repoussé, encore et encore (tous les bots finissaient collés au
+  // bord, sans plus rien ramasser).
+  state.mapRadius = 170;
+  const bot = addPlayer(state, { x: 140, y: 0, blades: 4, isBot: true });
+  addGroundBlade(state, { x: 162, y: 4 });
+  const pu = new PowerUp();
+  pu.id = "pu-bord";
+  pu.x = 160;
+  pu.y = -4;
+  state.powerups.set(pu.id, pu);
+  const internals = bots as unknown as { state: Map<string, { actionType: string; nextThinkAt: number }> };
+  bots.update(DT, state);
+  assert.equal(internals.state.get(bot.id)!.actionType, "wander");
+  // À portée, il y va.
+  addGroundBlade(state, { x: 120, y: 0 });
+  internals.state.get(bot.id)!.nextThinkAt = 0;
+  clock.advance(DT * 1000);
+  bots.update(DT, state);
+  assert.equal(internals.state.get(bot.id)!.actionType, "farm_blade");
 });
 
 // La personnalité et le niveau sont tirés au hasard à la création de
@@ -228,21 +253,41 @@ test("grâce : un bot ne poursuit ni ne vise un joueur apparu depuis peu, puis s
   assert.equal(bots.isChasing(bot.id, prey.id), true);
 });
 
-test("grâce : après les 10 s, le nouveau venu n'est d'abord poursuivi que de près", () => {
+test("grâce : après les 10 s, le nouveau venu n'est d'abord poursuivi que de près, et par les bots faciles", () => {
   const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
-  const prey = addPlayer(state, { x: 50, y: -100, blades: 3 });
+  const prey = addPlayer(state, { x: 40, y: -100, blades: 3 });
   // Grâce écoulée, début de la rampe : rayon de poursuite réduit.
   prey.graceUntil = clock.now;
   prey.graceRampUntil = clock.now + SPAWN_GRACE_RAMP_MS;
-  setPersonality(bot, BotPersonality.Hunter);
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Easy);
   rethink(bot);
   assert.notEqual(decision(bot), "chase");
   prey.x = SPAWN_GRACE_CHASE_RADIUS - 5;
   rethink(bot);
   assert.equal(decision(bot), "chase");
+  // Pendant la rampe, un bot normal le laisse, même tout près (tâche 4.5).
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Normal);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
   // Rampe terminée : poursuivi jusqu'au rayon normal, comme tout le monde.
   prey.x = 50;
   prey.graceRampUntil = 0;
+  rethink(bot);
+  assert.equal(decision(bot), "chase");
+});
+
+test("rampe : dans une arène plus petite, on n'est remarqué que de plus près", () => {
+  // Arène d'un humain et de ses bots (tâche 4.5) : le rayon de la rampe
+  // suit la taille de l'arène, la densité en bots étant plus forte.
+  state.mapRadius = MAP_RADIUS / 2;
+  const bot = addPlayer(state, { x: 0, y: -60, blades: 10, isBot: true });
+  const prey = addPlayer(state, { x: SPAWN_GRACE_CHASE_RADIUS - 5, y: -60, blades: 3 });
+  prey.graceUntil = clock.now;
+  prey.graceRampUntil = clock.now + SPAWN_GRACE_RAMP_MS;
+  setPersonality(bot, BotPersonality.Hunter, BotSkill.Easy);
+  rethink(bot);
+  assert.notEqual(decision(bot), "chase");
+  prey.x = SPAWN_GRACE_CHASE_RADIUS / 2 - 2;
   rethink(bot);
   assert.equal(decision(bot), "chase");
 });
@@ -332,8 +377,13 @@ test("débutant : un seul bot à la fois le poursuit", () => {
   rethinkAll([a, b]);
   assert.equal([a, b].filter((bot) => bots.isChasing(bot.id, prey.id)).length, 2);
   // Fin de la rampe de grâce (rayon de poursuite presque entier) : de
-  // nouveau un seul.
+  // nouveau un seul, et seulement des bots faciles.
   prey.graceRampUntil = clock.now + 1000;
+  rethinkAll([a, b]);
+  assert.equal([a, b].filter((bot) => bots.isChasing(bot.id, prey.id)).length, 0);
+  setPersonality(a, BotPersonality.Hunter, BotSkill.Easy);
+  setPersonality(b, BotPersonality.Hunter, BotSkill.Easy);
+  rethinkAll([a, b]);
   rethinkAll([a, b]);
   assert.equal([a, b].filter((bot) => bots.isChasing(bot.id, prey.id)).length, 1);
 });

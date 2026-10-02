@@ -13,7 +13,7 @@ import {
   RARITY_SPAWN_WEIGHTS,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
-import { zoneInner } from "./spawnPoint";
+import { LOOT_WALL_MARGIN, areaShare, zoneInner } from "./spawnPoint";
 import { Blade } from "../state/Blade";
 import { randomId } from "../utils/ids";
 
@@ -57,7 +57,7 @@ function insideAnyDecor(x: number, y: number, margin: number): boolean {
 
 function randomPositionAwayFromPlayers(state: ArenaState): { x: number; y: number } | null {
   // Dans l'arène du moment (resserrée en fin de manche, tâche 7.1).
-  const innerRadius = zoneInner(state, 1);
+  const innerRadius = zoneInner(state, LOOT_WALL_MARGIN);
   for (let tries = 0; tries < 30; tries++) {
     const r = Math.sqrt(Math.random()) * innerRadius;
     const a = Math.random() * Math.PI * 2;
@@ -103,7 +103,8 @@ export class SpawnSystem {
     // plafond ambiant.
     expireGroundBlades(state, Date.now());
 
-    const cap = ambientCap(state.players.size, isPrivate);
+    // Densité de la carte entière, quelle que soit la taille de l'arène.
+    const cap = Math.round(ambientCap(state.players.size, isPrivate) * areaShare(state));
     const current = countGroundBlades(state);
     // Gros burst autorisé pour remplir rapidement quand la map est vide.
     const spawns = Math.min(AMBIENT_SPAWN_BURST, Math.max(0, cap - current));

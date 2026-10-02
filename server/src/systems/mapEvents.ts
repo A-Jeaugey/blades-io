@@ -28,7 +28,7 @@ import { Player } from "../state/Player";
 import { randomId } from "../utils/ids";
 import type { BotGoal } from "./bots";
 import { updateScore } from "./scoring";
-import { zoneInner } from "./spawnPoint";
+import { LOOT_WALL_MARGIN, zoneInner } from "./spawnPoint";
 
 // Bilan d'un évènement fini, pour la télémétrie (table map_events,
 // migration 0012) : combien de joueurs étaient là, combien sont venus.
@@ -181,7 +181,8 @@ export class MapEventSystem {
       ev.startsAt = now + GOLDEN_WARNING_MS;
       ev.endsAt = ev.startsAt + GOLDEN_DURATION_MS;
     } else {
-      const margin = kind === MapEventKind.Rain ? RAIN_RADIUS + 6 : 10;
+      // Caisse : là où les bots vont aussi (LOOT_WALL_MARGIN).
+      const margin = kind === MapEventKind.Rain ? RAIN_RADIUS + 6 : LOOT_WALL_MARGIN;
       const spot = this.pickSpot(state, humans, margin, kind === MapEventKind.Crate);
       if (!spot) return false;
       ev.x = spot.x;

@@ -257,14 +257,17 @@ export const SPAWN_CLEARANCE_MAX = 100;
 export const SPAWN_LOOT_RADIUS = 25;
 // Période de grâce : les bots ignorent un joueur apparu depuis moins de
 // SPAWN_GRACE_MS (ni poursuite, ni lancer, ni récolte à son contact). Ensuite,
-// pendant SPAWN_GRACE_RAMP_MS, ils ne le prennent en chasse que de près : le
-// rayon de poursuite remonte de SPAWN_GRACE_CHASE_RADIUS au rayon normal
-// (80 u). Sans cette rampe, tous les bots à moins de 80 u fondaient sur lui
-// à la 10e seconde : au banc (`tools/bench-survival.js first`), médiane
-// avant la première mort ~39 s, ~57 s avec.
+// pendant SPAWN_GRACE_RAMP_MS, seuls les bots faciles le prennent en chasse,
+// et de près : le rayon de poursuite remonte de SPAWN_GRACE_CHASE_RADIUS au
+// rayon normal, en proportion de la taille de l'arène (tâche 4.5). Sans
+// cette rampe, tous les bots à moins de 80 u fondaient sur lui à la 10e
+// seconde : au banc (`tools/bench-survival.js first`), médiane avant la
+// première mort ~39 s, ~57 s avec.
 // Grâce et rampe s'arrêtent dès qu'il lance ou que ses lames touchent
 // quelqu'un (pas un bot lancé à sa poursuite) : pas de lames de bots
-// gratuites pour un joueur aguerri qui vient de réapparaître.
+// gratuites pour un joueur aguerri qui vient de réapparaître. Pendant sa
+// première partie, seuls son lancer et son élimination les arrêtent, et
+// les bots ne peuvent pas le tuer pendant la grâce (sparedByBots).
 export const SPAWN_GRACE_MS = 10000;
 export const SPAWN_GRACE_RAMP_MS = 40000;
 export const SPAWN_GRACE_CHASE_RADIUS = 15;

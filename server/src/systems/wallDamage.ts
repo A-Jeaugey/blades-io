@@ -56,4 +56,17 @@ export function applyWallDamage(
   });
   for (const b of toDestroy) cb.onBladeDestroyed(b);
   for (const id of lostOnGround) state.blades.delete(id);
+
+  // Caisses et power-ups restés dehors quand le mur avance (fin de manche,
+  // arène qui suit la population, tâche 4.5) : retirés de même.
+  const lostCrates: string[] = [];
+  state.crates.forEach((c) => {
+    if (c.x * c.x + c.y * c.y > KILL_RADIUS_SQ) lostCrates.push(c.id);
+  });
+  for (const id of lostCrates) state.crates.delete(id);
+  const lostPowerUps: string[] = [];
+  state.powerups.forEach((pu) => {
+    if (pu.x * pu.x + pu.y * pu.y > KILL_RADIUS_SQ) lostPowerUps.push(pu.id);
+  });
+  for (const id of lostPowerUps) state.powerups.delete(id);
 }

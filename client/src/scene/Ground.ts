@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { MAP_RADIUS, WALL_KILL_THICKNESS } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
@@ -57,7 +58,21 @@ function wrapGroundShader(src: string, dither: boolean): string {
   return (dither ? "#define GROUND_DITHER\n" : "") + body + GROUND_OUTPUT;
 }
 
-export function createGround(q: QualityConfig): { mesh: THREE.Mesh; update: (t: number) => void } {
+export interface GroundSurface {
+  mesh: THREE.Mesh;
+  update: (t: number) => void;
+  // Rayon de l'arène du moment (ArenaState.mapRadius) : le sol s'éteint
+  // au-delà du mur (tâche 4.5).
+  setRadius: (radius: number) => void;
+}
+
+// Les shaders du sol l'éteignent sur 30 à 60 u avant uRadius : uRadius =
+// mur + GROUND_FADE, sans dépasser le bord de la carte (le plan du sol est
+// un carré, son bord se verrait). L'arène pleine garde son sol d'avant ;
+// plus petite, seule la zone mortelle s'assombrit.
+const GROUND_FADE = 60;
+
+export function createGround(q: QualityConfig): GroundSurface {
   const theme = getActiveTheme();
   const geo = new THREE.PlaneGeometry(MAP_RADIUS * 2.2, MAP_RADIUS * 2.2, 1, 1);
   let frag: string;
@@ -96,10 +111,14 @@ export function createGround(q: QualityConfig): { mesh: THREE.Mesh; update: (t: 
   mesh.matrixAutoUpdate = false;
   mesh.updateMatrix();
 
+  const radius = mat.uniforms.uRadius as THREE.IUniform;
   return {
     mesh,
     update(t: number) {
       if (hasTime) (mat.uniforms.uTime as THREE.IUniform).value = t;
+    },
+    setRadius(r: number) {
+      radius.value = Math.min(MAP_RADIUS, r + GROUND_FADE);
     },
   };
 }
@@ -209,6 +228,51 @@ export interface BoundaryWall {
   update: (t: number) => void;
   // Rayon de l'arène du moment (ArenaState.mapRadius).
   setRadius: (radius: number) => void;
+  // Resserrement annoncé (tâche 4.5) : rayon où le mur s'arrêtera (0 :
+  // aucun), et préavis en cours (le repère pulse).
+  setTarget: (radius: number, warning: boolean) => void;
+  // 0 : pas de pulsation (flashs coupés), 1 : pleine.
+  setFlashIntensity: (k: number) => void;
+}
+
+// Repère du resserrement annoncé : la future limite mortelle, en tirets au
+// sol (la forme le distingue du mur, en plus de la luminosité), un tous
+// les ~8 u.
+function createTargetRing(color: number): {
+  mesh: THREE.Mesh;
+  mat: THREE.MeshBasicMaterial;
+  build: (killRadius: number) => void;
+} {
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.7,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = 0.05;
+  mesh.frustumCulled = false;
+  mesh.visible = false;
+  mesh.matrixAutoUpdate = false;
+  mesh.updateMatrix();
+  return {
+    mesh,
+    mat,
+    build(killRadius: number) {
+      const dashes = Math.max(24, Math.round((2 * Math.PI * killRadius) / 8));
+      const step = (2 * Math.PI) / dashes;
+      const parts: THREE.BufferGeometry[] = [];
+      for (let i = 0; i < dashes; i++) {
+        parts.push(new THREE.RingGeometry(killRadius - 0.35, killRadius + 0.35, 2, 1, i * step, step * 0.55));
+      }
+      const merged = mergeGeometries(parts, false);
+      for (const g of parts) g.dispose();
+      mesh.geometry.dispose();
+      if (merged) mesh.geometry = merged;
+    },
+  };
 }
 
 // Mur de la zone mortelle. Toutes qualités : anneau lumineux qui pulse et
@@ -303,6 +367,12 @@ export function createBoundaryWall(q: QualityConfig): BoundaryWall {
     group.add(wall);
   }
 
+  const target = createTargetRing(theme.palette.boundary);
+  group.add(target.mesh);
+  let targetRadius = 0;
+  let targetWarning = false;
+  let flash = 1;
+
   group.matrixAutoUpdate = false;
   group.updateMatrix();
   return {
@@ -312,6 +382,22 @@ export function createBoundaryWall(q: QualityConfig): BoundaryWall {
       if (curtainUniforms) curtainUniforms.uTime.value = t;
       if (bandUniforms) bandUniforms.uTime.value = t;
       if (bandBasic) bandBasic.opacity = 0.18 + 0.12 * Math.sin(t * 4);
+      // Préavis : le repère pulse (selon le réglage des flashs) ; le mur en
+      // marche, il reste plein.
+      if (target.mesh.visible) {
+        const pulse = targetWarning ? 0.5 + 0.5 * Math.sin(t * 6) : 1;
+        target.mat.opacity = 0.7 - 0.45 * flash * (1 - pulse);
+      }
+    },
+    setTarget(radius: number, warning: boolean) {
+      targetWarning = warning;
+      target.mesh.visible = radius > 0;
+      if (radius <= 0 || Math.abs(radius - targetRadius) < 0.05) return;
+      targetRadius = radius;
+      target.build(radius - WALL_KILL_THICKNESS);
+    },
+    setFlashIntensity(k: number) {
+      flash = Math.max(0, Math.min(1, k));
     },
     setRadius(radius: number) {
       const d = Math.max(0, MAP_RADIUS - radius);

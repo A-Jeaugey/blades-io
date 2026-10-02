@@ -80,7 +80,9 @@ export class Minimap {
     this.goldColor = theme.palette.rarityColor[BladeRarity.Legendary];
   }
 
-  // arenaRadius : rayon de l'arène du moment (resserrée en fin de manche).
+  // arenaRadius : rayon de l'arène du moment (resserrée en fin de manche,
+  // à la taille de sa population). arenaTarget : rayon où un resserrement
+  // annoncé arrêtera le mur (tâche 4.5), 0 sans annonce.
   draw(
     me: MinimapPlayer,
     others: MinimapPlayer[],
@@ -88,6 +90,7 @@ export class Minimap {
     arenaRadius = MAP_RADIUS,
     flags: MinimapFlag[] = [],
     events: MinimapEvent[] = [],
+    arenaTarget = 0,
   ): void {
     const ctx = this.ctx;
     const S = this.size;
@@ -123,6 +126,15 @@ export class Minimap {
     ctx.strokeStyle = this.arenaEdge;
     ctx.lineWidth = 2;
     ctx.stroke();
+    // Future limite d'un resserrement annoncé : en tirets, comme au sol.
+    if (arenaTarget > 0) {
+      ctx.beginPath();
+      ctx.arc(ax, ay, Math.max(0, arenaTarget - WALL_KILL_THICKNESS) * scale, 0, Math.PI * 2);
+      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.restore();
     // Évènements de carte, sous les joueurs.
     for (const ev of events) this.drawEvent(ev, me, scale);

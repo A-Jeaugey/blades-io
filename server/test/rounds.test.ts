@@ -73,7 +73,8 @@ test("manche : 5 minutes, podium de 15 s, puis manche suivante", () => {
   r.tick();
   assert.equal(r.state.phase, MatchPhase.Playing);
   assert.equal(r.state.phaseEndsAt, clock.now + ROUND_DURATION_MS);
-  assert.equal(r.state.mapRadius, MAP_RADIUS);
+  // Arène pleine de nouveau : à la taille de la population (tâche 4.5).
+  assert.equal(r.state.mapRadius, r.room.baseRadius);
 });
 
 test("arène resserrée : le mur tue au rayon du moment, les apparitions restent dedans", () => {
@@ -81,7 +82,8 @@ test("arène resserrée : le mur tue au rayon du moment, les apparitions restent
   const inside = r.join("inside");
   const outside = r.join("outside");
   jumpTo(r, ROUND_SHRINK_MS / 2);
-  const radius = (MAP_RADIUS + ROUND_FINAL_RADIUS) / 2;
+  // À mi-chemin entre le rayon de la population (tâche 4.5) et le final.
+  const radius = (r.room.baseRadius + ROUND_FINAL_RADIUS) / 2;
   assert.ok(Math.abs(r.state.mapRadius - radius) < 0.5, `rayon ${r.state.mapRadius}`);
   inside.x = radius - WALL_KILL_THICKNESS - 6; inside.y = 0;
   outside.x = 0; outside.y = radius - WALL_KILL_THICKNESS + 3;

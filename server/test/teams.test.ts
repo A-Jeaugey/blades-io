@@ -316,12 +316,18 @@ test("drapeau : pris au contact, suit son porteur, capturé dans sa base si son 
   place(a, teamBase(1).x + 1, 0);
   r.tick();
   assert.equal(f1.carrierId, "");
-  // Celui d'en face : pris, et le porteur ne se cache plus.
+  // Celui d'en face : pris, et le porteur ne se cache plus ; c'est une
+  // attaque, sa grâce s'arrête (les bots normaux le laissaient pendant la
+  // rampe, tâche 4.5).
+  a.graceUntil = clock.now + 5000;
+  a.graceRampUntil = clock.now + 45000;
   place(a, teamBase(2).x - 2, 1);
   r.tick();
   assert.equal(f2.carrierId, "a");
   assert.equal(f2.atBase, false);
   assert.equal(a.revealed, true);
+  assert.equal(a.graceUntil, 0);
+  assert.equal(a.graceRampUntil, 0);
   place(a, 50, 20);
   r.tick();
   assert.deepEqual([f2.x, f2.y], [50, 20]);

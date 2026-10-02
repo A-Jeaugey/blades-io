@@ -34,7 +34,7 @@ const DIST = path.join(ROOT, "server/dist-test");
 const { TestRoom } = require(path.join(DIST, "test/testRoom.js"));
 const { FakeClock, seedRandom, DT } = require(path.join(DIST, "test/helpers.js"));
 const shared = require(require.resolve("@bladeio/shared", { paths: [path.join(ROOT, "server")] }));
-const { MAP_RADIUS, WALL_KILL_THICKNESS, outerOrbitRadius } = shared;
+const { WALL_KILL_THICKNESS, outerOrbitRadius } = shared;
 
 const args = process.argv.slice(2);
 const MODE = args[0] === "first" || args[0] === "capped" ? args.shift() : "capped";
@@ -72,8 +72,10 @@ function quantile(sorted, q) {
 
 function runCapped() {
   const LIFE_CAP_S = 30;
-  // Lames au sol visées : loin du bord, pour ne pas mesurer des morts au mur.
-  const HARVEST_RADIUS = 180;
+  // Lames au sol visées : loin du bord, pour ne pas mesurer des morts au
+  // mur. Part du rayon du moment (arène à la taille de sa population,
+  // tâche 4.5) : 180 u dans l'arène pleine, comme avant.
+  const HARVEST_SHARE = 0.72;
   let lives = 0;
   let deaths = 0;
   let survivedSum = 0;
@@ -125,7 +127,7 @@ function runCapped() {
         let best = null;
         let bestD = Infinity;
         r.state.blades.forEach((b) => {
-          if (b.ownerId || b.isProjectile || Math.hypot(b.x, b.y) > HARVEST_RADIUS) return;
+          if (b.ownerId || b.isProjectile || Math.hypot(b.x, b.y) > r.state.mapRadius * HARVEST_SHARE) return;
           const d = Math.hypot(b.x - human.x, b.y - human.y);
           if (d < bestD) { bestD = d; best = b; }
         });
@@ -221,7 +223,9 @@ function runFirst() {
           leftAt = clock.now;
         } else {
           const rad = Math.hypot(current.x, current.y);
-          const gap = MAP_RADIUS - WALL_KILL_THICKNESS - rad - outerOrbitRadius(current.bladeCount);
+          // Bord du moment, comme l'alerte du client (arène à la taille de
+          // sa population, tâche 4.5).
+          const gap = r.state.mapRadius - WALL_KILL_THICKNESS - rad - outerOrbitRadius(current.bladeCount);
           if (gap < WARN_GAP && rad > 1) {
             // Alerte de bordure : demi-tour vers le centre, à ±60° près.
             const a = Math.atan2(-current.y, -current.x) + (Math.random() * 2 - 1) * (Math.PI / 3);

@@ -15,3 +15,4 @@ export * from "./moderation";
 export * from "./cosmetics";
 export * from "./modes";
 export * from "./mapEvents";
+export * from "./arena";

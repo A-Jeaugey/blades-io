@@ -21,6 +21,9 @@ export interface PlayerStanding {
 export interface ModeHost {
   readonly state: ArenaState;
   readonly isPrivate: boolean;
+  // Rayon de base de l'arène : selon la population dans les modes qui le
+  // veulent (tâche 4.5), la carte entière sinon.
+  readonly baseRadius: number;
   // Termine la partie : classement figé et annoncé à tous (matchEnd), vies
   // en cours enregistrées, simulation à l'arrêt pendant l'entracte, puis
   // nouvelle partie (arène vidée, tout le monde réapparaît, onMatchStart).

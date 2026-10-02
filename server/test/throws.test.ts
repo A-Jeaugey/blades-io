@@ -243,6 +243,22 @@ test("le lanceur et les joueurs protégés ne sont pas touchés", () => {
   assert.equal(r.kills.length, 0);
 });
 
+test("débutant en grâce : les lancers des bots le traversent, pas ceux d'un humain", () => {
+  const bot = addPlayer(state, { x: 0, y: 0, isBot: true });
+  const human = addPlayer(state, { x: 0, y: 20 });
+  const newbie = addPlayer(state, { x: 10, y: 0 });
+  newbie.newcomer = true;
+  newbie.graceUntil = clock.now + 5000;
+  projectile({ x: 10.2, y: 0, rarity: BladeRarity.Common, pierce: 1, by: bot });
+  let r = recorder();
+  resolveProjectileCollisions(state, r, new OrbitPositionCache());
+  assert.equal(r.kills.length, 0);
+  projectile({ x: 10.2, y: 0, rarity: BladeRarity.Common, pierce: 1, by: human });
+  r = recorder();
+  resolveProjectileCollisions(state, r, new OrbitPositionCache());
+  assert.deepEqual(r.kills.map((k) => k.victim.id), [newbie.id]);
+});
+
 test("les lames en orbite protègent le corps", () => {
   const a = addPlayer(state, { x: 0, y: 0 });
   const b = addPlayer(state, { x: 10, y: 0, rarity: BladeRarity.Rare, blades: 1 });

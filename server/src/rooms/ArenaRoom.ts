@@ -87,6 +87,7 @@ import { LifeEnd, recordLife, recordMapEvent } from "../telemetry";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
 import { MapEventSystem } from "../systems/mapEvents";
+import { ArenaSizer } from "../systems/arenaSize";
 import { PowerUpSystem } from "../systems/powerups";
 import { updateScore } from "../systems/scoring";
 import {
@@ -94,7 +95,7 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasMapEvents } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -148,6 +149,11 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   // Évènements de carte (tâche 4.4), dans les modes qui en ont.
   private mapEvents = new MapEventSystem();
   private mapEventsOn = false;
+  // Arène à la taille de sa population (tâche 4.5), dans les modes qui la
+  // veulent ; la carte entière sinon.
+  private arenaSizer = new ArenaSizer();
+  private adaptiveArena = false;
+  private baseRadius = MAP_RADIUS;
   private powerups = new PowerUpSystem();
   // Options de la room (set au onCreate à partir des joinOptions du 1er
   // client, ou rempli par filterBy).
@@ -201,9 +207,14 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     const host: ModeHost = {
       get state() { return room.state; },
       get isPrivate() { return room.isPrivate; },
+      get baseRadius() { return room.baseRadius; },
       endMatch: (intermissionMs) => this.endMatch(intermissionMs),
       emit: (type, payload) => this.emit(type, payload),
     };
+    // Arène à la taille de sa population : petite à la création, elle
+    // s'agrandit à l'arrivée des joueurs (ArenaSizer).
+    this.adaptiveArena = modeHasAdaptiveArena(modeId);
+    if (this.adaptiveArena) state.mapRadius = this.baseRadius = this.arenaSizer.current;
     this.mode = createMode(modeId, host);
     this.mapEventsOn = modeHasMapEvents(modeId);
     // Objectifs des bots propres au mode (modes équipe : adversaires,
@@ -783,8 +794,13 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   // Clash entre p et other : p a touché quelqu'un, sauf si other est un bot
   // lancé à sa poursuite. C'est alors le bot qui attaque ; s'il suffisait à
   // lever la protection, tous les autres bots fondraient aussitôt sur p.
+  // Un débutant (première partie) garde sa grâce : le contact est presque
+  // toujours un frôlement, pas une attaque, et dans une arène dense (à la
+  // taille de sa population, tâche 4.5) il en perdait la moitié du temps
+  // sa grâce avant 10 s. Son lancer ou son élimination la lèvent encore.
   private endGraceOnContact(p: Player, other: Player): void {
     if (other.isBot && this.bots.isChasing(other.id, p.id)) return;
+    if (p.newcomer && !p.isBot) return;
     this.endGrace(p);
   }
 
@@ -812,6 +828,9 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       this.bots.setLeader(this.leaderId, leader?.alive ? bountyFor(leader.score) : 0);
       this.bots.update(dt, this.state);
     }
+    // Taille de l'arène d'après sa population (tâche 4.5) : le mode en fait
+    // state.mapRadius à la fin du tick.
+    if (this.adaptiveArena) this.baseRadius = this.arenaSizer.update(this.state, Date.now(), dt);
     // Recalcule le tier de chaque joueur AVANT toutes les autres systèmes
     // (collision lit `tier` pour la hitbox, orbitPositions pour la rotation).
     // Émet un tierUp si on monte d'un palier — la chute (perte de lames)

@@ -15,8 +15,13 @@ export class ArenaState extends Schema {
   @view() @type({ map: Blade }) blades = new MapSchema<Blade>();
   @type({ map: Crate }) crates = new MapSchema<Crate>();
   @type({ map: PowerUp }) powerups = new MapSchema<PowerUp>();
-  // Rayon de l'arène : celui de la carte, resserré en fin de manche (7.1).
+  // Rayon de l'arène : celui de la carte, ou selon la population (4.5),
+  // resserré en fin de manche (7.1).
   @type("float32") mapRadius: number = MAP_RADIUS;
+  // Resserrement annoncé de l'arène (4.5) : heure du serveur où le mur se
+  // met en marche (0 : aucun), et rayon où il s'arrêtera (0 : aucun).
+  @type("float64") arenaShrinkAt: number = 0;
+  @type("float32") arenaTarget: number = 0;
   @type("uint32") tick: number = 0;
   // Date.now() du serveur au tick courant. Les échéances (*Until,
   // spawnedAt) sont des dates du serveur : le client les compare à cette

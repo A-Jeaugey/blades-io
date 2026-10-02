@@ -22,6 +22,7 @@ import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
 import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
+import { sparedByBots } from "./collisions";
 import { OrbitPositionCache, recompactOwnerRing } from "./orbitPositions";
 
 export interface ThrowCallbacks {
@@ -265,6 +266,8 @@ export function resolveProjectileCollisions(
       if (proj.hitIds.has(target.id)) return;
       // Spawn protection : intangible.
       if (target.spawnProtectionUntil > Date.now()) return;
+      // Débutant en grâce : intangible aux lancers des bots.
+      if (sparedByBots(target, Date.now()) && state.players.get(proj.thrownBy)?.isBot) return;
 
       // Broad phase : distance centre joueur (large pour absorber le rayon
       // d'orbite).

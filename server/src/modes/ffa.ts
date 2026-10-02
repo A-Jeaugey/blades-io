@@ -4,7 +4,8 @@ import type { GameMode, ModeHost, PlayerStanding, Point } from "./GameMode";
 
 // L'arène sans fin, le jeu d'origine : apparition à l'écart des menaces pour
 // les humains, n'importe où pour les bots ; réapparition libre ; classement
-// au score de la vie en cours ; jamais de fin de partie.
+// au score de la vie en cours ; jamais de fin de partie ; arène à la
+// taille de sa population.
 export class FfaMode implements GameMode {
   readonly id = "ffa" as const;
 
@@ -30,7 +31,11 @@ export class FfaMode implements GameMode {
     return 0;
   }
 
-  tick(): void {}
+  // Le mur suit la population (tâche 4.5).
+  tick(): void {
+    const state = this.host.state;
+    if (state.mapRadius !== this.host.baseRadius) state.mapRadius = this.host.baseRadius;
+  }
 
   onMatchStart(): void {}
 }

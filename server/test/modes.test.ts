@@ -6,6 +6,7 @@ import {
   GAME_MODES,
   INITIAL_BLADE_COUNT,
   KillCause,
+  MAP_RADIUS,
   MatchPhase,
   gameModeOf,
 } from "@bladeio/shared";
@@ -64,6 +65,7 @@ function withMode(r: TestRoom): KillRaceMode {
   const host: ModeHost = {
     get state() { return r.room.state; },
     isPrivate: false,
+    baseRadius: MAP_RADIUS,
     endMatch: (ms) => r.room.endMatch(ms),
     emit: (type, payload) => r.room.emit(type, payload),
   };

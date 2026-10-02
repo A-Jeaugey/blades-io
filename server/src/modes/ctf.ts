@@ -28,6 +28,12 @@ const BOT_ATTACK_BLADES = 5;
 const CTF_DEFEND_RADIUS = 35;
 // Rayon autour d'un porteur adverse où les forces en présence se comptent.
 const CTF_ASSAULT_RADIUS = 30;
+// En deçà, un bot ne pèse pas sur le porteur (pas de lancer avant 2 lames)
+// : il va d'abord se refaire, hors assaut. Sinon les plus faibles
+// tournaient autour du porteur, fuyant dès 25 u, sans jamais rien
+// ramasser ; deux porteurs chacun à sa base, la partie restait bloquée
+// jusqu'au bout du temps.
+const BOT_HUNT_BLADES = 3;
 
 // Capture du drapeau (tâche 7.2). Chaque équipe a son drapeau au centre de
 // son camp. On prend celui d'en face en le touchant ; on marque en le
@@ -147,6 +153,10 @@ export class CtfMode extends TeamMode {
     f.x = p.x;
     f.y = p.y;
     p.revealed = true;
+    // Prendre le drapeau est une attaque : fin de la grâce et de sa rampe,
+    // pendant laquelle seuls les bots faciles s'en prennent à un humain.
+    p.graceUntil = 0;
+    p.graceRampUntil = 0;
     this.announce("take", f.team, p);
   }
 
@@ -241,10 +251,11 @@ export class CtfMode extends TeamMode {
         // escortes : l'assaut passe avant la fuite (sinon chacun, plus
         // petit que lui, tournait à distance sans jamais attaquer).
         const assault = d < CTF_ASSAULT_RADIUS && this.strengthNear(c, bot.team, bot) > this.strengthNear(c, c.team, bot);
+        const weak = bot.bladeCount < BOT_HUNT_BLADES;
         return {
           x: c.x,
           y: c.y,
-          score: assault ? 1500 : 500 - d * 0.3,
+          score: assault ? 1500 : weak ? 60 - d * 0.1 : 500 - d * 0.3,
           boost: d > 20 && d < 60 && bot.bladeCount > 6,
           targetId: c.id,
           urgent: true,
