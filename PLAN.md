@@ -229,11 +229,12 @@ Objectif : tenir 60 joueurs avec de la marge et diviser la bande passante. Réf�
   - Acceptation : bench 60 bots : tick moyen < 4 ms, p99 < 8 ms ; tests T.2 verts.
   - Réalisé : fiches par joueur et par lame dans `resolveCollisions`, cooldowns de clash tenus par la room, tableaux et rayons précalculés dans `pushOutPlayers`, plus d'écrasement du score au ramassage (deux tests de non-régression). Tick moyen 3,9 → 2,0 ms, p99 6,3 → 4,2 ms ; comparaison différentielle : 20 688 évènements identiques. Non retenus, mesures à l'appui : l'index partagé entre systèmes (il deviendrait périmé au premier kill du tick) et le comptage par anneau sur le joueur (absent du profil). Reste du profil à 60 bots : IA des bots 27 %, positions des lames 17 %.
 
-- [ ] **2.3 — Fréquence de patch et compacité** · M · `NET-01` · Après 1.1 (idéalement après 1.2) · Priorité basse (D6)
+- [x] **2.3 — Fréquence de patch et compacité** · M · `NET-01` · Après 1.1 (idéalement après 1.2) · Priorité basse (D6) · 2026-10-02 · `8c2fe23`
   - Note (D6) : le serveur a 40 Gbit/s, la bande passante sortante n'est plus un problème. Reste un intérêt pour les joueurs sur forfait mobile (~94 Ko/s, soit ~340 Mo par heure de jeu) ; ne pas dégrader le ressenti pour gagner des octets.
   - Quoi : patch à 30 Hz (le tick reste à 60 Hz), interpolation client adaptée ; positions quantifiées (entiers 16 bits au centième, la carte tient dans ±327) ; échéances en temps relatif 32 bits au lieu de `float64` ; retrait des champs synchronisés inutiles.
   - Fichiers : `server/src/state/*.ts`, `server/src/rooms/ArenaRoom.ts`, `client/src/main.ts`, `client/src/entities/*.ts`.
   - Acceptation : bench 60 bots < 45 Ko/s par client ; pas de dégradation visible du mouvement des joueurs distants.
+  - Réalisé : la cible était déjà tenue depuis 2.4 (19 Ko/s). Suivant D6, rien qui touche au ressenti : patch à 60 Hz et positions en `float32` gardés (le patch à 30 Hz doublerait l'écart entre deux états reçus et la prédiction recalerait plus fort ; des positions entières demanderaient des champs doublés côté serveur pour un gain qui n'est plus une contrainte) ; échéances en `float64` gardées (elles changent rarement, et deviennent pour la plupart réservées au propriétaire, ci-dessous). Retrait des champs inutiles, d'après la répartition mesurée des octets reçus : `dirX`/`dirY` changeaient presque à chaque tick pour chaque bot, autant que les positions, alors que le client ne les lit que pour son propre joueur. Ces champs et tous ceux qui ne servent qu'au client du joueur (recul, dernier input acquitté, fins d'effets, hitlag, cooldown de lancer, stats de la vie) portent `@view(OWNER_VIEW_TAG)` : seule sa propre vue a ce tag. `spinScale`, inutile au client (`orbitRate` l'intègre), n'est plus synchronisé. En route, un comportement de Colyseus 0.16 : un joueur qui revenait dans une vue après des changements manqués (« invisible ») était renvoyé avec tous ses champs, tags compris ; la marque est effacée avant `view.add` (à revoir avec T.6). Banc serveur reproductible : `BENCH_SEED=<n>` (mulberry32, horloge de départ fixe), même partie avant et après, mêmes éliminations. Mesures (60 bots, 120 s, trois graines) : patchs par client 18,0 → 12,1, 18,0 → 12,1 et 17,2 → 11,6 Ko/s ; total évènements compris 22,8 → 17,0, 22,7 → 16,9 et 22,0 → 16,5 Ko/s ; 60 clients connectés, patchs 18,8 → 12,7 et total 27,0 → 20,9 Ko/s, tick inchangé (4,34 → 3,97 puis 4,28 → 4,33 ms, bruit), encodage 1,71 → 1,63 ms. Vérifié au navigateur : direction, dernier input acquitté et stats reçus pour son joueur, rien de réservé pour les autres, prédiction et carte de fin de vie normales. 2 tests (dont la sortie puis le retour dans la vue).
 
 - [x] **2.4 — Filtrage par zone d'intérêt et bushes côté serveur** · L · `NET-01` `SEC-03` `GAME-09` · 2026-10-01 · `8d94a48`
   - Note (D6) : l'intérêt principal devient l'équité (un client modifié voit les joueurs cachés dans les bushes, les bots aussi), plus la bande passante.
@@ -496,14 +497,14 @@ Objectif : de la variété et des parties courtes avec un vrai dénouement. Repr
 |---|---|---|---|---|
 | Tick serveur moyen, 60 joueurs | 10,6 ms | 1,6 ms (25/09) ; 3,0 ms le 01/10 sur une machine plus lente, identique avant et après la phase 3 (mesure appariée) | < 4 ms | `tools/bench-server.js 60 120` |
 | Tick serveur p99, 60 joueurs | 17,5 ms | 4,0 ms (25/09) ; 7,4 ms le 01/10, même remarque | < 8 ms | idem |
-| Données reçues par client, 60 joueurs | 93 Ko/s | 19 Ko/s (24 Ko/s avec 60 clients connectés), depuis 2.4 | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem (`BENCH_VIEWERS=60` pour la room pleine) |
+| Données reçues par client, 60 joueurs | 93 Ko/s | 17 Ko/s (21 Ko/s avec 60 clients connectés) depuis 2.3, 23 Ko/s (27) avant | secondaire depuis D6 (ex-cible : < 45 Ko/s) | idem (`BENCH_VIEWERS=60` pour la room pleine, `BENCH_SEED` pour comparer) |
 | Écart angulaire rendu / serveur des lames | arbitraire | ≤ 1e-7 rad | < 0,1 rad | mode debug de 1.1 |
 | Temps médian avant la première mort (session scriptée) | ~10 s | ~96 s pour un débutant depuis 4.6, médiane des séries de 8 graines sur 64 (~56 s après 4.2, ~62 s avant, 16 s juste avant 3.2) | > 45 s | `tools/bench-survival.js first` |
 | Règne médian du leader (room de bots) | non mesuré | 11-37 s (123-147 s avant 4.2) | en baisse (4.2) | `tools/bench-snowball.js` ; `median_leader_s` de `life_stats_summary` avec des joueurs |
 | Premières vies de moins de 20 s (joueurs réels) | inconnu | mesurable après la migration 0005 et la fusion | < 15 % | `life_stats_summary` (4.8) |
-| JavaScript initial | 1,24 Mo | 1,45 Mo (394 Ko gzip) le 02/10, dont +15 Ko pour 6.2, +9 Ko pour 6.4, +8 Ko pour 7.3 et 7.1, +17 Ko pour 7.2 et +6 Ko pour 4.4 | < 600 Ko | build Vite |
+| JavaScript initial | 1,24 Mo | 1,50 Mo (405 Ko gzip) le 02/10, dont +15 Ko pour 6.2, +9 Ko pour 6.4, +8 Ko pour 7.3 et 7.1, +17 Ko pour 7.2, +6 Ko pour 4.4, +16 Ko pour 4.7 et +26 Ko pour 4.9 | < 600 Ko | build Vite |
 | Vulnérabilités npm en production | 15 (1 haute) | 3 (1 haute, T.6) | 0 haute | `npm audit --omit=dev` |
-| Tests automatisés | 0 | 213 tests serveur, en CI | systèmes critiques couverts | CI |
+| Tests automatisés | 0 | 237 tests serveur, en CI | systèmes critiques couverts | CI |
 
 ---
 
