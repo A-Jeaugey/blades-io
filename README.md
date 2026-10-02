@@ -83,8 +83,9 @@ Each client only receives what is near it (interest management with Colyseus `St
 ### Performance highlights
 
 - **Spatial hash** (5-unit cells) for pickup and broad-phase collisions
-- **Owner-bucket broad phase** for blade-vs-blade — pairs of players are tested by center distance before touching individual blades
+- **Owner-bucket broad phase** for blade-vs-blade — pairs of players are tested by center distance before touching individual blades, then only the blades where the two orbits overlap (two 2,000-blade orbits in contact cost ~5 ms per tick)
 - **InstancedMesh** rendering — one mesh per (rarity × tier), growing as needed (no cap), O(1) removal; round additive particles (point-sprite shader) and a time-sampled ribbon trail; combat effects drawn in one call each (instanced rings, shards, light columns and speed lines, every blade trail in a single ribbon mesh), their shaders compiled on the first frame rather than on the first clash
+- **Light first load** — the page first loads only the lobby (about 175 KB of JavaScript, 55 KB gzipped, against 1.5 MB before); the game engine (three.js, Colyseus, rendering) loads in parallel while you pick a name, the sound engine on your first click, the account library only when you sign in or resume a session, the shop when you open it. Libraries have their own files and build assets are cached for good (fingerprinted names): a game update does not re-download three.js
 - **French and English** — the language follows the browser (English otherwise) and can be changed live in the settings; all UI text lives in `client/src/i18n/`
 - **Quality presets** (high/medium/low/ultra, auto-detected; `ultra` is the lightest) — bloom, particles and decor density adapt. An FPS monitor lowers the resolution first, then the preset; a lower preset picked mid-match applies back at the menu, never during a game
 - **Anti-cheat** — server clamps `|dx|, |dy| ≤ 1`, ignores inputs above 80/s and disconnects a client that stays above that cap for 3 consecutive seconds
@@ -385,6 +386,7 @@ server/src/
   utils/spatialHash.ts
 
 client/src/
+  boot.ts              # entry point: lobby first, the engine (main.ts) loads in parallel
   main.ts              # game loop, rendering, networking glue
   net/Connection.ts    # Colyseus client + reconnect logic
   scene/               # camera, ground, decor, post-processing
@@ -396,7 +398,7 @@ client/src/
   themes/              # cosmetic themes (palette, ground shader, decor, music)
   cosmetics/           # cosmetic looks (data) and the device's loadout
   boutique/            # shop: featured items, map themes, skins, blade styles, trails, elimination effects, 3D try-on
-  audio/SoundManager   # Tone.js procedural SFX + music player
+  audio/SoundManager   # Tone.js procedural SFX (loaded on the first click) + music player
 
 tools/bench-server.js  # headless server benchmark (tick time, bandwidth)
 tools/bench-survival.js # newcomer survival bench: deaths in the first 30 s, time before the first death

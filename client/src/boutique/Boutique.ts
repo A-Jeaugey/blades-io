@@ -25,13 +25,7 @@ import { reloadAtMenu } from "../ui/pendingReload";
 
 type Tab = "maps" | CosmeticTab;
 
-// Boutique ouverte : le moniteur de qualité de main.ts se met en pause (son
-// aperçu 3D fait baisser les FPS du lobby sans rien dire de la partie, et
-// abaisser le preset hors partie recharge la page, en plein achat).
-export function isBoutiqueOpen(): boolean {
-  return !(document.getElementById("boutique")?.classList.contains("hidden") ?? true);
-}
-
+// Créée à sa première ouverture (entry.ts, qui porte aussi le bouton).
 export class Boutique {
   private root: HTMLElement;
   private mapsGrid: HTMLElement;
@@ -79,10 +73,6 @@ export class Boutique {
         this.close();
       }
     });
-
-    // Boutons d'ouverture (login screen + future settings link).
-    const openBtn = document.getElementById("open-boutique-btn");
-    openBtn?.addEventListener("click", () => this.open());
 
     this.renderMaps();
     this.cosmetics.render();

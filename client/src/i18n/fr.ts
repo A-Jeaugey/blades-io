@@ -355,6 +355,8 @@ export const fr: Record<keyof typeof en, string> = {
   "lobby.fillBots": "AJOUTER DES BOTS",
   "lobby.roomCode": "CODE DU SALON",
   "lobby.enter": "ENTRER&nbsp;EN&nbsp;JEU",
+  "lobby.starting": "CHARGEMENT…",
+  "lobby.loadFailed": "Le jeu n'a pas pu se charger. Vérifie ta connexion : la page va se recharger.",
   "lobby.boutique": "BOUTIQUE",
   "lobby.howToPlay": "COMMENT JOUER",
   "lobby.marquee": "LANCER · ESPACE / CLIC DROIT   //   BOOST · MAJ / CLIC GAUCHE MAINTENU · COÛTE 1 LAME / 0,5 s   //   PALIERS À 10 · 20 · 35 · 55 · 80 LAMES   //   LA BORDURE TUE   //   LES BUISSONS TE CACHENT   //   BONUS · VITESSE · ROTATION · AIMANT · BOUCLIER · LAMES   //   ",

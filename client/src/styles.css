@@ -41,6 +41,12 @@ canvas#game {
   width: 100%;
   height: 100%;
   display: block;
+  transition: opacity 0.6s ease;
+}
+/* Moteur du jeu encore en chargement (boot.ts) : l'arène apparaît en fondu
+   derrière le lobby déjà affiché. */
+canvas#game.booting {
+  opacity: 0;
 }
 
 .hidden {

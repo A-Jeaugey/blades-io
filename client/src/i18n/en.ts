@@ -353,6 +353,8 @@ export const en = {
   "lobby.fillBots": "FILL WITH BOTS",
   "lobby.roomCode": "ROOM CODE",
   "lobby.enter": "ENTER&nbsp;THE&nbsp;GRID",
+  "lobby.starting": "LOADING…",
+  "lobby.loadFailed": "The game could not load. Check your connection: the page will reload.",
   "lobby.boutique": "BOUTIQUE",
   "lobby.howToPlay": "HOW TO PLAY",
   "lobby.marquee": "THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   ",

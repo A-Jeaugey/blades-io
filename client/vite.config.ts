@@ -67,6 +67,21 @@ export default defineConfig({
   },
   build: {
     target: "es2020",
-    sourcemap: true,
+    // Sourcemaps non publiées : servies avec le jeu, elles livraient tout le
+    // code source. SOURCEMAP=1 au build pour analyser le paquet.
+    sourcemap: process.env.SOURCEMAP === "1",
+    rollupOptions: {
+      output: {
+        // Bibliothèques dans leurs propres fichiers : leur nom ne change
+        // qu'avec leur version, et un joueur qui revient après une mise à
+        // jour du jeu garde three.js et Colyseus en cache. Tone.js,
+        // Supabase et la boutique ont leurs fichiers, chargés à la demande.
+        manualChunks(id) {
+          if (id.includes("/node_modules/three/")) return "three";
+          if (id.includes("/node_modules/@colyseus/") || id.includes("/node_modules/msgpackr/")) return "colyseus";
+          return undefined;
+        },
+      },
+    },
   },
 });

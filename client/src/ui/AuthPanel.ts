@@ -114,6 +114,8 @@ export class AuthPanel {
       </button>
     `;
     this.root.querySelector<HTMLButtonElement>("[data-action=expand]")?.addEventListener("click", () => {
+      // Bibliothèque de connexion chargée pendant la saisie.
+      auth.preload();
       this.expanded = true;
       this.clearMessage();
       this.render(auth.getState());

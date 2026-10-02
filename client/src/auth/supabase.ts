@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient, Session } from "@supabase/supabase-js";
+import type { SupabaseClient, Session } from "@supabase/supabase-js";
 import { wallet } from "./wallet";
 import { mergeServerInventory } from "../boutique/owned";
 import { t } from "../i18n";
@@ -22,16 +22,32 @@ type Listener = (state: AuthState) => void;
 
 const AUTH_STORAGE_KEY = "blade.supabase.session";
 
+// Session enregistrée par supabase-js, ou retour d'une connexion (OAuth,
+// lien de confirmation) dans l'URL : il faut le client dès le démarrage.
+function sessionPending(): boolean {
+  try {
+    if (localStorage.getItem(AUTH_STORAGE_KEY)) return true;
+  } catch { /* stockage indisponible : pas de session enregistrée */ }
+  const { hash, search } = window.location;
+  return hash.includes("access_token") || hash.includes("error_description") || /[?&]code=/.test(search);
+}
+
 class AuthService {
   private client: SupabaseClient | null = null;
+  // supabase-js (~200 Ko) n'est chargé que s'il sert : session à reprendre,
+  // retour de connexion, ou panneau de connexion ouvert (preload). Un invité
+  // ne le télécharge jamais.
+  private loader: Promise<SupabaseClient | null> | null = null;
+  private url: string | undefined;
+  private anon: string | undefined;
   private state: AuthState = { status: "loading" };
   private listeners: Set<Listener> = new Set();
   private profileFetchInFlight: Promise<Profile | null> | null = null;
 
   constructor() {
-    const url = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
-    const anon = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
-    if (!url || !anon) {
+    this.url = (import.meta as any).env?.VITE_SUPABASE_URL as string | undefined;
+    this.anon = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string | undefined;
+    if (!this.url || !this.anon) {
       // Pas configuré : reste en "signed_out" pour que l'UI ne montre que le
       // mode invité. Aucune erreur — c'est un mode dégradé valide (déploiement
       // sans backend Supabase).
@@ -39,19 +55,45 @@ class AuthService {
       this.state = { status: "signed_out" };
       return;
     }
-    this.client = createClient(url, anon, {
-      auth: {
-        persistSession: true,
-        storageKey: AUTH_STORAGE_KEY,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
-    this.bootstrap();
+    if (sessionPending()) void this.load();
+    else this.state = { status: "signed_out" };
   }
 
   isConfigured(): boolean {
-    return this.client !== null;
+    return !!this.url && !!this.anon;
+  }
+
+  // Panneau de connexion ouvert : le client sera prêt au moment de valider.
+  preload(): void {
+    if (this.isConfigured()) void this.load();
+  }
+
+  // Client prêt et son écouteur de session posé (bootstrap) : une connexion
+  // lancée avant raterait l'évènement SIGNED_IN.
+  private load(): Promise<SupabaseClient | null> {
+    this.loader ??= import("@supabase/supabase-js").then(
+      async ({ createClient }) => {
+        this.client = createClient(this.url!, this.anon!, {
+          auth: {
+            persistSession: true,
+            storageKey: AUTH_STORAGE_KEY,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+          },
+        });
+        // Une erreur de reprise de session n'empêche pas de se connecter.
+        await this.bootstrap().catch((e) => console.warn("[blade.io] auth bootstrap failed", e));
+        return this.client;
+      },
+      (e) => {
+        // Réseau coupé pendant le chargement : on réessaiera au prochain besoin.
+        console.warn("[blade.io] auth client failed to load", e);
+        this.loader = null;
+        if (this.state.status === "loading") this.setState({ status: "signed_out" });
+        return null;
+      },
+    );
+    return this.loader;
   }
 
   private async bootstrap(): Promise<void> {
@@ -69,7 +111,10 @@ class AuthService {
       // Sync l'inventaire boutique du serveur vers le set local — assure
       // que les achats fait sur un autre device suivent le user.
       void this.syncInventory();
-    } else {
+    } else if (this.state.status !== "signed_out") {
+      // Déjà « déconnecté » quand le client se charge à l'ouverture du
+      // panneau : pas de nouvel état, qui referait le formulaire en cours de
+      // saisie.
       this.setState({ status: "signed_out" });
     }
     this.client.auth.onAuthStateChange(async (event, session) => {
@@ -88,7 +133,7 @@ class AuthService {
           void wallet.refresh();
           void this.syncInventory();
         }
-      } else {
+      } else if (this.state.status !== "signed_out") {
         this.setState({ status: "signed_out" });
       }
       // Nettoyer l'URL après un OAuth callback (sinon le hash reste affiché).
@@ -171,14 +216,16 @@ class AuthService {
   }
 
   async signInWithEmail(email: string, password: string): Promise<{ error: string | null }> {
-    if (!this.client) return { error: t("auth.errUnavailable") };
-    const { error } = await this.client.auth.signInWithPassword({ email, password });
+    const client = await this.ready();
+    if (!client) return { error: t("auth.errUnavailable") };
+    const { error } = await client.auth.signInWithPassword({ email, password });
     return { error: error ? humanizeAuthError(error.message) : null };
   }
 
   async signUpWithEmail(email: string, password: string, username: string): Promise<{ error: string | null; needsVerification: boolean }> {
-    if (!this.client) return { error: t("auth.errUnavailable"), needsVerification: false };
-    const { data, error } = await this.client.auth.signUp({
+    const client = await this.ready();
+    if (!client) return { error: t("auth.errUnavailable"), needsVerification: false };
+    const { data, error } = await client.auth.signUp({
       email,
       password,
       options: {
@@ -195,8 +242,9 @@ class AuthService {
   }
 
   async signInWithProvider(provider: AuthProvider): Promise<{ error: string | null }> {
-    if (!this.client) return { error: t("auth.errUnavailable") };
-    const { error } = await this.client.auth.signInWithOAuth({
+    const client = await this.ready();
+    if (!client) return { error: t("auth.errUnavailable") };
+    const { error } = await client.auth.signInWithOAuth({
       provider,
       options: { redirectTo: window.location.origin },
     });
@@ -204,8 +252,13 @@ class AuthService {
   }
 
   async signOut(): Promise<void> {
-    if (!this.client) return;
-    await this.client.auth.signOut();
+    const client = await this.ready();
+    if (!client) return;
+    await client.auth.signOut();
+  }
+
+  private ready(): Promise<SupabaseClient | null> {
+    return this.isConfigured() ? this.load() : Promise.resolve(null);
   }
 
   async setUsername(username: string): Promise<{ error: string | null }> {

@@ -1,5 +1,3 @@
-import * as THREE from "three";
-
 export type QualityPreset = "ultra" | "low" | "medium" | "high";
 
 // Budget des effets de combat (tâche 4.9) : combien peuvent coexister et

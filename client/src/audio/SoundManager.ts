@@ -1,6 +1,36 @@
-import * as Tone from "tone";
+import type * as Tone from "tone";
 import { BladeRarity, PowerUpType } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
+
+type ToneLib = typeof import("./toneLib");
+
+// Tone.js et ses dépendances (~240 Ko) : chargés au premier geste du joueur
+// plutôt qu'au démarrage. Les effets ne sonnent qu'en partie, après le clic
+// qui la lance.
+let toneLoad: Promise<ToneLib> | null = null;
+function loadTone(): Promise<ToneLib> {
+  return (toneLoad ??= import("./toneLib"));
+}
+
+// Contexte audio créé et débloqué au premier geste, dans le gestionnaire
+// même : Safari refuse de le démarrer plus tard, une fois Tone.js chargé.
+// Tone s'y branche à l'initialisation.
+let audioCtx: AudioContext | null = null;
+const UNLOCK_EVENTS = ["pointerdown", "touchend", "keydown"] as const;
+function unlockAudio(): void {
+  void loadTone();
+  try {
+    audioCtx ??= new AudioContext();
+    if (audioCtx.state === "running") {
+      for (const e of UNLOCK_EVENTS) window.removeEventListener(e, unlockAudio, true);
+    } else {
+      void audioCtx.resume();
+    }
+  } catch {
+    // Pas de Web Audio : effets muets, musiques jouées quand même.
+  }
+}
+for (const e of UNLOCK_EVENTS) window.addEventListener(e, unlockAudio, true);
 
 // Musiques servies depuis client/public/ (synchronisées au build via le script
 // sync-music). Préfixé par BASE_URL pour survivre aux déploiements en
@@ -19,9 +49,11 @@ type MusicTrack = "lobby" | "battle";
 // Deux tracks : lobby (chill, login/menu/death screen) et battle (in-game).
 // Crossfade rapide entre les deux pour ne pas couper sec.
 export class SoundManager {
-  private master = new Tone.Gain(0.7).toDestination();
-  private sfxGain = new Tone.Gain(0.8).connect(this.master);
+  private T!: ToneLib;
+  private master: Tone.Gain | null = null;
+  private sfxGain!: Tone.Gain;
   private started = false;
+  private initing: Promise<void> | null = null;
   private pickupSynth!: Tone.Synth;
   private hitSynth!: Tone.MetalSynth;
   private killSynth!: Tone.MembraneSynth;
@@ -47,6 +79,7 @@ export class SoundManager {
 
   private masterVol = 0.7;
   private musicVol = 0.5;
+  private sfxVol = 0.8;
   private lobbyMusic: HTMLAudioElement | null = null;
   private battleMusic: HTMLAudioElement | null = null;
   private currentTrack: MusicTrack | null = null;
@@ -59,10 +92,21 @@ export class SoundManager {
   // → on planifie chaque trigger à `max(now, lastTime + epsilon)`.
   private lastTriggerTime = new WeakMap<object, number>();
 
-  async init(): Promise<void> {
-    if (this.started) return;
+  init(): Promise<void> {
+    this.initing ??= this.setup().catch((e) => {
+      this.initing = null;
+      throw e;
+    });
+    return this.initing;
+  }
+
+  private async setup(): Promise<void> {
+    const Tone = await loadTone();
+    if (audioCtx) Tone.setContext(audioCtx);
     await Tone.start();
-    this.started = true;
+    this.T = Tone;
+    this.master = new Tone.Gain(this.masterVol).toDestination();
+    this.sfxGain = new Tone.Gain(this.sfxVol).connect(this.master);
 
     // SFX bus
     const reverb = new Tone.Reverb({ decay: 1.8, wet: 0.18 }).connect(this.sfxGain);
@@ -178,6 +222,7 @@ export class SoundManager {
     this.boostEnv.connect(this.sfxGain);
     this.boostNoise.volume.value = -22;
     this.boostNoise.start();
+    this.started = true;
   }
 
   private getOrCreateTrack(track: MusicTrack): HTMLAudioElement {
@@ -269,7 +314,7 @@ export class SoundManager {
   }
 
   private nextTime(synth: object): number {
-    const now = Tone.now();
+    const now = this.T.now();
     const last = this.lastTriggerTime.get(synth) ?? 0;
     const t = Math.max(now, last + 0.001);
     this.lastTriggerTime.set(synth, t);
@@ -279,8 +324,12 @@ export class SoundManager {
   setVolumes(master: number, music: number, sfx: number): void {
     this.masterVol = master;
     this.musicVol = music;
-    this.master.gain.rampTo(master, 0.05);
-    this.sfxGain.gain.rampTo(sfx, 0.05);
+    this.sfxVol = sfx;
+    // Avant l'initialisation, les volumes seront ceux de la création.
+    if (this.master) {
+      this.master.gain.rampTo(master, 0.05);
+      this.sfxGain.gain.rampTo(sfx, 0.05);
+    }
     const v = master * music;
     if (this.currentTrack === "lobby" && this.lobbyMusic) this.lobbyMusic.volume = v;
     if (this.currentTrack === "battle" && this.battleMusic) this.battleMusic.volume = v;
@@ -299,7 +348,7 @@ export class SoundManager {
   private sequence(synth: Tone.Synth | Tone.FMSynth, notes: number[], step: number, dur: number, gain: number): void {
     let t = this.nextTime(synth);
     for (const m of notes) {
-      synth.triggerAttackRelease(Tone.Frequency(m, "midi").toFrequency(), dur, t, gain);
+      synth.triggerAttackRelease(this.T.Frequency(m, "midi").toFrequency(), dur, t, gain);
       this.lastTriggerTime.set(synth, t);
       t += step;
     }

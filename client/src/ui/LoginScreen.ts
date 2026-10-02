@@ -596,6 +596,15 @@ export class LoginScreen {
     document.getElementById("join-invite")?.classList.add("hidden");
   }
 
+  // Clic pendant le chargement du moteur (boot.ts) : le bouton le dit, et un
+  // second clic ne relance rien.
+  setStarting(on: boolean): void {
+    this.button.disabled = on;
+    this.button.classList.toggle("starting", on);
+    const label = this.button.querySelector<HTMLElement>(".bio2-cta-label");
+    if (label) label.innerHTML = t(on ? "lobby.starting" : "lobby.enter");
+  }
+
   show(): void {
     this.root.classList.remove("hidden");
     if (this.tickInterval === null) this.startReadouts();

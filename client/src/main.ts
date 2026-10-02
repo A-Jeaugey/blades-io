@@ -99,14 +99,14 @@ import { ChatPanel } from "./ui/ChatPanel";
 import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
-import { applyThemeCss, getActiveTheme } from "./themes";
-import { I18nKey, applyI18n, formatNumber, t } from "./i18n";
+import { getActiveTheme } from "./themes";
+import { I18nKey, formatNumber, t } from "./i18n";
 import { showAlert } from "./ui/Dialog";
 import { RoomRef, ShareResult, inviteUrl, share } from "./ui/share";
 import { BLADE_STYLES, KILL_FX_LOOKS, lookOf } from "./cosmetics/looks";
 import { getLoadout } from "./cosmetics/loadout";
 import { isReloadPending, reloadAtMenu } from "./ui/pendingReload";
-import { Boutique, isBoutiqueOpen } from "./boutique/Boutique";
+import { isBoutiqueOpen } from "./boutique/entry";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
@@ -183,7 +183,20 @@ function markPlayed(): void {
   }
 }
 
-class Game {
+// Ce que le lobby a déjà monté avant le chargement du moteur (boot.ts) :
+// le jeu le reprend tel quel. touch.source : le jeu y branche la détection
+// du périphérique utilisé (tactile ou non), que l'aide lisait jusque-là
+// d'après le pointeur.
+export interface LobbyParts {
+  login: LoginScreen;
+  settings: SettingsPanel;
+  profile: ProfilePanel;
+  onboarding: Onboarding;
+  sound: SoundManager;
+  touch: { source: () => boolean };
+}
+
+export class Game {
   private canvas: HTMLCanvasElement;
   private sceneStack: SceneStack;
   private postFx: PostFX;
@@ -299,7 +312,7 @@ class Game {
   private toastUntil = 0;
   private chat!: ChatPanel;
   private nametags = new NametagOverlay();
-  private sound = new SoundManager();
+  private sound: SoundManager;
   private conn: Connection;
   // Thème actif — résolu une fois à l'init (le système ne supporte pas le
   // hot-swap, l'utilisateur reload pour changer de thème depuis le lobby).
@@ -337,6 +350,12 @@ class Game {
   private leaderBounty = 0;
   private shownBounty = -1;
   private crownVec = new THREE.Vector3();
+  // Éléments touchés à chaque frame : cherchés une fois, et la couronne
+  // n'est montrée ou cachée qu'au changement.
+  private readonly crownEl = document.getElementById("king-crown")!;
+  private readonly bountyEl = document.getElementById("crown-bounty");
+  private readonly toastEl = document.getElementById("challenge-toast");
+  private crownShown = false;
   // Edge-trigger throw : on stocke un appui détecté entre deux sendInput()
   // (un par SERVER_DT, pas forcément chaque frame). Sans ça, un appui dans
   // la frame de gap entre deux sends se perd.
@@ -406,7 +425,12 @@ class Game {
   private readonly HEAR_NEAR = 22;
   private readonly HEAR_FAR = 55;
 
-  constructor() {
+  constructor(lobby: LobbyParts) {
+    this.login = lobby.login;
+    this.settings = lobby.settings;
+    this.profile = lobby.profile;
+    this.onboarding = lobby.onboarding;
+    this.sound = lobby.sound;
     this.canvas = document.getElementById("game") as HTMLCanvasElement;
     this.quality = getPresetConfig(detectPreset());
     console.log(`[blade.io] quality preset: ${this.quality.preset}`);
@@ -499,7 +523,6 @@ class Game {
         summary: () => this.summary,
       };
     }
-    this.settings = new SettingsPanel();
     this.chat = new ChatPanel();
     this.chat.setSendCallback((text, action) => {
       // L'envoi traverse Colyseus comme tous les autres messages. Le
@@ -520,7 +543,6 @@ class Game {
       if (rarity !== undefined) msg.rarity = rarity;
       try { this.room?.send("cheat", msg); } catch { /* noop */ }
     });
-    this.login = new LoginScreen((res) => this.start(res));
     this.death = new DeathScreen(
       () => this.respawn(),
       () => this.spectate(),
@@ -558,9 +580,7 @@ class Game {
       },
     });
     this.throwBtn = document.getElementById("throw-btn");
-    this.onboarding = new Onboarding(() => this.input.isTouch);
-    this.profile = new ProfilePanel();
-    void this.profile.refreshBadge();
+    lobby.touch.source = () => this.input.isTouch;
     this.haptics = new Haptics(() => this.input.isTouch);
     // Contrôles tactiles et bouton de chat suivent le mode d'entrée courant
     // (un PC à écran tactile bascule selon le dernier périphérique utilisé).
@@ -592,20 +612,12 @@ class Game {
     this.hud.onInvite(() => void this.invite((r) => { if (r === "copied") this.hud.flashCopied(); }));
     this.conn = new Connection(resolveServerEndpoint());
     window.addEventListener("beforeunload", () => { this.conn.leave(); });
-    // Pré-provisionne un guest token en background dès le boot : le claim
-    // au sign-in et le credit à la fin d'une partie en mode invité ont
-    // besoin d'un token déjà valide. Fire-and-forget : si Supabase est
-    // indisponible, on dégrade silencieusement.
-    if (!auth.getAccessToken()) {
-      void ensureGuestToken();
-    }
-    // Lobby music dès le boot. autoplay() peut être bloqué tant que l'user
-    // n'a pas interagi : SoundManager arme un fallback pointerdown/keydown.
-    void this.sound.playLobbyMusic();
     this.loop();
+    // L'arène apparaît en fondu derrière le lobby, déjà affiché (boot.ts).
+    requestAnimationFrame(() => this.canvas.classList.remove("booting"));
   }
 
-  private async start(res: LoginResult): Promise<void> {
+  async start(res: LoginResult): Promise<void> {
     this.myName = res.name;
     this.login.hide();
     this.hud.show();
@@ -1501,7 +1513,7 @@ class Game {
   // Bandeaux en jeu, 4 s chacun, dans l'ordre.
   private updateToast(now: number): void {
     if (now < this.toastUntil) return;
-    const el = document.getElementById("challenge-toast");
+    const el = this.toastEl;
     if (!el) return;
     const next = this.toasts.shift();
     if (next === undefined) {
@@ -2487,7 +2499,7 @@ class Game {
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
 
       // Crown UI rendering
-      const crownEl = document.getElementById("king-crown")!;
+      const crownEl = this.crownEl;
       let showCrown = false;
       // this.room.state.players peut être undefined dans la fenêtre courte
       // entre conn.join() résolu et la première sync de patches (plus visible
@@ -2514,12 +2526,13 @@ class Game {
           }
         }
       }
-      if (showCrown) crownEl.classList.remove("hidden");
-      else crownEl.classList.add("hidden");
+      if (showCrown !== this.crownShown) {
+        this.crownShown = showCrown;
+        crownEl.classList.toggle("hidden", !showCrown);
+      }
       if (this.leaderBounty !== this.shownBounty) {
         this.shownBounty = this.leaderBounty;
-        const bountyEl = document.getElementById("crown-bounty");
-        if (bountyEl) bountyEl.textContent = this.leaderBounty > 0 ? `+${this.leaderBounty} 🏆` : "";
+        if (this.bountyEl) this.bountyEl.textContent = this.leaderBounty > 0 ? `+${this.leaderBounty} 🏆` : "";
       }
 
       requestAnimationFrame(tick);
@@ -2527,16 +2540,6 @@ class Game {
     requestAnimationFrame(tick);
   }
 }
-
-// Applique les variables CSS du thème actif AVANT d'instancier le jeu :
-// les UIs créés ensuite (LoginScreen, Hud, etc.) prennent les bonnes
-// couleurs dès leur premier render. De même pour la langue du texte fixe.
-applyThemeCss();
-applyI18n();
-// Boutique instanciée tôt pour brancher le bouton "BOUTIQUE" du login
-// screen + écouter Échap. Reste cachée tant que l'user ne l'ouvre pas.
-new Boutique();
-new Game();
 
 // Badge d'effet d'un power-up (aucun pour Blades, instantané) : la clé de
 // son libellé sert aussi d'identifiant du badge.

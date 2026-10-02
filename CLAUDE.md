@@ -30,8 +30,12 @@ client/    Vite + Three.js + SDK Colyseus. Entités distantes rendues 80 ms
 
 ```
 client/src/
-├── main.ts              Game class — boucle requestAnimationFrame, dispatch
-│                        des messages serveur, gestion FX bursts
+├── boot.ts              Point d'entrée : lobby monté tout de suite (thème,
+│                        langue, formulaire, réglages, profil, aide,
+│                        boutique, musique), moteur (main.ts) chargé en
+│                        parallèle (tâche 2.7)
+├── main.ts              Game class — moteur : boucle requestAnimationFrame,
+│                        dispatch des messages serveur, gestion FX bursts
 ├── scene/
 │   ├── Scene.ts         WebGLRenderer + camera + lumières + fog (depuis thème)
 │   ├── Camera.ts        CameraRig — cadrage partagé (CAMERA_* dans shared/),
@@ -74,7 +78,8 @@ client/src/
 │                        À LA UNE, SKINS, LAMES, EFFETS (cosmeticsShop.ts,
 │                        aperçus CSS), vitrine du jour (offer.ts), aperçu
 │                        3D d'essayage (PreviewStage.ts)
-├── audio/SoundManager.ts Tone.js synth + HTMLAudio tracks
+├── audio/SoundManager.ts Tone.js synth (chargé au premier geste, toneLib.ts)
+│                        + HTMLAudio tracks
 ├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
 │                        CombatFeedback (repères de perte, gains « +N 🏆 »),
 │                        KillFeed (fil des éliminations), personalBest
@@ -275,7 +280,7 @@ menace se lisent dans `THREAT_COLORS` (`themes/index.ts`), jamais
 directement dans `DANGER_COLOR` / `PREY_COLOR`. Même règle de rechargement
 que le thème.
 
-CSS : `applyThemeCss()` est appelé **avant** `new Game()` dans `main.ts`. Il
+CSS : `applyThemeCss()` est appelé **avant** toute interface dans `boot.ts`. Il
 injecte les variables `--cyan`, `--pink`, `--dark`, etc. sur `:root` depuis
 `theme.ui`. Toutes les règles CSS utilisent `var(--cyan)` etc., donc le
 switch se fait sans toucher au CSS.
@@ -579,6 +584,21 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   série comptent les anneaux une fois (`ownerRingCounts`). Avant, deux
   orbites de 2000 lames au contact prenaient ~55 ms par tick, et toutes les
   rooms du process gelaient avec. Banc : `node tools/bench-giants.js`.
+- **Poids du client (tâche 2.7)** : la page ne charge d'abord que
+  `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
+  (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en
+  parallèle, et `Game` reprend le lobby déjà monté (`LobbyParts`) ;
+  Tone.js au premier geste (`audio/toneLib.ts`, contexte audio débloqué
+  dans le geste même, pour Safari) ; supabase-js seulement pour une
+  session à reprendre, un retour de connexion ou le panneau de connexion
+  ouvert (`auth.preload`) ; la boutique à sa première ouverture
+  (`boutique/entry.ts`). Rien de ce qu'importe le lobby ne doit tirer
+  `main.ts`, three.js ou Colyseus (un `import type` suffit) : le moteur
+  reviendrait dans le premier chargement. Contrôle : `SOURCEMAP=1 npm run
+  build --workspace=@bladeio/client`, puis la taille du fichier cité par
+  `dist/index.html`. three.js et Colyseus ont leurs fichiers
+  (`manualChunks`) et `/assets/` est servi en cache permanent (noms à
+  empreinte) : une mise à jour du jeu ne les fait pas retélécharger.
 - **Carte (tâche 4.7)** : `shared/src/decor.ts` décrit tout ce qui se
   voit ou bloque, pareil pour tous les thèmes. `DECOR_COLLIDERS` = pilier
   central, `OBELISKS`, puis les colliders des `STRUCTURES`

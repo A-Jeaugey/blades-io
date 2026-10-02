@@ -98,7 +98,17 @@ if (clientDist) {
     if (!indexCache || indexCache.mtimeMs !== mtimeMs) indexCache = { mtimeMs, html: fs.readFileSync(indexFile, "utf8") };
     return indexCache.html;
   };
-  app.use(express.static(clientDist, { index: false }));
+  // Fichiers du build (assets/) : leur nom contient l'empreinte de leur
+  // contenu, un changement donne un autre nom. Gardés en cache sans
+  // revalidation ; le reste (musiques, og.jpg) garde le comportement par
+  // défaut, revalidé à chaque visite.
+  const assetsDir = path.join(clientDist, "assets") + path.sep;
+  app.use(express.static(clientDist, {
+    index: false,
+    setHeaders: (res, file) => {
+      if (file.startsWith(assetsDir)) res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    },
+  }));
   app.get("*", (req, res, next) => {
     if (path.extname(req.path)) return next();
     if (req.path.startsWith("/api")) return next();
