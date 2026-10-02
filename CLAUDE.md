@@ -48,10 +48,12 @@ client/src/
 ├── entities/
 │   ├── BladeView.ts     InstancedMesh×24 (4 raretés × 6 tiers), flash
 │   │                    blanc par instance (attribut aFlash) ; capacité
-│   │                    qui double au besoin, retrait en O(1)
+│   │                    qui double au besoin, retrait en O(1) ; position
+│   │                    dessinée des lames rapides → traînées (setTrailSink)
 │   ├── bladeGeometries.ts Une forme par palier (dague → lame à aura)
 │   ├── PlayerView.ts    Capsule corps + tête + ring + halo + traînée
 │   │                    (ruban échantillonné dans le temps, joueur local)
+│   │                    + dissolution à la mort (shader injecté)
 │   ├── CrateView.ts     Boîte émissive + edges
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
 │   ├── FlagView.ts      Drapeaux et bases de la capture du drapeau
@@ -59,6 +61,11 @@ client/src/
 ├── fx/
 │   ├── Particles.ts     Pool de Points pour bursts (sparks/explosions),
 │   │                    disques additifs (shader : taille, opacité)
+│   ├── CombatFx.ts      Effets de combat (4.9) : ondes de choc
+│   │                    (Shockwaves), éclats de lame (Shards), colonnes
+│   │                    de lumière (LightColumns), traînées des lames
+│   │                    (BladeTrails), lignes de vitesse (SpeedLines)
+│   ├── flash.ts         fxIntensity() : réglage des flashs des effets
 │   └── ScreenShake.ts
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── cosmetics/           Cosmétiques visibles par tous (looks.ts : apparence,
@@ -119,6 +126,14 @@ client/src/
   (2 Hz). Un évènement positionnel passe par `emit(type, payload, scope)`
   pour n'aller qu'aux clients concernés : sans portée, il est diffusé à
   tous et peut trahir un joueur caché.
+- **Retrait d'un joueur** (mort, sorti de la zone d'intérêt, caché dans
+  un buisson, parti) : appliqué au tick du patch sur la ligne de temps
+  (`removePlayerView`), comme ses positions. Le serveur retire un mort de
+  la vue des autres au tick même du kill : retiré dès réception, il
+  disparaissait avant le coup fatal et l'élimination ne le trouvait plus
+  (ni effet ni gain affiché). D'ici là, son dernier état se lit par
+  `playerState(id)` (map `departing`), jamais directement dans
+  `room.state.players`. Un corps qui se dissout finit dans `corpses`.
 - **Mode debug** : `?debug=hitbox` dans l'URL dessine les hitbox serveur
   des lames proches et affiche l'écart client/serveur (orbites, étincelles).
 
@@ -136,6 +151,9 @@ lobby recharge la page.
 
 **Conséquence** : tout nouveau code de rendu doit gérer **les 3 niveaux de
 détail** (`rich`, `simple`, `minimal`) ou au moins ne pas casser les low/ultra.
+Les effets de combat ont leur budget dans `q.fx` (`FxBudget` : détail,
+plafonds d'instances, facettes, points des traînées) : un nouvel effet y
+prend le sien.
 
 ### Mobile — important
 
@@ -381,7 +399,8 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   ▲/▼ des nametags, taille des raretés). Toute secousse passe par
   `camera.shake` (le réglage du joueur s'y applique) ; tout nouveau flash,
   éclat ou clignotement suit le réglage des flashs (`setFlashIntensity`,
-  appelé depuis `settings.onChange` dans `main.ts`). Une nouvelle couleur
+  appelé depuis `settings.onChange` dans `main.ts` ; `fxIntensity()` de
+  `fx/flash.ts` : à 0 %, atténué à 35 %, pas éteint). Une nouvelle couleur
   qui code une information se vérifie sous daltonisme simulé.
 - **Shaders** : commentez les passes (qu'est-ce qui anime, qu'est-ce qui dérive).
   Précisez `precision highp/mediump/lowp` selon le niveau de qualité visé.
@@ -550,6 +569,24 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   devient transparent pour le joueur qui est dedans (`setInsideBush`,
   depuis `main.ts`), avec rafale de particules et son à l'entrée et à la
   sortie.
+- **Effets de combat (tâche 4.9)** : `fx/CombatFx.ts` réunit ondes de
+  choc (clash, élimination, palier), éclats de lame brisée, colonne de
+  lumière qui suit le joueur au passage de palier, traînées des lames
+  (projectiles ; lames au sol aspirées vers un joueur, puis jusque dans son
+  orbite au ramassage) et lignes de vitesse au boost (le joueur local
+  d'après son dernier input, les autres d'après `Player.boost`). Chacun
+  est un seul appel de rendu (géométrie instanciée, ou un maillage pour
+  toutes les traînées) ; leurs shaders se compilent au premier rendu
+  (objets visibles, 0 instance) et non au premier clash. Les traînées
+  suivent la position DESSINÉE des lames : `BladeRenderer` les alimente
+  (`setTrailSink`). La dissolution à la mort est injectée dans les
+  matériaux du corps à leur création (`addDissolve`, clé de programme
+  commune : un seul shader pour tous les joueurs) ; `startDissolve` au
+  tick de l'élimination, à la couleur de l'effet d'élimination du tueur.
+  Lisibilité : de la lumière additive et brève par-dessus la scène, rien
+  qui cache une lame ou un joueur ; anneau, halo et repères d'allié d'un
+  mort disparaissent tout de suite ; colonne courte (5 à 8 u) éteinte vers
+  le haut.
 - **Cosmétiques (phase 6)** : catalogue dans `shared/src/cosmetics.ts`
   (emplacements skin, bladeSkin, trail, killFx ; débloqués au niveau ou
   vendus via `SHOP_ITEMS`), apparence dans `client/src/cosmetics/looks.ts`.

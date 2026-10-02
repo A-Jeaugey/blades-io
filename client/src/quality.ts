@@ -2,6 +2,33 @@ import * as THREE from "three";
 
 export type QualityPreset = "ultra" | "low" | "medium" | "high";
 
+// Budget des effets de combat (tâche 4.9) : combien peuvent coexister et
+// avec quel détail. Chaque effet a une version à chaque niveau ; au-delà
+// du plafond, le plus ancien laisse sa place au nouveau.
+export interface FxBudget {
+  // "rich" : détails animés (stries de la colonne de lumière, double onde à
+  // l'élimination, lignes de vitesse des autres joueurs) ; "simple" : les
+  // mêmes formes, sans ces détails ; "minimal" : la version la plus légère
+  // (moins de facettes, colonne sans cœur, dissolution en blocs).
+  detail: "rich" | "simple" | "minimal";
+  // Ondes de choc simultanées et facettes de leur anneau.
+  shockwaves: number;
+  ringSegments: number;
+  // Éclats de lame simultanés, et par lame brisée.
+  shards: number;
+  shardsPerBlade: number;
+  // Colonnes de lumière simultanées (passage de palier).
+  columns: number;
+  // Traînées de lames simultanées (projectiles, aspiration au ramassage) et
+  // points de chacune.
+  trails: number;
+  trailSamples: number;
+  // Lignes de vitesse simultanées (boost).
+  speedLines: number;
+  // Braises qui montent d'un corps qui se dissout.
+  dissolveEmbers: number;
+}
+
 export interface QualityConfig {
   preset: QualityPreset;
   // Pixel ratio max (multiplié par devicePixelRatio puis clampé).
@@ -71,6 +98,7 @@ export interface QualityConfig {
   // quand le fps reste trop bas (ex: high → medium → low). Indispensable
   // sur les bécanes incertaines : on démarre haut puis on adapte.
   autoDowngrade: boolean;
+  fx: FxBudget;
 }
 
 const PRESETS: Record<QualityPreset, QualityConfig> = {
@@ -116,6 +144,7 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     dynamicResolution: true,
     dynResMin: 0.75,
     autoDowngrade: true,
+    fx: { detail: "rich", shockwaves: 24, ringSegments: 64, shards: 96, shardsPerBlade: 6, columns: 6, trails: 40, trailSamples: 14, speedLines: 48, dissolveEmbers: 36 },
   },
   medium: {
     preset: "medium",
@@ -147,6 +176,7 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     dynamicResolution: true,
     dynResMin: 0.65,
     autoDowngrade: true,
+    fx: { detail: "rich", shockwaves: 16, ringSegments: 48, shards: 64, shardsPerBlade: 5, columns: 4, trails: 28, trailSamples: 11, speedLines: 32, dissolveEmbers: 24 },
   },
   low: {
     preset: "low",
@@ -182,6 +212,7 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     dynamicResolution: true,
     dynResMin: 0.5,
     autoDowngrade: true,
+    fx: { detail: "simple", shockwaves: 10, ringSegments: 32, shards: 40, shardsPerBlade: 4, columns: 3, trails: 18, trailSamples: 9, speedLines: 16, dissolveEmbers: 12 },
   },
   // "Potato mode" : tout désactivé. Cible : Intel HD anciens, SwiftShader,
   // PCs sans GPU dédié. Objectif : 60 fps stable même sur ces machines.
@@ -215,6 +246,7 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     dynamicResolution: true,
     dynResMin: 0.4,
     autoDowngrade: false,
+    fx: { detail: "minimal", shockwaves: 6, ringSegments: 24, shards: 18, shardsPerBlade: 2, columns: 2, trails: 10, trailSamples: 6, speedLines: 8, dissolveEmbers: 0 },
   },
 };
 

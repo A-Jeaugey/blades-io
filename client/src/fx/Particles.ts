@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { fxIntensity } from "./flash";
 
 // Particules rondes (tâche 2.6) : PointsMaterial dessinait des carrés et
 // ignorait l'attribut de taille. Disque doux, taille et opacité par
@@ -41,10 +42,6 @@ void main() {
   gl_FragColor = vec4(vColor, a);
 }
 `;
-
-// Éclat des particules au réglage des flashs à 0 % (tâche 3.8) : atténuées
-// mais visibles, elles montrent encore où a eu lieu un choc.
-const MIN_INTENSITY = 0.35;
 
 interface Particle {
   px: number; py: number; pz: number;
@@ -128,7 +125,7 @@ export class ParticlePool {
   // Réglage des flashs, de 0 à 1 : éclats et explosions s'atténuent (en
   // mélange additif, l'opacité règle la luminosité ajoutée).
   setFlashIntensity(k: number): void {
-    this.material.uniforms.uIntensity.value = MIN_INTENSITY + (1 - MIN_INTENSITY) * k;
+    this.material.uniforms.uIntensity.value = fxIntensity(k);
   }
 
   spawnSparks(x: number, y: number, z: number, color: number, count: number, speed = 4): void {
@@ -190,6 +187,35 @@ export class ParticlePool {
       p.cb = (color & 0xff) / 255;
       p.size = look.size * (0.7 + Math.random() * 0.6);
       p.g = look.gravity;
+      this.particles.push(p);
+    }
+  }
+
+  // Braises d'un corps qui se dissout (tâche 4.9) : réparties dans son
+  // volume (cylindre de rayon r, de 0,2 à 1,8 u de haut), elles montent en
+  // s'écartant un peu.
+  spawnRising(x: number, z: number, color: number, count: number, r = 0.35): void {
+    if (count <= 0) return;
+    const scaled = Math.max(1, Math.round(count * this.particleScale));
+    const cr = ((color >> 16) & 0xff) / 255;
+    const cg = ((color >> 8) & 0xff) / 255;
+    const cb = (color & 0xff) / 255;
+    for (let i = 0; i < scaled; i++) {
+      const p = this.take();
+      const a = Math.random() * Math.PI * 2;
+      const d = r * Math.sqrt(Math.random());
+      const out = 0.3 + Math.random() * 0.6;
+      p.px = x + Math.cos(a) * d;
+      p.py = 0.2 + Math.random() * 1.6;
+      p.pz = z + Math.sin(a) * d;
+      p.vx = Math.cos(a) * out;
+      p.vy = 1.6 + Math.random() * 1.8;
+      p.vz = Math.sin(a) * out;
+      p.life = 0.5 + Math.random() * 0.4;
+      p.maxLife = 0.9;
+      p.cr = cr; p.cg = cg; p.cb = cb;
+      p.size = 0.18 + Math.random() * 0.14;
+      p.g = -0.15;
       this.particles.push(p);
     }
   }

@@ -17,6 +17,53 @@ const TRAIL_Y = 0.05;
 // (apparition, recalage) : sinon un long trait relierait les deux points.
 const TRAIL_JUMP = 6;
 
+// Dissolution à la mort (tâche 4.9) : le corps part en morceaux suivant un
+// bruit, la tête d'abord, avec un liseré lumineux au bord de ce qui
+// disparaît, et vire tout entier vers la couleur de l'effet d'élimination.
+// Injectée dans les matériaux du corps dès leur création (un programme
+// compilé une fois, pas d'à-coup à la première mort) ; uDissolve = 0, rien
+// ne change. En potato, un bruit en blocs (des pixels), moins cher.
+const DISSOLVE_S = 0.6;
+const DISSOLVE_GLSL = /* glsl */ `
+uniform float uDissolve;
+uniform vec3 uDissolveColor;
+uniform float uDissolveGlow;
+varying vec3 vDissolvePos;
+float dissolveHash(vec3 p) {
+  return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+float dissolveNoise(vec3 p) {
+  vec3 i = floor(p);
+  #ifdef DISSOLVE_BLOCKY
+  return dissolveHash(i);
+  #else
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(dissolveHash(i), dissolveHash(i + vec3(1.0, 0.0, 0.0)), f.x),
+        mix(dissolveHash(i + vec3(0.0, 1.0, 0.0)), dissolveHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+    mix(mix(dissolveHash(i + vec3(0.0, 0.0, 1.0)), dissolveHash(i + vec3(1.0, 0.0, 1.0)), f.x),
+        mix(dissolveHash(i + vec3(0.0, 1.0, 1.0)), dissolveHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y),
+    f.z);
+  #endif
+}
+`;
+// Seuil par fragment : bruit, plus un peu de hauteur (la tête part la
+// première) ; au-dessous de uDissolve, le fragment a disparu.
+const DISSOLVE_CUT = /* glsl */ `
+float dissolveEdge = 0.0;
+if (uDissolve > 0.0) {
+  float dk = dissolveNoise(vDissolvePos * DISSOLVE_SCALE) * 0.72 + (1.0 - clamp(vDissolvePos.y / 1.9, 0.0, 1.0)) * 0.28;
+  if (dk < uDissolve) discard;
+  dissolveEdge = 1.0 - smoothstep(0.0, 0.09, dk - uDissolve);
+}
+`;
+// Liseré blanc chaud, corps qui vire à la couleur de l'effet.
+const DISSOLVE_TINT = /* glsl */ `
+vec3 dissolveTint = mix(uDissolveColor, vec3(1.0), dissolveEdge * 0.6);
+gl_FragColor.rgb = mix(gl_FragColor.rgb, dissolveTint, clamp(dissolveEdge + min(1.0, uDissolve * 5.0) * 0.4, 0.0, 1.0) * uDissolveGlow);
+`;
+
 export class PlayerView {
   root: THREE.Group;
   body: THREE.Mesh;
@@ -53,6 +100,10 @@ export class PlayerView {
   private prevRenderY = 0;
   public renderX = 0;
   public renderY = 0;
+  // Direction (unité) et vitesse (u/s) du déplacement affiché.
+  public moveX = 0;
+  public moveZ = 1;
+  public moveSpeed = 0;
   public targetX = 0;
   public targetY = 0;
   public prevX = 0;
@@ -80,6 +131,12 @@ export class PlayerView {
   // tâche 3.8). Repères créés au premier allié seulement.
   private ally = false;
   private allyMarks: THREE.Mesh | null = null;
+  // Dissolution : avancement (0 à 1,1), couleur, part de couleur (réglage
+  // des flashs) ; partagés par tous les matériaux du corps. -1 : intact.
+  private dissolveT = -1;
+  private uDissolve = { value: 0 };
+  private uDissolveColor = { value: new THREE.Color() };
+  private uDissolveGlow = { value: 1 };
 
   constructor(isLocal: boolean, q: QualityConfig) {
     this.root = new THREE.Group();
@@ -107,6 +164,7 @@ export class PlayerView {
             metalness: 0.35,
             roughness: 0.35,
           });
+      this.addDissolve(mat);
       // Couleurs de base, rendues quand le skin revient à la base.
       this.bodyMats.push(mat);
       this.baseColors.push({ color: simpleMaterials ? emissive : color, emissive, intensity });
@@ -245,6 +303,7 @@ export class PlayerView {
     const mat = this.q.simpleMaterials
       ? new THREE.MeshBasicMaterial({ color: look.accent })
       : new THREE.MeshStandardMaterial({ color: look.accent, emissive: look.accent, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.4 });
+    this.addDissolve(mat);
     this.accessoryDisposables.push(mat);
     const add = (geo: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, rz = 0) => {
       const mesh = new THREE.Mesh(geo, mat);
@@ -342,6 +401,67 @@ export class PlayerView {
     this.disposables.push(trailGeo, trailMat);
   }
 
+  // Dissolution injectée dans un matériau du corps (position monde du
+  // fragment, seuil, liseré, teinte).
+  private addDissolve(mat: THREE.Material): void {
+    const blocky = this.q.playerDetail === "minimal";
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uDissolve = this.uDissolve;
+      shader.uniforms.uDissolveColor = this.uDissolveColor;
+      shader.uniforms.uDissolveGlow = this.uDissolveGlow;
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying vec3 vDissolvePos;")
+        .replace("#include <project_vertex>", "#include <project_vertex>\nvDissolvePos = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          "#include <common>",
+          `#include <common>\n${blocky ? "#define DISSOLVE_BLOCKY\n#define DISSOLVE_SCALE 6.0" : "#define DISSOLVE_SCALE 4.5"}\n${DISSOLVE_GLSL}`,
+        )
+        .replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>\n${DISSOLVE_CUT}`)
+        // Teinte en espace linéaire, avant la conversion de sortie.
+        .replace("#include <opaque_fragment>", `#include <opaque_fragment>\n${DISSOLVE_TINT}`);
+    };
+    // Même programme pour tous les joueurs (le texte de onBeforeCompile est
+    // identique, pas ses valeurs capturées : la clé les distingue).
+    mat.customProgramCacheKey = () => `player-dissolve:${blocky ? "blocks" : "noise"}`;
+  }
+
+  // Début de la dissolution (élimination), à la couleur donnée ; glow : part
+  // de cette couleur (réglage des flashs). Anneau, halo et repères d'allié
+  // disparaissent aussitôt : ce sont des repères de jeu, pas le corps.
+  startDissolve(color: number, glow: number): void {
+    if (this.dissolveT >= 0) return;
+    this.dissolveT = 0;
+    this.uDissolve.value = 0.001;
+    this.uDissolveColor.value.setHex(color);
+    this.uDissolveGlow.value = glow;
+    this.ring.visible = false;
+    if (this.protHalo) this.protHalo.visible = false;
+    this.resetTrail();
+  }
+
+  // Avance la dissolution ; vrai tant qu'elle n'est pas finie.
+  updateDissolve(dt: number): boolean {
+    if (this.dissolveT < 0 || this.dissolveT >= 1) return false;
+    this.dissolveT = Math.min(1, this.dissolveT + dt / DISSOLVE_S);
+    // Au-delà de 1 : le dernier fragment (seuil maximal 1) disparaît.
+    this.uDissolve.value = this.dissolveT * 1.1;
+    return this.dissolveT < 1;
+  }
+
+  get dissolving(): boolean {
+    return this.dissolveT >= 0 && this.dissolveT < 1;
+  }
+
+  // Corps intact (réapparition).
+  resetDissolve(): void {
+    if (this.dissolveT < 0) return;
+    this.dissolveT = -1;
+    this.uDissolve.value = 0;
+    this.ring.visible = true;
+    if (this.protHalo) this.protHalo.visible = this.protected_;
+  }
+
   setSnapshot(x: number, y: number, now: number): void {
     if (x === this.targetX && y === this.targetY) return;
     this.prevX = this.targetX;
@@ -420,6 +540,14 @@ export class PlayerView {
     const vy = this.renderY - this.prevRenderY;
     const speed = Math.hypot(vx, vy) / Math.max(1e-6, dt);
     const moving = speed > 0.5;
+    // Vitesse affichée (lignes de vitesse du boost), lissée : un saut d'une
+    // frame (recalage) ne doit pas la faire bondir.
+    this.moveSpeed += (Math.min(speed, 40) - this.moveSpeed) * Math.min(1, dt * 12);
+    if (moving) {
+      const d = Math.hypot(vx, vy);
+      this.moveX = vx / d;
+      this.moveZ = vy / d;
+    }
 
     if (moving) {
       const target = Math.atan2(vx, vy);

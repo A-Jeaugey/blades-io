@@ -44,6 +44,7 @@ It plays like the kind of arena clash you see on TikTok feeds — short matches,
 | **HUD** | Top left: your rank, blades, life score and personal best (public rooms), and the real cost of boost (2 blades/s, with the time left while boosting; on the BOOST button on mobile). Top right: minimap, compact leaderboard (top 5 + you) and a kill feed (last 4 eliminations, with their cause). Trophy gains float where they happen (kill, crate, power-up). FPS and ping bottom right |
 | **Death** | The camera glides to your killer for 2.5 s with their blade count (click, tap or Space to skip), then a recap card: score, personal best, trophées (kept on your device as a guest until you sign in), the cause of death in plain words and a tip matching it |
 | **Map themes** | Four looks for the arena: Original Neon (free), Spirit Sanctuary, Vermilion Forge and Frozen Depths (BOUTIQUE), seen only by whoever equips them. Same map, same framing and the same rarity colors on every theme (white, blue, violet, gold). Each theme passes a readability check, run in CI (`npm run check:themes`): dark ground, no ground or ambient color that looks like a blade or a threat, a red kill zone |
+| **Combat effects** | A shockwave at every clash (a small ring at blade height, bigger when a blade breaks) and every elimination (a wide ring on the ground); a broken blade bursts into shards of its rarity color; an eliminated player dissolves in 0.6 s (pieces fading out, head first, with a white-hot edge, in the killer's elimination effect color); a column of light follows a player for a second when they reach a new tier; thrown blades leave a ribbon trail, and loose blades a thin one as they are sucked into a player's orbit; boosting players are wrapped in speed lines. Each effect has a version for every quality level (fewer instances and facets, a block dissolve in potato), follows the flashes setting, and only adds light on top of the scene for a moment: nothing hides a blade or a threat |
 | **Camera** | Same framing for every theme (a cosmetic never changes what you see). It pulls back smoothly as your orbit grows, and narrow screens get pulled back until they show at least ~80 % of a 16:9 screen's width (portrait phones see more depth, at a smaller scale) |
 
 ### Bots
@@ -83,7 +84,7 @@ Each client only receives what is near it (interest management with Colyseus `St
 
 - **Spatial hash** (5-unit cells) for pickup and broad-phase collisions
 - **Owner-bucket broad phase** for blade-vs-blade — pairs of players are tested by center distance before touching individual blades
-- **InstancedMesh** rendering — one mesh per (rarity × tier), growing as needed (no cap), O(1) removal; round additive particles (point-sprite shader) and a time-sampled ribbon trail
+- **InstancedMesh** rendering — one mesh per (rarity × tier), growing as needed (no cap), O(1) removal; round additive particles (point-sprite shader) and a time-sampled ribbon trail; combat effects drawn in one call each (instanced rings, shards, light columns and speed lines, every blade trail in a single ribbon mesh), their shaders compiled on the first frame rather than on the first clash
 - **French and English** — the language follows the browser (English otherwise) and can be changed live in the settings; all UI text lives in `client/src/i18n/`
 - **Quality presets** (high/medium/low/ultra, auto-detected; `ultra` is the lightest) — bloom, particles and decor density adapt. An FPS monitor lowers the resolution first, then the preset; a lower preset picked mid-match applies back at the menu, never during a game
 - **Anti-cheat** — server clamps `|dx|, |dy| ≤ 1`, ignores inputs above 80/s and disconnects a client that stays above that cap for 3 consecutive seconds
@@ -148,7 +149,7 @@ The input mode follows the last device you used: touching the screen shows the t
 
 On phones, the interface keeps clear of notches and rounded corners, every button is at least 44 px, and the in-game leaderboard starts collapsed (tap it to expand; the choice is remembered). Hits taken, kills and death trigger short vibrations where the browser supports them (Android; not iOS Safari), which can be turned off in Settings.
 
-Accessibility settings: screen shake (0–100 %, off by default when the system asks for reduced motion), flashes (0–100 %: white flash of clashing blades, particle bursts, pulse of the border warning) and a colorblind palette (rarity and threat colors that stay apart under protanopia, deuteranopia and tritanopia, on every theme; applies after a reload). Nothing relies on color alone: each power-up has its own shape (readable in grayscale), rarer blades are bigger, and nametags mark threat with ▲/▼.
+Accessibility settings: screen shake (0–100 %, off by default when the system asks for reduced motion), flashes (0–100 %: white flash of clashing blades, particle bursts, combat effects, pulse of the border warning) and a colorblind palette (rarity and threat colors that stay apart under protanopia, deuteranopia and tritanopia, on every theme; applies after a reload). Nothing relies on color alone: each power-up has its own shape (readable in grayscale), rarer blades are bigger, and nametags mark threat with ▲/▼.
 
 New players get a controls card (matching their device) when they first enter a game, then one-time contextual tips (throw when an enemy is in range, boost cost, deadly edge, bushes), remembered in `localStorage` (`blade.onboarding`). The HOW TO PLAY page in the lobby repeats the rules and can show the tips again.
 
@@ -356,7 +357,7 @@ client/src/
   net/Connection.ts    # Colyseus client + reconnect logic
   scene/               # camera, ground, decor, post-processing
   entities/            # PlayerView, BladeView, CrateView, PowerUpView, AimIndicator
-  fx/                  # particles, screen shake
+  fx/                  # particles, combat effects (shockwaves, shards, light columns, blade trails, speed lines), screen shake
   input/               # keyboard, mouse (projected on the ground), touch joystick + throw button with drag aim
   ui/                  # HUD, login, death, leaderboard, minimap, settings, chat, combat feedback, onboarding
   i18n/                # French and English dictionaries, t(), data-i18n attributes

@@ -71,6 +71,8 @@ import { PowerUpRenderer } from "./entities/PowerUpView";
 import { FlagRenderer, FlagSnapshot } from "./entities/FlagView";
 import { MapEventSnapshot, MapEventView } from "./scene/MapEventView";
 import { ParticlePool } from "./fx/Particles";
+import { CombatFx } from "./fx/CombatFx";
+import { fxIntensity } from "./fx/flash";
 import { Haptics } from "./fx/Haptics";
 import { AmbientWisps } from "./scene/AmbientWisps";
 import { InputManager } from "./input/InputManager";
@@ -198,6 +200,29 @@ class Game {
   // au départ).
   private effectDurations: Map<string, number> = new Map();
   private particles!: ParticlePool;
+  // Effets de combat (tâche 4.9) : ondes de choc, éclats de lame, colonnes
+  // de lumière, traînées des lames, lignes de vitesse.
+  private combatFx!: CombatFx;
+  // Réglage des flashs courant (teinte des corps qui se dissolvent).
+  private flashK = 1;
+  // Joueurs retirés de l'état dont le rendu (80 ms dans le passé) n'a pas
+  // encore atteint le retrait : leur dernier état, pour les placer jusque-là.
+  private departing = new Map<string, any>();
+  // Corps qui finissent de se dissoudre après leur retrait (un mort n'est
+  // plus envoyé aux autres clients).
+  private corpses: PlayerView[] = [];
+  // Joueur local qui boost, d'après le dernier input envoyé (les lignes de
+  // vitesse n'attendent pas le serveur).
+  private localBoosting = false;
+  // Position de rendu d'un joueur (colonnes de lumière qui le suivent).
+  private tmpAt = { x: 0, z: 0 };
+  private renderPosOf = (id: string): { x: number; z: number } | undefined => {
+    const v = this.players.get(id);
+    if (!v) return undefined;
+    this.tmpAt.x = v.renderX;
+    this.tmpAt.z = v.renderY;
+    return this.tmpAt;
+  };
   private wisps!: AmbientWisps;
   // Moniteur FPS adaptatif : si fps reste sous le seuil pendant une fenêtre,
   // on baisse la résolution dynamiquement (resScale) ; si ça ne suffit pas,
@@ -377,6 +402,8 @@ class Game {
     this.mapEventView = new MapEventView(this.quality);
     this.sceneStack.scene.add(this.mapEventView.root);
     this.particles = new ParticlePool(this.quality.maxParticles, this.quality.particleScale);
+    this.combatFx = new CombatFx(this.quality);
+    this.blades.setTrailSink(this.combatFx.trails);
     this.wisps = new AmbientWisps(this.quality);
     this.ground = createGround(this.quality);
     this.sceneStack.scene.add(this.ground.mesh);
@@ -388,6 +415,7 @@ class Game {
     this.sceneStack.scene.add(this.crates.root);
     this.sceneStack.scene.add(this.powerups.root);
     this.sceneStack.scene.add(this.particles.object3d);
+    this.sceneStack.scene.add(this.combatFx.object);
     this.sceneStack.scene.add(this.wisps.object3d);
     this.sceneStack.scene.add(this.aimIndicator.object);
     this.hud = new Hud();
@@ -526,6 +554,8 @@ class Game {
       this.blades.setFlashIntensity(s.flashes);
       this.mapEventView.setFlashIntensity(s.flashes);
       this.particles.setFlashIntensity(s.flashes);
+      this.combatFx.setFlashIntensity(s.flashes);
+      this.flashK = s.flashes;
       this.borderWarning.setFlashIntensity(s.flashes);
       this.wall.setFlashIntensity(s.flashes);
       this.decor.setFlashIntensity(s.flashes);
@@ -679,6 +709,7 @@ class Game {
     this.killFeed.clear();
     this.pendingBlades.clear();
     this.renderAlive.clear();
+    this.departing.clear();
     this.summary = null;
     this.sentViewRadius = 0;
     this.nextViewCheckAt = 0;
@@ -724,7 +755,16 @@ class Game {
     }
 
     const onPlayerAdd = (p: any, key: string) => {
-      if (this.players.has(key)) return;
+      const old = this.players.get(key);
+      if (old) {
+        if (!this.departing.has(key)) return;
+        // Revenu (zone d'intérêt) avant que son retrait n'ait été rendu :
+        // l'ancienne vue part tout de suite, une neuve suit le nouvel état.
+        this.departing.delete(key);
+        this.players.delete(key);
+        if (old.dissolving) this.corpses.push(old);
+        else this.disposePlayerView(old);
+      }
       const isLocal = key === this.myId;
       const view = new PlayerView(isLocal, this.quality);
       view.applyCosmetics(p.skin ?? "", p.trail ?? "");
@@ -758,24 +798,31 @@ class Game {
           if (isLocal && alive) {
             this.renderAlive.set(key, true);
             view.resetTrail();
-          } else this.atTick(this.lastPatchTick, () => this.renderAlive.set(key, alive), false);
+            view.resetDissolve();
+          } else {
+            this.atTick(this.lastPatchTick, () => {
+              this.renderAlive.set(key, alive);
+              if (alive) view.resetDissolve();
+            }, false);
+          }
         }
         if (isLocal) this.needReconcile = true;
       });
     };
     $(state).players.onAdd(onPlayerAdd, true);
 
-    $(state).players.onRemove((_p: any, key: string) => {
+    // Retrait d'un joueur (mort, sorti de la zone d'intérêt, caché dans un
+    // buisson, parti) : au tick du patch sur la ligne de temps, comme ses
+    // positions. Le serveur retire un mort de la vue des autres au tick
+    // même du kill : retiré dès réception, il disparaissait ~80 ms avant le
+    // coup fatal à l'écran, et l'élimination, jouée à son tick, ne le
+    // trouvait plus (ni explosion, ni effet d'élimination, ni gain affiché
+    // au tueur). L'élimination, reçue avant, passe la première au même tick.
+    $(state).players.onRemove((p: any, key: string) => {
       const v = this.players.get(key);
-      // Un joueur qui disparaît dans un buisson (le serveur ne l'envoie
-      // plus) : rafale de pixels là où il est entré (tâche 4.7).
-      if (v && key !== this.myId && bushAt(v.renderX, v.renderY) >= 0) {
-        this.particles.spawnSparks(v.renderX, 1.2, v.renderY, this.decor.bushBurstColor, 12, 3);
-      }
-      if (v) { v.dispose(); v.trail.parent?.remove(v.trail); }
-      this.players.delete(key);
-      this.orbitSegments.delete(key);
-      this.renderAlive.delete(key);
+      if (!v) return;
+      this.departing.set(key, p);
+      this.atTick(state.tick, () => this.removePlayerView(key, v), false);
     });
 
     // Les lames en orbite (ou qui l'étaient) changent sur la ligne de temps,
@@ -839,6 +886,11 @@ class Game {
         return;
       }
       this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
+      // Éclats projetés vers l'extérieur de l'orbite du porteur (pour un
+      // projectile, son lanceur : ils poursuivent sa course).
+      const owner = msg.ownerId ? this.players.get(msg.ownerId) : undefined;
+      this.combatFx.shatter(msg.x, msg.y, this.theme.palette.rarityColor[msg.rarity],
+        owner ? msg.x - owner.renderX : 0, owner ? msg.y - owner.renderY : 0);
       if (msg.ownerId === this.myId) {
         this.camera.shake.add(0.18);
         this.sound.bladeLost();
@@ -898,6 +950,14 @@ class Game {
       const fx = lookOf(KILL_FX_LOOKS, msg.killFx ?? "");
       if (victim && fx) this.particles.spawnBurst(victim.renderX, 1, victim.renderY, fx);
       else if (victim) this.particles.spawnExplosion(victim.renderX, 1, victim.renderY, this.theme.palette.fx.deathExplosion, 40);
+      if (victim) {
+        // Onde de choc au sol et dissolution du corps (tâche 4.9), à la
+        // couleur de l'effet d'élimination du tueur s'il en a un.
+        const color = fx ? fx.colors[0] : this.theme.palette.fx.deathExplosion;
+        this.combatFx.kill(victim.renderX, victim.renderY, this.theme.palette.fx.deathExplosion);
+        victim.startDissolve(color, fxIntensity(this.flashK));
+        this.particles.spawnRising(victim.renderX, victim.renderY, color, this.quality.fx.dissolveEmbers);
+      }
       this.killFeed.push({
         killerName: msg.killerId ? msg.killerName : null,
         victimName: msg.victimName,
@@ -927,6 +987,7 @@ class Game {
         const count = 6 + msg.tier * 6;
         const speed = 4 + msg.tier * 2.5;
         this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
+        this.combatFx.clash(msg.x, msg.y, msg.tier, msg.destroyed, this.theme.palette.fx.clashSpark);
         // Flash blanc des deux lames au contact (une lame brisée disparaît
         // dans la foulée, son retrait arrive après ce message).
         const flashAt = performance.now();
@@ -988,6 +1049,8 @@ class Game {
       // On utilise une explosion bien dense pour signaler le palier passé.
       const color = msg.tier >= 2 ? this.theme.palette.fx.tierUpHi : this.theme.palette.fx.tierUpLo;
       this.particles.spawnExplosion(msg.x, 1.0, msg.y, color, 32 + msg.tier * 12);
+      // Colonne de lumière qui suit le joueur (tâche 4.9).
+      this.combatFx.tierUp(msg.playerId, msg.x, msg.y, msg.tier, color);
       if (msg.playerId === this.myId) {
         const intensity = TIER_UP_SHAKE[Math.min(msg.tier, TIER_UP_SHAKE.length - 1)] ?? 0.3;
         this.camera.shake.add(intensity);
@@ -1056,11 +1119,7 @@ class Game {
     // les anciennes lames restent dans la scène (les InstancedMesh ne sont
     // jamais retirés), et le joueur voit des lames au sol qui n'existent
     // plus côté serveur, donc impossibles à ramasser.
-    for (const v of this.players.values()) {
-      v.dispose();
-      v.trail.parent?.remove(v.trail);
-    }
-    this.players.clear();
+    this.clearPlayerViews();
     this.blades.clear();
     this.crates.clear();
     this.powerups.clear();
@@ -1086,33 +1145,54 @@ class Game {
     }
   }
 
-  // Émet en continu une traînée néon derrière chaque projectile actif. Réuse
-  // la pool de particules existante avec une vitesse nulle (gravité gérée
-  // par particles.update) — ça suffit à donner un effet de comète clairement
-  // lisible sans introduire un sous-système dédié. La couleur suit la
-  // rareté de la lame.
-  private trailEmitAccum = 0;
-  private emitProjectileTrails(dt: number): void {
-    if (!this.room?.state?.blades) return;
-    // Émet 2 sparks tous les ~25 ms en moyenne. Suffisant pour une traînée
-    // continue sans saturer la pool (max 800 particules).
-    this.trailEmitAccum += dt;
-    const interval = 0.025;
-    if (this.trailEmitAccum < interval) return;
-    const ticks = Math.floor(this.trailEmitAccum / interval);
-    this.trailEmitAccum -= ticks * interval;
-    this.room.state.blades.forEach((b: any) => {
-      if (!b.isProjectile) return;
-      const color = this.theme.palette.rarityColor[b.rarity as BladeRarity] ?? this.theme.palette.fx.bladeFallback;
-      this.particles.spawnSparks(b.x, 0.95, b.y, color, 2, 0.8);
-    });
+  // Retire la vue d'un joueur au tick de son retrait sur la ligne de temps
+  // (cf. players.onRemove). Un corps en pleine dissolution la termine à part.
+  private removePlayerView(key: string, v: PlayerView): void {
+    // Revenu entre-temps : l'ancienne vue a déjà été retirée (onPlayerAdd).
+    if (this.players.get(key) !== v) return;
+    this.departing.delete(key);
+    this.players.delete(key);
+    this.orbitSegments.delete(key);
+    this.renderAlive.delete(key);
+    if (v.dissolving) {
+      this.corpses.push(v);
+      return;
+    }
+    // Un joueur qui disparaît dans un buisson (le serveur ne l'envoie
+    // plus) : rafale de pixels là où il est entré (tâche 4.7).
+    if (key !== this.myId && bushAt(v.renderX, v.renderY) >= 0) {
+      this.particles.spawnSparks(v.renderX, 1.2, v.renderY, this.decor.bushBurstColor, 12, 3);
+    }
+    this.disposePlayerView(v);
+  }
+
+  private disposePlayerView(v: PlayerView): void {
+    v.dispose();
+    v.trail.parent?.remove(v.trail);
+  }
+
+  // Vues des joueurs, corps en dissolution et effets de combat : tout part
+  // (retour au menu, reconnexion).
+  private clearPlayerViews(): void {
+    for (const v of this.players.values()) this.disposePlayerView(v);
+    this.players.clear();
+    for (const c of this.corpses) this.disposePlayerView(c);
+    this.corpses.length = 0;
+    this.departing.clear();
+    this.combatFx.clear();
+  }
+
+  // État d'un joueur affiché : celui de la room ou, pendant son retrait
+  // différé, le dernier reçu.
+  private playerState(id: string): any {
+    return this.room?.state?.players?.get(id) ?? this.departing.get(id);
   }
 
   private playerPositions: PlayerPositionProvider = {
     getRenderPosition: (id: string) => {
       const v = this.players.get(id);
       if (!v) return undefined;
-      const p = this.room?.state?.players?.get(id);
+      const p = this.playerState(id);
       const spinPhase = p?.spinPhase ?? 0;
       const tier = p?.tier ?? 0;
       const theta = this.orbitThetaFor(id, this.renderTick);
@@ -1726,8 +1806,7 @@ class Game {
     this.room = null;
     this.myId = "";
     this.resetPrediction();
-    for (const v of this.players.values()) { v.dispose(); v.trail.parent?.remove(v.trail); }
-    this.players.clear();
+    this.clearPlayerViews();
     // clear() au lieu de recréer : voir attemptReconnect pour le pourquoi
     // (sans ça, lames fantômes héritées de la session précédente).
     this.blades.clear();
@@ -1779,6 +1858,7 @@ class Game {
     // Un pas de prédiction par input envoyé (le serveur en appliquera un).
     this.predictor.push(this.inputSeq, { dx, dy, boost });
     this.sound.setBoost(!!boost && (dx !== 0 || dy !== 0));
+    this.localBoosting = !!boost && (dx !== 0 || dy !== 0) && (this.room.state?.players?.get(this.myId)?.bladeCount ?? 0) > 0;
   }
 
   private resetPrediction(): void {
@@ -2267,20 +2347,36 @@ class Game {
         // Spawn protection visuel : halo cyan pulsé tant que
         // spawnProtectionUntil est dans le futur. Lu directement du state
         // serveur ; la dérive d'horloge sur ~2.5s reste imperceptible.
-        const ps = this.room?.state?.players?.get(id);
+        const ps = this.playerState(id);
         v.setProtected(!!ps && ps.spawnProtectionUntil > (id === this.myId ? serverNowMs : serverRenderMs));
         // Modes équipe : alliés à la couleur de son propre anneau.
-        if (id !== this.myId) v.setAlly(sameTeam(myTeam, ps?.team ?? TEAM_NONE));
+        const ally = id !== this.myId && sameTeam(myTeam, ps?.team ?? TEAM_NONE);
+        if (id !== this.myId) v.setAlly(ally);
         v.animate(dt);
         v.updateTrail(dt);
+        const dissolving = v.updateDissolve(dt);
         // Buissons : le serveur ne nous envoie un joueur caché qu'à portée
         // de contact des orbites (tâche 2.4) ; reçu, il est affiché.
         const isLocal = id === this.myId;
-        const p = this.room?.state?.players?.get(id);
-        const shouldBeVisible = this.renderAlive.get(id) ?? !!p?.alive;
-
-        if (v.root.visible !== shouldBeVisible) v.root.visible = shouldBeVisible;
+        const shouldBeVisible = this.renderAlive.get(id) ?? !!ps?.alive;
+        // Mort : le corps reste le temps de se dissoudre (tâche 4.9).
+        const shown = shouldBeVisible || dissolving;
+        if (v.root.visible !== shown) v.root.visible = shown;
         if (v.trail.visible !== (shouldBeVisible && isLocal)) v.trail.visible = shouldBeVisible && isLocal;
+        // Lignes de vitesse (tâche 4.9) : le joueur local d'après son
+        // dernier input, sans attendre le serveur ; les autres d'après l'état.
+        const boosting = isLocal ? this.localBoosting && !this.dead : !!ps?.boost;
+        if (boosting && shouldBeVisible && !dissolving && v.moveSpeed > 4) {
+          const palette = this.theme.palette;
+          const color = isLocal || ally ? palette.playerLocal.accent : palette.playerRemote.accent;
+          this.combatFx.speedLines.track(id, v.renderX, v.renderY, v.moveX, v.moveZ, v.moveSpeed, color, isLocal, dt);
+        }
+      }
+      for (let i = this.corpses.length - 1; i >= 0; i--) {
+        const c = this.corpses[i];
+        if (c.updateDissolve(dt)) continue;
+        this.disposePlayerView(c);
+        this.corpses.splice(i, 1);
       }
       this.blades.update(now, RENDER_DELAY, this.elapsed * 0.001, this.playerPositions);
       if (this.debugHitboxes) {
@@ -2304,7 +2400,8 @@ class Game {
       });
       this.crates.update(dt, this.elapsed * 0.001);
       this.powerups.update(dt, this.elapsed * 0.001);
-      this.emitProjectileTrails(dt);
+      // Après les lames, qui alimentent les traînées.
+      this.combatFx.update(dt, now, this.renderPosOf);
       this.particles.update(dt);
       if (this.killCam) {
         this.updateKillCam(now, dt);
@@ -2349,11 +2446,11 @@ class Game {
       this.nametags.update(
         this.players,
         this.myId,
-        (id) => this.renderAlive.get(id) ?? !!this.room?.state?.players?.get(id)?.alive,
-        (id) => this.room?.state?.players?.get(id)?.name ?? "?",
-        (id) => this.room?.state?.players?.get(id)?.bladeCount ?? 0,
-        (id) => this.room?.state?.players?.get(id)?.level ?? 0,
-        (id) => sameTeam(myTeam, this.room?.state?.players?.get(id)?.team ?? TEAM_NONE),
+        (id) => (this.renderAlive.get(id) ?? !!this.playerState(id)?.alive) && !this.players.get(id)?.dissolving,
+        (id) => this.playerState(id)?.name ?? "?",
+        (id) => this.playerState(id)?.bladeCount ?? 0,
+        (id) => this.playerState(id)?.level ?? 0,
+        (id) => sameTeam(myTeam, this.playerState(id)?.team ?? TEAM_NONE),
         this.sceneStack.camera,
         window.innerWidth,
         window.innerHeight,

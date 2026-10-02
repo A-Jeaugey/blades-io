@@ -10,6 +10,7 @@ import {
 import { getActiveTheme } from "../themes";
 import { FLASH_COLOR } from "../themes/Theme";
 import { createTierGeometry } from "./bladeGeometries";
+import { TRAIL_PROJECTILE, TRAIL_SUCTION, TrailStyle } from "../fx/BladeTrails";
 
 export interface PlayerPositionProvider {
   getRenderPosition(
@@ -29,6 +30,18 @@ export interface PlayerPositionProvider {
     bladeStyle: number;
   } | undefined;
 }
+
+// Traînées des lames qui bougent vite (tâche 4.9, fx/BladeTrails.ts) :
+// reçoit la position dessinée de chacune à chaque frame.
+export interface BladeTrailSink {
+  sample(id: string, x: number, y: number, z: number, rarity: BladeRarity, style: TrailStyle, now: number): void;
+}
+
+// Lame au sol plus rapide (u/s) : attirée par un joueur, ou projetée à la
+// mort de son porteur. Elle laisse une traînée d'aspiration.
+const SUCTION_SPEED = 4;
+// Traînée d'une lame ramassée, du sol jusqu'à son orbite (ms).
+const PICKUP_TRAIL_MS = 140;
 
 interface BladeEntry {
   id: string;
@@ -51,6 +64,14 @@ interface BladeEntry {
   expiring: boolean;
   // Fin du flash blanc d'un clash (performance.now(), ms).
   flashUntil: number;
+  // Dernière position dessinée (x, hauteur, y) et son instant : vitesse
+  // d'une lame au sol, point de départ de la traînée d'un ramassage.
+  drawX: number;
+  drawH: number;
+  drawY: number;
+  drawAt: number;
+  // Traînée d'aspiration jusqu'à cet instant (ramassage).
+  trailUntil: number;
 }
 
 // Capacité de départ d'un bucket ; elle double quand il est plein. Avant,
@@ -186,6 +207,7 @@ export class BladeRenderer {
   private migrations: Array<{ id: string; newTier: number }> = [];
   private dirtyMatrices: boolean[] = new Array(BUCKETS).fill(false);
   private dirtyFlashes: boolean[] = new Array(BUCKETS).fill(false);
+  private trailSink: BladeTrailSink | null = null;
   public root = new THREE.Group();
 
   constructor(simpleMaterials = false) {
@@ -248,7 +270,8 @@ export class BladeRenderer {
     if (!e) {
       e = { id, rarity, ownerId, ringIndex, slotIndex,
         prevX: x, prevY: y, prevTime: now, targetX: x, targetY: y, targetTime: now,
-        isProjectile, vx, vy, expiring, flashUntil: 0 };
+        isProjectile, vx, vy, expiring, flashUntil: 0,
+        drawX: x, drawH: 0, drawY: y, drawAt: 0, trailUntil: 0 };
       this.entries.set(id, e);
       // Allocation au tier 0 par défaut. update() migrera au bon tier dès
       // la frame suivante en lisant owner.tier (la lame n'est pas rendue
@@ -256,6 +279,12 @@ export class BladeRenderer {
       this.allocate(id, rarity, 0);
       this.incOwnerRing(ownerId, ringIndex, +1);
       return;
+    }
+    if (!e.ownerId && !e.isProjectile && ownerId && e.drawAt > 0) {
+      // Ramassée : la traînée part de là où elle était dessinée au sol et
+      // la suit dans l'orbite.
+      e.trailUntil = performance.now() + PICKUP_TRAIL_MS;
+      this.trailSink?.sample(id, e.drawX, e.drawH, e.drawY, e.rarity, TRAIL_SUCTION, e.drawAt);
     }
     if (e.ownerId !== ownerId || e.ringIndex !== ringIndex) {
       this.incOwnerRing(e.ownerId, e.ringIndex, -1);
@@ -421,6 +450,10 @@ export class BladeRenderer {
     return !!this.entries.get(id)?.ownerId;
   }
 
+  setTrailSink(sink: BladeTrailSink | null): void {
+    this.trailSink = sink;
+  }
+
   setFlashIntensity(k: number): void {
     this.flashIntensity = k;
     const rarityColor = getActiveTheme().palette.rarityColor;
@@ -556,6 +589,22 @@ export class BladeRenderer {
         flashArr[ref.index] = flash;
         dirtyFlashes[key] = true;
       }
+      // Traînée : projectile, lame au sol qui file vers un joueur, lame qui
+      // vient d'être ramassée.
+      if (this.trailSink) {
+        let trail: TrailStyle | 0 = 0;
+        if (e.isProjectile) trail = TRAIL_PROJECTILE;
+        else if (e.ownerId) trail = now < e.trailUntil ? TRAIL_SUCTION : 0;
+        else if (e.drawAt > 0 && now > e.drawAt) {
+          const speed = Math.hypot(x - e.drawX, y - e.drawY) / ((now - e.drawAt) / 1000);
+          if (speed > SUCTION_SPEED) trail = TRAIL_SUCTION;
+        }
+        if (trail) this.trailSink.sample(id, x, yRender, y, e.rarity, trail, now);
+      }
+      e.drawX = x;
+      e.drawH = yRender;
+      e.drawY = y;
+      e.drawAt = now;
       // Motif du propriétaire ; lames au sol et lancées : aucun.
       const style = owner?.bladeStyle ?? 0;
       const styleArr = this.styles[key].array as Float32Array;
