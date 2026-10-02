@@ -264,3 +264,32 @@ export function recompactOwnerRing(state: ArenaState, ownerId: string, ringIndex
   owned.sort((a, b) => a.slot - b.slot);
   for (let i = 0; i < owned.length; i++) owned[i].b.slotIndex = i;
 }
+
+// Plusieurs anneaux (propriétaire → anneaux) en un seul parcours des lames,
+// pour les destructions en série d'un même tick. Même résultat que
+// recompactOwnerRing appelé pour chacun : les anneaux sont disjoints, et
+// leurs lames sont rangées dans le même ordre de parcours.
+export function recompactOwnerRings(state: ArenaState, rings: Map<string, Set<number>>): void {
+  const lists = new Map<string, Map<number, { b: Blade; slot: number }[]>>();
+  state.blades.forEach((b) => {
+    const wanted = rings.get(b.ownerId);
+    if (!wanted || !wanted.has(b.ringIndex)) return;
+    let byRing = lists.get(b.ownerId);
+    if (!byRing) {
+      byRing = new Map();
+      lists.set(b.ownerId, byRing);
+    }
+    let owned = byRing.get(b.ringIndex);
+    if (!owned) {
+      owned = [];
+      byRing.set(b.ringIndex, owned);
+    }
+    owned.push({ b, slot: b.slotIndex });
+  });
+  for (const byRing of lists.values()) {
+    for (const owned of byRing.values()) {
+      owned.sort((a, b) => a.slot - b.slot);
+      for (let i = 0; i < owned.length; i++) owned[i].b.slotIndex = i;
+    }
+  }
+}

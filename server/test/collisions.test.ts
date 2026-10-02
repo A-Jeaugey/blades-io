@@ -5,6 +5,8 @@ import {
   CRATE_HP,
   HITLAG_COOLDOWN_MS,
   KNOCKBACK_MAX_SPEED,
+  outerOrbitRadius,
+  tierBladeHitbox,
   tierHitlagMs,
   tierKnockback,
 } from "@bladeio/shared";
@@ -268,4 +270,42 @@ test("caisse : dégâts de la rareté, destruction à 0 PV", () => {
   resolveCollisions(state, cache, r, cooldowns);
   assert.equal(crate.hp, 0);
   assert.equal(r.cratesDestroyed.length, 1);
+});
+
+// Le filtre de la zone de contact (narrowPhaseClash) ne doit écarter
+// aucune paire qui se touche : même liste de clashs, dans le même ordre,
+// que le test de toutes les paires. Lames indestructibles pour que chaque
+// paire au contact donne un clash.
+test("grosses orbites : tous les clashs du test de toutes les paires, dans l'ordre", () => {
+  const a = addPlayer(state, { x: 0, y: 0, blades: 300 });
+  const b = addPlayer(state, { x: 14, y: 0, blades: 300 });
+  const R = outerOrbitRadius(300);
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const place = (p: Player): Blade[] => ownedBlades(state, p).map((blade) => {
+    const angle = rand() * Math.PI * 2;
+    const r = R * Math.sqrt(rand());
+    cache.set(blade.id, p.x + Math.cos(angle) * r, p.y + Math.sin(angle) * r);
+    blade.hp = 1000;
+    return blade;
+  });
+  const bladesA = place(a);
+  const bladesB = place(b);
+  // Anneau extérieur resté occupé après des pertes à l'intérieur : au-delà
+  // du rayon que donne le nombre de lames.
+  cache.set(bladesA[0].id, R + 4, 0);
+  const reach = tierBladeHitbox(a.tier) + tierBladeHitbox(b.tier);
+  const expected: string[] = [];
+  for (const ba of bladesA) {
+    const pa = cache.get(ba.id)!;
+    for (const bb of bladesB) {
+      const pb = cache.get(bb.id)!;
+      if (Math.hypot(pa.x - pb.x, pa.y - pb.y) <= reach) expected.push(`${ba.id}|${bb.id}`);
+    }
+  }
+  const r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.ok(expected.length > 1000);
+  assert.ok(expected.some((k) => k.startsWith(`${bladesA[0].id}|`)));
+  assert.deepEqual(r.clashes.map((c) => `${c.a.id}|${c.b.id}`), expected);
 });

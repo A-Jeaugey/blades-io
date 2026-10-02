@@ -88,6 +88,9 @@ interface OrbitingEntry {
   y: number;
   // hitbox effective de la lame (= BLADE_HITBOX × tier multiplier du proprio)
   hitbox: number;
+  // Brisée pendant ce tick (doublon du Set `destroyed`, lu sans hachage
+  // dans les boucles de paires).
+  dead: boolean;
 }
 
 // Fiche d'un joueur vivant, figée pour la durée de resolveCollisions : les
@@ -176,6 +179,7 @@ export function resolveCollisions(
       x: pos.x,
       y: pos.y,
       hitbox: tierBladeHitbox(bucket.tier),
+      dead: false,
     });
   });
 
@@ -330,8 +334,52 @@ export function resolveCollisions(
   }
 }
 
-// Itère toutes les paires de lames entre deux propriétaires en contact.
-// Sépare le narrow phase pour garder la fonction principale lisible.
+// Lames d'un propriétaire qui peuvent toucher celles d'un autre, centré en
+// (cx, cy) : à moins de span + hitbox + otherHit de ce centre, où span est
+// la distance au centre de sa lame la plus éloignée et otherHit sa plus
+// grande hitbox. Exact (inégalité triangulaire : une lame plus loin ne
+// touche aucune lame de l'autre) et dans l'ordre d'origine.
+function contactLens(
+  blades: OrbitingEntry[],
+  cx: number,
+  cy: number,
+  span: number,
+  otherHit: number,
+): OrbitingEntry[] {
+  const out: OrbitingEntry[] = [];
+  for (const e of blades) {
+    if (e.dead) continue;
+    const r = span + otherHit + e.hitbox;
+    const dx = e.x - cx;
+    const dy = e.y - cy;
+    if (dx * dx + dy * dy <= r * r) out.push(e);
+  }
+  return out;
+}
+
+// Rayon réel de l'orbite (lame la plus éloignée du centre) et plus grande
+// hitbox. Mesuré sur les positions du tick plutôt que déduit du nombre de
+// lames : un anneau extérieur peut rester occupé après des pertes à
+// l'intérieur.
+function orbitExtent(o: OwnerBucket): { span: number; hit: number } {
+  let span2 = 0;
+  let hit = 0;
+  for (const e of o.blades) {
+    if (e.dead) continue;
+    const dx = e.x - o.x;
+    const dy = e.y - o.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > span2) span2 = d2;
+    if (e.hitbox > hit) hit = e.hitbox;
+  }
+  return { span: Math.sqrt(span2), hit };
+}
+
+// Paires de lames entre deux propriétaires en contact. Seules les lames de
+// la zone où les orbites se recouvrent sont testées (contactLens) : avant,
+// toutes les paires N_a × N_b, soit 4 millions par tick et des ticks de
+// plus de 200 ms quand deux orbites de 2000 lames se rencontraient. Mêmes
+// clashs, dans le même ordre.
 function narrowPhaseClash(
   A: OwnerBucket,
   B: OwnerBucket,
@@ -341,6 +389,13 @@ function narrowPhaseClash(
   lastHitAt: Map<string, number>,
   cb: CollisionCallbacks,
 ): void {
+  const extA = orbitExtent(A);
+  const extB = orbitExtent(B);
+  const lensA = contactLens(A.blades, B.x, B.y, extB.span, extB.hit);
+  if (lensA.length === 0) return;
+  const lensB = contactLens(B.blades, A.x, A.y, extA.span, extA.hit);
+  if (lensB.length === 0) return;
+
   const ownerA = A.player;
   const ownerB = B.player;
   const reducA = A.shielded ? SHIELD_REDUC : 1;
@@ -348,11 +403,12 @@ function narrowPhaseClash(
   // Tier effectif du clash = max des deux. Donne du jus aux duels asymétriques
   // (un Tier 2 vs Tier 0 a quand même l'air gros).
   const clashTier = A.tier > B.tier ? A.tier : B.tier;
+  let destroyedHere = false;
 
-  for (const ea of A.blades) {
-    if (destroyed.has(ea.id)) continue;
-    for (const eb of B.blades) {
-      if (destroyed.has(eb.id)) continue;
+  for (const ea of lensA) {
+    if (ea.dead) continue;
+    for (const eb of lensB) {
+      if (eb.dead) continue;
       const minDist = ea.hitbox + eb.hitbox;
       const dx = ea.x - eb.x;
       const dy = ea.y - eb.y;
@@ -371,15 +427,18 @@ function narrowPhaseClash(
       const bDead = b.hp <= 0;
       let killCount = 0;
       if (bDead) {
+        eb.dead = true;
         destroyed.add(eb.id);
         cb.onBladeDestroyed(b, ownerA);
         killCount++;
       }
       if (aDead) {
+        ea.dead = true;
         destroyed.add(ea.id);
         cb.onBladeDestroyed(a, ownerB);
         killCount++;
       }
+      if (killCount > 0) destroyedHere = true;
 
       // Clash : déclenche hitlag + knockback + event broadcast pour le FX.
       // Hitlag : durée tier-aware. Plus le tier est gros, plus l'impact est
@@ -423,8 +482,8 @@ function narrowPhaseClash(
   // Suppression des références aux lames détruites pour ne pas les retester
   // dans la phase blade-vs-body (elles ne sont plus dans le state mais elles
   // sont encore dans les buckets).
-  if (destroyed.size > 0) {
-    A.blades = A.blades.filter((e) => !destroyed.has(e.id));
-    B.blades = B.blades.filter((e) => !destroyed.has(e.id));
+  if (destroyedHere) {
+    A.blades = A.blades.filter((e) => !e.dead);
+    B.blades = B.blades.filter((e) => !e.dead);
   }
 }

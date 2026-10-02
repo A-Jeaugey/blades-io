@@ -79,10 +79,11 @@ import {
   OrbitPositionCache,
   updateBladePositions,
   recompactOwnerRing,
+  recompactOwnerRings,
 } from "../systems/orbitPositions";
 import { resolveCollisions } from "../systems/collisions";
 import { applyWallDamage } from "../systems/wallDamage";
-import { PickupSystem, attachBladeToPlayer } from "../systems/pickup";
+import { PickupSystem, attachBladeToPlayer, ownerRingCounts } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
 import { EventScope, InterestManager } from "../systems/interest";
 import { RestartAware, registerRoom, restartDeadline, trackWrite, unregisterRoom } from "../shutdown";
@@ -181,6 +182,11 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private kickedSessions = new Set<string>();
   // Cooldowns de clash par paire (cf. resolveCollisions), propres à la room.
   private clashCooldowns = new Map<string, number>();
+  // Anneaux à recompacter, regroupés pendant la résolution des collisions
+  // (null en dehors) : un clash entre deux grosses orbites brise des
+  // centaines de lames dans le même tick, et chaque recompactage parcourait
+  // toutes les lames de la room.
+  private pendingRecompact: Map<string, Set<number>> | null = null;
   // Clients en mode debug hitbox (client lancé avec ?debug=hitbox) : ils
   // reçoivent chaque tick la position serveur des lames en orbite proches.
   private debugOrbitClients = new Set<string>();
@@ -351,7 +357,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     const rarity = typeof msg?.rarity === "number" && RARITY_HP[msg.rarity as BladeRarity] !== undefined
       ? (msg.rarity as BladeRarity)
       : BladeRarity.Common;
-    for (let i = 0; i < n; i++) this.giveBlade(p, rarity);
+    this.giveBlades(p, n, rarity);
     reply({ ok: true, blades: n });
   }
 
@@ -471,17 +477,22 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
     this.state.players.set(client.sessionId, p);
-    if (!waits) for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.giveBlade(p);
+    if (!waits) this.giveBlades(p, INITIAL_BLADE_COUNT);
     this.interest.addViewer(client, p);
   }
 
-  private giveBlade(p: Player, rarity: BladeRarity = BladeRarity.Common): void {
-    const b = new Blade();
-    b.id = randomId();
-    b.rarity = rarity;
-    b.hp = RARITY_HP[rarity];
-    this.state.blades.set(b.id, b);
-    attachBladeToPlayer(this.state, p, b);
+  // Lames neuves en orbite (départ, triche). Anneaux comptés une seule fois :
+  // la triche en donne des centaines d'un coup.
+  private giveBlades(p: Player, count: number, rarity: BladeRarity = BladeRarity.Common): void {
+    const rings = ownerRingCounts(this.state, p.id);
+    for (let i = 0; i < count; i++) {
+      const b = new Blade();
+      b.id = randomId();
+      b.rarity = rarity;
+      b.hp = RARITY_HP[rarity];
+      this.state.blades.set(b.id, b);
+      attachBladeToPlayer(this.state, p, b, rings);
+    }
   }
 
   // Sans onDrop, Colyseus appelle onLeave pour toute sortie : le code de
@@ -810,7 +821,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.lifeBiggerKills = 0; p.lifeLeaderKills = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
-    for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.giveBlade(p);
+    this.giveBlades(p, INITIAL_BLADE_COUNT);
   }
 
   // Vie à enregistrer en cas de départ : en jeu, pas pendant l'entracte
@@ -916,27 +927,36 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     this.pickup.update(this.state, (player, blade) => {
       this.emit("pickup", { playerId: player.id, rarity: blade.rarity }, { to: [player.id] });
     });
-    resolveCollisions(this.state, this.orbitCache, {
-      onBladeDestroyed: (blade, by) => this.handleBladeDestroyed(blade, by),
-      onPlayerKilled: (victim, killer) => this.killPlayer(victim, killer, "blades"),
-      onCrateHit: (crate, attacker) => this.handleCrateHit(crate, attacker),
-      onCrateDestroyed: (crate, attacker) => this.handleCrateDestroyed(crate, attacker),
-      onClash: (info) => {
-        this.endGraceOnContact(info.aOwner, info.bOwner);
-        this.endGraceOnContact(info.bOwner, info.aOwner);
-        const ev: ClashEvent = {
-          aId: info.a.id,
-          bId: info.b.id,
-          aOwnerId: info.aOwner.id,
-          bOwnerId: info.bOwner.id,
-          x: (info.ax + info.bx) * 0.5,
-          y: (info.ay + info.by) * 0.5,
-          tier: info.tier,
-          destroyed: info.destroyed,
-        };
-        this.emit("clash", ev, { players: [info.aOwner.id, info.bOwner.id] });
-      },
-    }, this.clashCooldowns);
+    // Anneaux recompactés une seule fois, après toutes les collisions : rien
+    // n'y relit les places des lames (positions du tick en cache).
+    const rings = new Map<string, Set<number>>();
+    this.pendingRecompact = rings;
+    try {
+      resolveCollisions(this.state, this.orbitCache, {
+        onBladeDestroyed: (blade, by) => this.handleBladeDestroyed(blade, by),
+        onPlayerKilled: (victim, killer) => this.killPlayer(victim, killer, "blades"),
+        onCrateHit: (crate, attacker) => this.handleCrateHit(crate, attacker),
+        onCrateDestroyed: (crate, attacker) => this.handleCrateDestroyed(crate, attacker),
+        onClash: (info) => {
+          this.endGraceOnContact(info.aOwner, info.bOwner);
+          this.endGraceOnContact(info.bOwner, info.aOwner);
+          const ev: ClashEvent = {
+            aId: info.a.id,
+            bId: info.b.id,
+            aOwnerId: info.aOwner.id,
+            bOwnerId: info.bOwner.id,
+            x: (info.ax + info.bx) * 0.5,
+            y: (info.ay + info.by) * 0.5,
+            tier: info.tier,
+            destroyed: info.destroyed,
+          };
+          this.emit("clash", ev, { players: [info.aOwner.id, info.bOwner.id] });
+        },
+      }, this.clashCooldowns);
+    } finally {
+      this.pendingRecompact = null;
+      if (rings.size > 0) recompactOwnerRings(this.state, rings);
+    }
     // Collisions des projectiles : APRÈS resolveCollisions pour que les
     // lames orbitantes restent référence (orbitCache à jour, position des
     // joueurs aussi). Les projectiles consomment leur "pierce" sur chaque
@@ -1182,7 +1202,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
         this.mode.onJoin(bot);
         return this.mode.spawnPoint(bot);
       });
-      for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.giveBlade(p);
+      this.giveBlades(p, INITIAL_BLADE_COUNT);
       bots++;
     }
   }
@@ -1214,7 +1234,17 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       }
     }
     this.state.blades.delete(blade.id);
-    if (ownerId) recompactOwnerRing(this.state, ownerId, ring);
+    if (!ownerId) return;
+    if (this.pendingRecompact) {
+      let rings = this.pendingRecompact.get(ownerId);
+      if (!rings) {
+        rings = new Set();
+        this.pendingRecompact.set(ownerId, rings);
+      }
+      rings.add(ring);
+    } else {
+      recompactOwnerRing(this.state, ownerId, ring);
+    }
   }
 
   private removePlayerBlades(player: Player, count: number): void {

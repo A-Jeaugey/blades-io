@@ -15,15 +15,27 @@ export interface PickupResult {
   blade: Blade;
 }
 
-// Assigne un (ringIndex, slotIndex) à une lame nouvellement acquise par un joueur.
-export function attachBladeToPlayer(state: ArenaState, player: Player, blade: Blade): void {
-  // Compter les lames par anneau pour le joueur
+// Lames d'un joueur par anneau.
+export function ownerRingCounts(state: ArenaState, ownerId: string): Map<number, number> {
   const countPerRing = new Map<number, number>();
   state.blades.forEach((b) => {
-    if (b.ownerId === player.id) {
+    if (b.ownerId === ownerId) {
       countPerRing.set(b.ringIndex, (countPerRing.get(b.ringIndex) ?? 0) + 1);
     }
   });
+  return countPerRing;
+}
+
+// Assigne un (ringIndex, slotIndex) à une lame nouvellement acquise par un joueur.
+// countPerRing : compte par anneau (ownerRingCounts), tenu à jour ici, pour
+// qui en attache plusieurs d'affilée ; sinon recompté, en parcourant toutes
+// les lames de la room.
+export function attachBladeToPlayer(
+  state: ArenaState,
+  player: Player,
+  blade: Blade,
+  countPerRing: Map<number, number> = ownerRingCounts(state, player.id),
+): void {
   let ring = 0;
   while (true) {
     const cap = ringCapacity(ring);
@@ -36,6 +48,7 @@ export function attachBladeToPlayer(state: ArenaState, player: Player, blade: Bl
     ring++;
     if (ring > 64) break; // sécurité
   }
+  countPerRing.set(blade.ringIndex, (countPerRing.get(blade.ringIndex) ?? 0) + 1);
   blade.ownerId = player.id;
   blade.vx = 0;
   blade.vy = 0;
@@ -74,6 +87,9 @@ export class PickupSystem {
       if (!p.alive) return;
       if (p.bladeCount >= MAX_BLADES_PER_PLAYER) return;
       const near = groundHash.query(p.x, p.y, PICKUP_RADIUS);
+      // Anneaux comptés au premier ramassage, une fois pour tous les
+      // suivants (le butin d'un gros joueur, des centaines de lames).
+      let rings: Map<number, number> | null = null;
       for (const item of near) {
         const b = state.blades.get(item.id);
         if (!b || b.ownerId) continue;
@@ -81,7 +97,8 @@ export class PickupSystem {
         const dy = b.y - p.y;
         if (dx * dx + dy * dy <= PICKUP_RADIUS * PICKUP_RADIUS) {
           if (p.bladeCount >= MAX_BLADES_PER_PLAYER) break;
-          attachBladeToPlayer(state, p, b);
+          rings ??= ownerRingCounts(state, p.id);
+          attachBladeToPlayer(state, p, b, rings);
           onPickup(p, b);
         }
       }
