@@ -2,7 +2,7 @@
 
 Guide pour Claude (et autres assistants IA) qui travaillent sur ce repo.
 
-> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js`. Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`), et `node tools/bench-survival.js first` pour le temps avant sa première mort (débutant par défaut, que les bots ménagent ; `BENCH_RETURNING=1` pour un joueur qui revient) ; équilibre entre gros et petits joueurs (prime, loot, paliers) : `node tools/bench-snowball.js` (durée des règnes du leader, kills « underdog »). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
+> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js` (`BENCH_SEED=<n>` : même partie avant et après, l'écart ne vient que du code mesuré). Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`), et `node tools/bench-survival.js first` pour le temps avant sa première mort (débutant par défaut, que les bots ménagent ; `BENCH_RETURNING=1` pour un joueur qui revient) ; équilibre entre gros et petits joueurs (prime, loot, paliers) : `node tools/bench-snowball.js` (durée des règnes du leader, kills « underdog »). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
 
 ---
 
@@ -125,7 +125,12 @@ client/src/
   les joueurs : classement, rang et minimap viennent du message `summary`
   (2 Hz). Un évènement positionnel passe par `emit(type, payload, scope)`
   pour n'aller qu'aux clients concernés : sans portée, il est diffusé à
-  tous et peut trahir un joueur caché.
+  tous et peut trahir un joueur caché. Un champ de `Player` qui ne sert
+  qu'au client du joueur lui-même (direction, recul, dernier input
+  acquitté, effets, stats de la vie) porte `@view(OWNER_VIEW_TAG)` : seule
+  sa propre vue a ce tag (tâche 2.3). Un champ lu pour les autres joueurs
+  (position, orbite, score, cosmétiques…) ne doit pas le porter, sinon le
+  client le lit à `undefined`.
 - **Retrait d'un joueur** (mort, sorti de la zone d'intérêt, caché dans
   un buisson, parti) : appliqué au tick du patch sur la ligne de temps
   (`removePlayerView`), comme ses positions. Le serveur retire un mort de

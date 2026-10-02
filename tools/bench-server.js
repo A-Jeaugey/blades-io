@@ -10,6 +10,8 @@
 //
 // Prérequis : `npm run build:shared && npm run build --workspace=@bladeio/server`
 // Usage     : node tools/bench-server.js <nbBots=60> <secondesSimulées=300> [private]
+//             (BENCH_SEED=<n> pour une partie reproductible, BENCH_VIEWERS=<n>
+//             pour autant de clients connectés)
 //
 // Attention : s'appuie sur des internes de @colyseus/core 0.16 (__init,
 // _simulationInterval). À revalider lors d'une montée de version Colyseus.
@@ -18,8 +20,24 @@ const { performance } = require("perf_hooks");
 
 const ROOT = path.resolve(__dirname, "..");
 
-// Horloge simulée : tous les systèmes serveur lisent Date.now().
-let simNow = Date.now();
+// BENCH_SEED=<n> : tirages aléatoires reproductibles (mulberry32). Avec la
+// même graine, deux versions du serveur dont la simulation est la même
+// jouent la même partie : un écart de taille des patchs ou de durée du
+// tick ne vient que du code comparé, pas du hasard des combats suivis.
+if (process.env.BENCH_SEED) {
+  let a = parseInt(process.env.BENCH_SEED, 10) >>> 0;
+  Math.random = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Horloge simulée : tous les systèmes serveur lisent Date.now(). Avec une
+// graine, départ fixe (les identifiants contiennent l'heure).
+let simNow = process.env.BENCH_SEED ? Date.UTC(2026, 9, 1, 12) : Date.now();
 const realDateNow = Date.now;
 Date.now = () => simNow;
 

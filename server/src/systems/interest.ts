@@ -1,5 +1,5 @@
 import { Client } from "@colyseus/core";
-import { StateView } from "@colyseus/schema";
+import { $changes, StateView } from "@colyseus/schema";
 import {
   BUSH_REVEAL_MARGIN,
   VIEW_RADIUS_DEFAULT,
@@ -13,7 +13,7 @@ import {
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
-import { Player } from "../state/Player";
+import { OWNER_VIEW_TAG, Player } from "../state/Player";
 
 // Zone d'intérêt (tâche 2.4) : chaque client ne reçoit que les joueurs et
 // les lames proches de lui (StateView de Colyseus 0.16), et jamais un
@@ -85,6 +85,9 @@ export class InterestManager {
   addViewer(client: Client, player: Player): void {
     const view = new StateView();
     view.add(player);
+    // Ses propres champs réservés (recul, dernier input acquitté, effets…) :
+    // lui seul les reçoit.
+    view.add(player, OWNER_VIEW_TAG);
     client.view = view;
     this.viewers.set(client.sessionId, {
       client,
@@ -210,7 +213,16 @@ export class InterestManager {
       }
     }
 
-    for (const p of players) if (!v.players.has(p)) v.view.add(p);
+    for (const p of players) {
+      if (v.players.has(p)) continue;
+      // Retour dans la vue après des changements manqués : Colyseus 0.16
+      // (« invisible ») renverrait alors tous ses champs, y compris ceux
+      // réservés à son propriétaire (OWNER_VIEW_TAG). Les champs publics
+      // repartent de toute façon en entier. À revoir avec Colyseus 0.18 (T.6).
+      const tree = p[$changes];
+      if (tree) v.view.invisible.delete(tree);
+      v.view.add(p);
+    }
     for (const p of v.players) {
       // Retiré de l'état entre-temps : l'encodeur transmet la suppression.
       if (!players.has(p) && this.entryById.get(p.id)?.p === p) v.view.remove(p);

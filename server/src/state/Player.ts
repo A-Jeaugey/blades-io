@@ -1,29 +1,37 @@
-import { Schema, type, MapSchema } from "@colyseus/schema";
+import { Schema, type, view, MapSchema } from "@colyseus/schema";
+
+// Champs qui ne servent qu'au client du joueur lui-même (prédiction, HUD,
+// écran de mort) : envoyés à lui seul, sa vue porte ce tag (InterestManager,
+// tâche 2.3). Les autres clients n'en avaient pas l'usage ; dirX/dirY
+// changeaient presque à chaque tick pour chaque bot, le quart des octets
+// reçus par client.
+export const OWNER_VIEW_TAG = 1;
 
 export class Player extends Schema {
   @type("string") id: string = "";
   @type("string") name: string = "";
   @type("float32") x: number = 0;
   @type("float32") y: number = 0;
-  @type("float32") dirX: number = 0;
-  @type("float32") dirY: number = 1;
+  // Dernière direction de marche : celle d'un lancer sans visée.
+  @view(OWNER_VIEW_TAG) @type("float32") dirX: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float32") dirY: number = 1;
   @type("boolean") alive: boolean = true;
   @type("boolean") boost: boolean = false;
   @type("uint16") bladeCount: number = 0;
   @type("uint32") score: number = 0; // score composite, cf. systems/scoring.ts
-  @type("uint16") kills: number = 0;
-  // Stats de session
-  @type("float64") spawnedAt: number = 0;
-  @type("uint16") maxBladeCount: number = 0;
-  @type("uint16") cratesDestroyed: number = 0;
-  @type("uint16") powerupsCollected: number = 0;
+  // Stats de session (écran de mort, record local).
+  @view(OWNER_VIEW_TAG) @type("uint16") kills: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") spawnedAt: number = 0;
+  @view(OWNER_VIEW_TAG) @type("uint16") maxBladeCount: number = 0;
+  @view(OWNER_VIEW_TAG) @type("uint16") cratesDestroyed: number = 0;
+  @view(OWNER_VIEW_TAG) @type("uint16") powerupsCollected: number = 0;
   // Dernier input appliqué par le serveur : le client rejoue ceux d'après
   // (prédiction, tâche 1.2).
-  @type("uint32") lastSeq: number = 0;
+  @view(OWNER_VIEW_TAG) @type("uint32") lastSeq: number = 0;
   // Recul résiduel (u/s), amorti à chaque pas (cf. stepMovement).
   // Synchronisé : le client le rejoue avec ses inputs non acquittés.
-  @type("float32") knockbackVx: number = 0;
-  @type("float32") knockbackVy: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float32") knockbackVx: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float32") knockbackVy: number = 0;
   // Phase + scale de rotation propres à chaque joueur. Sans ça, deux joueurs
   // avec le même nombre de lames sur le même anneau ont leurs blades en
   // phase pour toujours → les orbites se croisent mais les lames ne se
@@ -31,15 +39,17 @@ export class Player extends Schema {
   // les orbites driftent les unes par rapport aux autres → collisions
   // garanties tôt ou tard.
   @type("float32") spinPhase: number = 0;
-  @type("float32") spinScale: number = 1;
+  // Pas synchronisé : le client reçoit orbitRate, qui l'intègre.
+  spinScale: number = 1;
   // Les bots ne reçoivent pas d'input réseau, ils tournent en local.
   @type("boolean") isBot: boolean = false;
   // Fins d'effets actifs (timestamps ms, 0 si inactif). Lus par le moteur
-  // de simulation (speed, spin des orbites, magnet, shield).
-  @type("float64") speedUntil: number = 0;
-  @type("float64") spinUntil: number = 0;
-  @type("float64") magnetUntil: number = 0;
-  @type("float64") shieldUntil: number = 0;
+  // de simulation (speed, spin des orbites, magnet, shield), et par le HUD
+  // et la prédiction du joueur lui-même.
+  @view(OWNER_VIEW_TAG) @type("float64") speedUntil: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") spinUntil: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") magnetUntil: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") shieldUntil: number = 0;
   // Fenêtre d'invulnérabilité au (re)spawn. Le joueur ne peut ni recevoir
   // ni infliger de dégât tant que cette date est dans le futur (cf.
   // SPAWN_PROTECTION_MS dans shared/constants).
@@ -49,7 +59,7 @@ export class Player extends Schema {
   @type("uint8") tier: number = 0;
   // Hitlag : pendant cette fenêtre (ms epoch), le déplacement du joueur est
   // figé (ses orbites tournent). Donne du poids au clash.
-  @type("float64") hitlagUntil: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") hitlagUntil: number = 0;
   // Horloge d'orbite θ (cf. orbitThetaAt dans shared) : θ vaut orbitPhase
   // au tick orbitTick puis avance de orbitRate par seconde de jeu. Recalée
   // uniquement quand la vitesse change (ramassage, perte de lame, tier,
@@ -62,7 +72,7 @@ export class Player extends Schema {
   @type("float32") orbitRate: number = 0;
   // Fin du cooldown de lancer (timestamp ms). Synchronisé pour que le
   // client puisse afficher l'état "ready" du bouton THROW.
-  @type("float64") throwCooldownUntil: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") throwCooldownUntil: number = 0;
   // Niveau de compte (tâche 5.2), affiché dans les nametags ; 0 pour un bot
   // (pas de niveau inventé, cf. décision D8).
   @type("uint16") level: number = 0;

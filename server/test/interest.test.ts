@@ -31,6 +31,17 @@ function received(r: TestRoom, sessionId: string): ArenaState {
   return state;
 }
 
+// Patchs reçus au fil de l'eau par ce client, décodés à mesure (le tampon
+// d'encodage est réutilisé d'un client à l'autre).
+function stream(r: TestRoom, sessionId: string): { state: ArenaState; flush: () => void } {
+  const view = (r.room as any).interest.viewers.get(sessionId).view;
+  const state = new ArenaState();
+  const decoder = new Decoder(state);
+  decoder.decode(r.room._serializer.getFullState({ sessionId, view }), { offset: 1 });
+  const client = { sessionId, view, state: 1, raw: (buf: Uint8Array) => decoder.decode(Buffer.from(buf), { offset: 1 }) };
+  return { state, flush: () => r.room._serializer.applyPatches([client]) };
+}
+
 function place(p: Player, x: number, y: number): void {
   p.x = x;
   p.y = y;
@@ -60,6 +71,73 @@ test("zone d'intérêt : un client ne reçoit que les joueurs proches et leurs l
   const after = received(r, "me");
   assert.deepEqual([...after.players.keys()], ["me"]);
   after.blades.forEach((b) => assert.notEqual(b.ownerId, "near"));
+});
+
+test("champs du propriétaire : direction, recul, dernier input, effets et stats ne partent qu'à lui (tâche 2.3)", () => {
+  const r = new TestRoom(clock);
+  const me = r.join("me");
+  const other = r.join("other");
+  place(me, 0, -100);
+  place(other, 20, -100);
+  for (const [p, k] of [[me, 1], [other, 2]] as const) {
+    p.dirX = 0.6 * k;
+    p.lastSeq = 40 + k;
+    p.kills = k;
+    p.knockbackVx = 2 * k;
+    p.speedUntil = 1000 * k;
+  }
+  r.tick(2); // vues recalculées un tick sur deux
+  const st = received(r, "me");
+  const mine = st.players.get("me")!;
+  const theirs = st.players.get("other")!;
+  assert.ok(Math.abs(mine.dirX - 0.6) < 1e-6);
+  assert.equal(mine.lastSeq, 41);
+  assert.equal(mine.kills, 1);
+  assert.equal(mine.knockbackVx, 2);
+  assert.equal(mine.speedUntil, 1000);
+  // Ceux de l'autre restent à leurs valeurs par défaut...
+  assert.equal(theirs.dirX, 0);
+  assert.equal(theirs.lastSeq, 0);
+  assert.equal(theirs.kills, 0);
+  assert.equal(theirs.knockbackVx, 0);
+  assert.equal(theirs.speedUntil, 0);
+  // ... mais ce qui se voit est bien reçu.
+  assert.equal(theirs.x, 20);
+  assert.ok(other.score > 0);
+  assert.equal(theirs.score, other.score);
+  // Et l'autre client reçoit les siens.
+  const seen = received(r, "other");
+  assert.equal(seen.players.get("other")!.lastSeq, 42);
+  assert.equal(seen.players.get("me")!.lastSeq, 0);
+});
+
+test("champs du propriétaire : rien ne passe quand un joueur revient dans la vue", () => {
+  const r = new TestRoom(clock);
+  const me = r.join("me");
+  const other = r.join("other");
+  place(me, 0, -100);
+  place(other, 20, -100);
+  r.tick(2); // vues recalculées un tick sur deux
+  const view = stream(r, "me");
+  // Il s'éloigne, change ses champs réservés hors de vue, puis revient.
+  place(other, 0, 100);
+  r.tick(2);
+  view.flush();
+  assert.ok(!view.state.players.has("other"));
+  other.dirX = 0.9;
+  other.lastSeq = 77;
+  other.kills = 4;
+  r.tick(2);
+  view.flush();
+  place(other, 20, -100);
+  r.tick(2);
+  view.flush();
+  const back = view.state.players.get("other");
+  assert.ok(back, "le joueur revenu n'a pas été renvoyé");
+  assert.equal(back.x, 20);
+  assert.equal(back.dirX, 0);
+  assert.equal(back.lastSeq, 0);
+  assert.equal(back.kills, 0);
 });
 
 test("buissons : un joueur caché n'est pas envoyé, sauf quand les orbites peuvent se toucher", () => {
