@@ -2,6 +2,7 @@
 // joueur humain, avec ce qu'il faut pour équilibrer.
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
+import { CloseCode } from "@colyseus/core";
 import { BladeRarity, SERVER_DT } from "@bladeio/shared";
 import * as matches from "../src/auth/matches";
 import * as wallet from "../src/auth/wallet";
@@ -100,7 +101,7 @@ test("fin de vie : départ en vie, bots ignorés, room privée signalée", async
   const pub = new TestRoom(clock);
   pub.join("leaver");
   clock.advance(5_000);
-  await pub.room.onLeave({ sessionId: "leaver" }, true);
+  await pub.room.onLeave({ sessionId: "leaver" }, CloseCode.CONSENTED);
   const bot = pub.join("bot");
   bot.isBot = true;
   pub.room.killPlayer(bot, null, "wall");
@@ -118,6 +119,6 @@ test("un joueur mort qui quitte n'ouvre pas une seconde fin de vie", async () =>
   const r = new TestRoom(clock);
   const a = r.join("a");
   r.room.killPlayer(a, null, "wall");
-  await r.room.onLeave({ sessionId: "a" }, true);
+  await r.room.onLeave({ sessionId: "a" }, CloseCode.CONSENTED);
   assert.deepEqual(lives.map((l) => l.cause), ["wall"]);
 });

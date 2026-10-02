@@ -1,4 +1,4 @@
-import { Client, Room } from "colyseus.js";
+import { Client, ErrorCode, Room } from "@colyseus/sdk";
 import { GameModeId, Loadout } from "@bladeio/shared";
 
 export type RoomState = any;
@@ -20,8 +20,7 @@ export class RoomNotFoundError extends Error {
 function isNoRoomFoundError(e: unknown): boolean {
   if (!e || typeof e !== "object") return false;
   const err = e as { code?: number; message?: string };
-  // MatchMakeError code 4212 = ERR_MATCHMAKE_INVALID_CRITERIA / no match.
-  if (err.code === 4212) return true;
+  if (err.code === ErrorCode.MATCHMAKE_INVALID_CRITERIA) return true;
   const msg = (err.message ?? "").toLowerCase();
   return msg.includes("no rooms found") || msg.includes("matchmake");
 }
@@ -79,8 +78,7 @@ export class Connection {
         const room = opts.mustExist
           ? await this.client.join<RoomState>("arena", joinOpts)
           : await this.client.joinOrCreate<RoomState>("arena", joinOpts);
-        this.room = room;
-        return room;
+        return this.adopt(room);
       } catch (e) {
         // En mode JOIN CODE, on NE retry PAS sur "no room found" — c'est
         // une erreur définitive (l'user a tapé un mauvais code), pas un
@@ -103,6 +101,15 @@ export class Connection {
   // matchmaking habituel.
   async joinById(roomId: string, name: string, opts: JoinOptions = {}): Promise<Room<RoomState>> {
     const room = await this.client.joinById<RoomState>(roomId, this.joinOptions(name, { ...opts, code: "" }));
+    return this.adopt(room);
+  }
+
+  // Reconnexion automatique du SDK (Colyseus 0.18) coupée : elle garderait
+  // la même room et son état, alors que main.ts vide ses vues et rebâtit
+  // tout sur une room neuve (attemptReconnect, via reconnect() ci-dessous).
+  // Sans elle, une coupure arrive directement dans room.onLeave.
+  private adopt(room: Room<RoomState>): Room<RoomState> {
+    room.reconnection.enabled = false;
     this.room = room;
     return room;
   }
@@ -127,9 +134,7 @@ export class Connection {
   // (1006 typiquement). Combiné avec allowReconnection côté serveur, ça
   // absorbe les hoquets réseau sans renvoyer l'utilisateur au menu.
   async reconnect(token: string): Promise<Room<RoomState>> {
-    const room = await this.client.reconnect(token);
-    this.room = room;
-    return room;
+    return this.adopt(await this.client.reconnect(token));
   }
 
   async leave(): Promise<void> {

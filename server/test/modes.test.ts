@@ -10,10 +10,12 @@ import {
   MatchPhase,
   gameModeOf,
 } from "@bladeio/shared";
+import { CloseCode, LocalDriver, RegisteredHandler, initializeRoomCache } from "@colyseus/core";
 import * as matches from "../src/auth/matches";
 import * as wallet from "../src/auth/wallet";
 import * as telemetry from "../src/telemetry";
 import { GameMode, ModeHost, createMode } from "../src/modes";
+import { ArenaRoom } from "../src/rooms/ArenaRoom";
 import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
 import { FakeClock, addGroundBlade, giveBlade, groundBlades, ownedBlades, seedRandom } from "./helpers";
@@ -83,13 +85,29 @@ test("registre : un jeu de règles par mode partagé ; mode absent ou inconnu �
   assert.equal(gameModeOf("ffa"), "ffa");
 });
 
-test("matchmaking : la room s'inscrit sous son mode, même créée par un client d'avant les modes", () => {
-  const legacy = new TestRoom(clock);
-  assert.equal(legacy.room.listing.mode, "ffa");
+test("matchmaking : la room s'inscrit sous son mode, même créée par un client d'avant les modes", async () => {
+  // Inscription et recherche telles que les fait le matchmaker de Colyseus,
+  // avec le filtre d'index.ts : les champs filtrés sont comparés aux
+  // métadonnées que pose onCreate.
+  const handler = new RegisteredHandler(ArenaRoom, {}).filterBy(["code", "mode"]);
+  const driver = new LocalDriver();
+  const register = (roomId: string, r: TestRoom) =>
+    driver.persist({ ...initializeRoomCache({ name: "arena", roomId }), metadata: r.room.metadata }, true);
+  const find = (options: Record<string, unknown>) =>
+    driver.findOne({ locked: false, name: "arena", private: false, ...handler.getFilterOptions(options) });
+  const legacy = new TestRoom(clock, { code: "" });
   assert.equal(legacy.state.mode, "ffa");
   assert.equal(legacy.room.metadata.mode, "ffa");
-  const odd = new TestRoom(clock, { mode: "nope" });
-  assert.equal(odd.room.listing.mode, "ffa");
+  register("legacy", legacy);
+  const odd = new TestRoom(clock, { code: "", mode: "nope" });
+  assert.equal(odd.room.metadata.mode, "ffa");
+  register("private", new TestRoom(clock, { code: "ABCDE", mode: "tdm" }));
+  // Un client à jour trouve l'arène publique ; une autre file, non.
+  assert.equal((await find({ code: "", mode: "ffa" }))?.roomId, "legacy");
+  assert.equal(await find({ code: "", mode: "tdm" }), undefined);
+  // Un salon privé se rejoint par son code seul, et garde son mode.
+  assert.equal((await find({ code: "ABCDE" }))?.roomId, "private");
+  assert.equal(await find({ code: "ZZZZZ" }), undefined);
 });
 
 test("arène : apparition, réapparition et classement inchangés, jamais de fin", () => {
@@ -165,7 +183,7 @@ test("fin de partie : classement, vies enregistrées, entracte immobile, puis pa
   assert.equal(winner.inputQueue.length, 0);
   assert.equal(loser.alive, false);
   // Partir pendant l'entracte n'enregistre pas la vie une deuxième fois.
-  r.room.onLeave({ sessionId: "idle" }, true);
+  r.room.onLeave({ sessionId: "idle" }, CloseCode.CONSENTED);
   assert.equal(lives.length, 2);
 
   // Jusqu'au tick de la relance (les suivants remettent du butin au sol).

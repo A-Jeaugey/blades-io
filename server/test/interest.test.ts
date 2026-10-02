@@ -95,12 +95,12 @@ test("champs du propriétaire : direction, recul, dernier input, effets et stats
   assert.equal(mine.kills, 1);
   assert.equal(mine.knockbackVx, 2);
   assert.equal(mine.speedUntil, 1000);
-  // Ceux de l'autre restent à leurs valeurs par défaut...
-  assert.equal(theirs.dirX, 0);
-  assert.equal(theirs.lastSeq, 0);
-  assert.equal(theirs.kills, 0);
-  assert.equal(theirs.knockbackVx, 0);
-  assert.equal(theirs.speedUntil, 0);
+  // Ceux de l'autre ne sont jamais décodés...
+  assert.equal(theirs.dirX, undefined);
+  assert.equal(theirs.lastSeq, undefined);
+  assert.equal(theirs.kills, undefined);
+  assert.equal(theirs.knockbackVx, undefined);
+  assert.equal(theirs.speedUntil, undefined);
   // ... mais ce qui se voit est bien reçu.
   assert.equal(theirs.x, 20);
   assert.ok(other.score > 0);
@@ -108,7 +108,7 @@ test("champs du propriétaire : direction, recul, dernier input, effets et stats
   // Et l'autre client reçoit les siens.
   const seen = received(r, "other");
   assert.equal(seen.players.get("other")!.lastSeq, 42);
-  assert.equal(seen.players.get("me")!.lastSeq, 0);
+  assert.equal(seen.players.get("me")!.lastSeq, undefined);
 });
 
 test("champs du propriétaire : rien ne passe quand un joueur revient dans la vue", () => {
@@ -135,9 +135,9 @@ test("champs du propriétaire : rien ne passe quand un joueur revient dans la vu
   const back = view.state.players.get("other");
   assert.ok(back, "le joueur revenu n'a pas été renvoyé");
   assert.equal(back.x, 20);
-  assert.equal(back.dirX, 0);
-  assert.equal(back.lastSeq, 0);
-  assert.equal(back.kills, 0);
+  assert.equal(back.dirX, undefined);
+  assert.equal(back.lastSeq, undefined);
+  assert.equal(back.kills, undefined);
 });
 
 test("buissons : un joueur caché n'est pas envoyé, sauf quand les orbites peuvent se toucher", () => {

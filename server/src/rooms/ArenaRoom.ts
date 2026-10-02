@@ -1,4 +1,4 @@
-import { Room, Client, ServerError } from "@colyseus/core";
+import { Room, Client, CloseCode, ServerError } from "@colyseus/core";
 import { Encoder } from "@colyseus/schema";
 import {
   BladeRarity,
@@ -95,7 +95,7 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ChallengeDoneEvent, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, GameModeId, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -120,13 +120,14 @@ function sanitizeName(raw: string): string {
   return cleaned;
 }
 
-// Encodage des patchs par client (zones d'intérêt) : Colyseus 0.16 écrit
-// les vues de tous les clients à la suite dans un seul tampon partagé. Si
-// leur somme le dépasse, @colyseus/schema 3.0 réalloue un autre tampon mais
-// renvoie une tranche de l'ancien : patchs tronqués pour les clients
-// suivants (mesuré au banc avec 60 clients et le tampon par défaut de 8 Ko).
-// D'où un tampon dimensionné pour une room pleine, respawns simultanés
-// compris (une vue complète pèse moins de 20 Ko).
+// Encodage des patchs par client (zones d'intérêt) : Colyseus écrit les
+// vues de tous les clients à la suite dans un seul tampon partagé. Sous
+// @colyseus/schema 3.0, le dépasser tronquait les patchs des clients
+// suivants (mesuré au banc avec 60 clients et le tampon par défaut de 8 Ko) ;
+// corrigé depuis, le tampon s'agrandit en cours d'encodage, mais chaque
+// agrandissement recopie et prévient dans les journaux. D'où un tampon
+// dimensionné pour une room pleine, respawns simultanés compris (une vue
+// complète pèse moins de 20 Ko).
 Encoder.BUFFER_SIZE = 1024 * 1024;
 
 // Lames d'un joueur au début d'un échange : en orbite, plus celles perdues
@@ -139,7 +140,16 @@ function bladesBeforeFight(p: Player): number {
   return p.bladeCount + lost;
 }
 
-export class ArenaRoom extends Room<ArenaState> implements RestartAware {
+// Métadonnées de la room (matchmaking) : Colyseus 0.18 y cherche aussi les
+// champs du filtre (filterBy, cf. index.ts).
+interface ArenaMetadata {
+  code: string;
+  isPrivate: boolean;
+  botsEnabled: boolean;
+  mode: GameModeId;
+}
+
+export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata }> implements RestartAware {
   maxClients = MAX_PLAYERS_PER_ROOM;
   private pickup = new PickupSystem();
   private spawning = new SpawnSystem();
@@ -186,16 +196,16 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // remplissage), public avec bots. Override possible par l'option.
     this.botsEnabled = typeof options.bots === "boolean" ? options.bots : !this.isPrivate;
     const modeId = gameModeOf(options.mode);
-    // Une file d'attente par mode (filterBy, cf. index.ts). Une room créée
-    // par un client d'avant les modes, qui n'en envoie pas, est inscrite
-    // comme arène sans fin : les clients à jour la trouvent.
-    this.listing.mode = modeId;
-    this.setMetadata({
+    // Une file d'attente par mode (filterBy, cf. index.ts), comparée aux
+    // métadonnées. Une room créée par un client d'avant les modes, qui n'en
+    // envoie pas, y est inscrite comme arène sans fin : les clients à jour
+    // la trouvent. Enregistrées avec la room, à la fin de onCreate.
+    this.metadata = {
       code: this.roomCode,
       isPrivate: this.isPrivate,
       botsEnabled: this.botsEnabled,
       mode: modeId,
-    });
+    };
     const state = new ArenaState();
     state.mapRadius = MAP_RADIUS;
     state.code = this.roomCode;
@@ -236,8 +246,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // requête matchmaker), donc setPrivate casserait le rejoin par code.
     // L'isolation public/privé est assurée côté filterBy : public envoie
     // code="", privé envoie le code à 5 chars, jamais de cross-match.
-    this.setPatchRate(1000 / SERVER_TICKRATE);
-    this.setSimulationInterval((dtMs) => this.tick(dtMs / 1000), 1000 / SERVER_TICKRATE);
+    this.patchRate = 1000 / SERVER_TICKRATE;
+    this.setTimestep((dtMs) => this.tick(dtMs / 1000), 1000 / SERVER_TICKRATE);
     this.onMessage<InputMessage>("input", (client, msg) => this.handleInput(client, msg));
     this.onMessage<SetNameMessage>("setName", (client, msg) => {
       const p = this.state.players.get(client.sessionId);
@@ -444,7 +454,10 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     attachBladeToPlayer(this.state, p, b);
   }
 
-  async onLeave(client: Client, consented: boolean): Promise<void> {
+  // Sans onDrop, Colyseus appelle onLeave pour toute sortie : le code de
+  // fermeture distingue le départ volontaire de la coupure réseau.
+  async onLeave(client: Client, code?: number): Promise<void> {
+    const consented = code === CloseCode.CONSENTED;
     const p = this.state.players.get(client.sessionId);
     if (!p) return;
     // Expulsé pour flood : ni reconnexion, ni match enregistré.

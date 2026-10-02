@@ -14,7 +14,7 @@ shared/    Constantes et types — source de vérité gameplay (positions de
 server/    Colyseus authoritative room. Tick et patchs à 60 Hz, simulation
            complète. Le serveur ne sait rien des couleurs/visuels — c'est
            cosmétique.
-client/    Vite + Three.js + Colyseus.js. Entités distantes rendues 80 ms
+client/    Vite + Three.js + SDK Colyseus. Entités distantes rendues 80 ms
            dans le passé (interpolation) + prédiction locale +
            reconciliation pour le joueur courant.
 ```
@@ -635,6 +635,21 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   (`.github/workflows/ci.yml`) rejoue ce build complet puis `npm test` et
   `npm run check:themes` à chaque push : elle doit être verte avant de
   pousser sur `main`.
+- **Colyseus 0.18** (tâche T.6) : Node 22 minimum (`engines`, et
+  `engine-strict` dans `.npmrc` : `npm ci` refuse une version plus
+  ancienne). Le matchmaking compare les champs de `filterBy` (`code`,
+  `mode`) aux métadonnées de la room, posées dans `onCreate`
+  (`this.metadata`) : y retirer un champ casse la file correspondante (test
+  « matchmaking » de `server/test/modes.test.ts`). `onLeave(client, code)`
+  reçoit le code de fermeture (`CloseCode.CONSENTED` : départ volontaire,
+  sinon fenêtre de reconnexion). Un code de fermeture propre au jeu se
+  choisit hors de 4000-4010, réservés par Colyseus. Côté client, rappels
+  d'état par `Callbacks.get(room)`, typés par `SyncedState` (`main.ts`) : y
+  ajouter un champ avant de le suivre. La reconnexion automatique du SDK est
+  coupée (`Connection.adopt`), `main.ts` a la sienne. Les tests et
+  `tools/bench-server.js` s'appuient sur des internes (`_listing`, `__init`,
+  `_simulationInterval`, `_serializer`) : à revalider à chaque montée de
+  version.
 - **Tests serveur** : `npm test` (`server/test/*.test.ts`, `node:test`
   compilé par `tsc` vers `server/dist-test/`, gitignoré). Les systèmes
   lisent `Date.now()` et `Math.random()` : utiliser `FakeClock` et

@@ -5,9 +5,10 @@ REPO="https://github.com/A-Jeaugey/blades-io.git"
 BRANCH="main"
 DIR="$HOME/bladeio"
 
-echo "=== [1/5] Node 20 ==="
-if ! node --version 2>/dev/null | grep -qE "v(2[0-9]|[3-9][0-9])"; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+echo "=== [1/5] Node 22 ==="
+# Colyseus 0.18 exige Node 22 ou plus.
+if ! node --version 2>/dev/null | grep -qE "v(2[2-9]|[3-9][0-9])"; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
   sudo apt install -y nodejs git
 fi
 node --version

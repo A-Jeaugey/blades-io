@@ -1,6 +1,7 @@
 // Tests d'intégration : la room complète, tick par tick, hors réseau.
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
+import { CloseCode } from "@colyseus/core";
 import {
   BladeRarity,
   CLOSE_CODE_INPUT_FLOOD,
@@ -248,7 +249,7 @@ test("trophées : crédités en fin de vie en public, jamais en privé ni pour u
   pub.room.killPlayer(user, null, "wall");
   const leaver = pub.join("leaver", { guestId: "g-3" });
   leaver.score = 12;
-  await pub.room.onLeave({ sessionId: "leaver" }, true);
+  await pub.room.onLeave({ sessionId: "leaver" }, CloseCode.CONSENTED);
   const broke = pub.join("broke", { guestId: "g-4" });
   broke.score = 0;
   pub.room.killPlayer(broke, null, "wall");

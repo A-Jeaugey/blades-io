@@ -54,7 +54,7 @@ import {
   teamBase,
   tierClashShake,
 } from "@bladeio/shared";
-import { getStateCallbacks } from "colyseus.js";
+import { Callbacks } from "@colyseus/sdk";
 import { Connection, JoinOptions, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
 import { ServerClock } from "./net/ServerClock";
 import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
@@ -141,6 +141,22 @@ interface OrbitSegment {
   tick: number;
   phase: number;
   rate: number;
+}
+
+// Champs de l'état reçu que suivent les rappels d'état (setupRoom). Le
+// client n'a pas les classes du serveur, le SDK les reflète à la connexion :
+// ce type les décrit pour les rappels, que le compilateur vérifie ainsi.
+interface SyncedState {
+  code: string;
+  isPrivate: boolean;
+  mode: string;
+  phase: number;
+  tick: number;
+  serverTime: number;
+  players: Map<string, any>;
+  blades: Map<string, any>;
+  crates: Map<string, any>;
+  powerups: Map<string, any>;
 }
 
 // Première partie sur cet appareil : envoyé au serveur pour la télémétrie
@@ -689,16 +705,16 @@ class Game {
 
   private setupRoom(): void {
     const room = this.room;
-    const $ = getStateCallbacks(room);
-    const state = room.state;
+    const callbacks = Callbacks.get(room);
+    const state: SyncedState = room.state;
 
     // Badge du code de room : affiché seulement pour les parties privées.
     const applyRoomInfo = () => {
       this.hud.setRoomCode(state.isPrivate ? (state.code ?? "") : "");
     };
     applyRoomInfo();
-    $(state).listen("code", applyRoomInfo);
-    $(state).listen("isPrivate", applyRoomInfo);
+    callbacks.listen(state, "code", applyRoomInfo);
+    callbacks.listen(state, "isPrivate", applyRoomInfo);
 
     // Horloge serveur : chaque patch apporte le tick courant.
     this.serverClock.reset();
@@ -720,7 +736,7 @@ class Game {
     room.onMessage("matchEnd", (ev: MatchEndEvent) => this.onMatchEnd(ev));
     // Capture du drapeau : prises, chutes, retours, captures, au tick.
     room.onMessage("flag", (ev: FlagEvent & { tick?: number }) => this.atTick(ev.tick, () => this.onFlagEvent(ev), false));
-    $(state).listen("phase", (phase: number, previous: number | undefined) => {
+    callbacks.listen(state, "phase", (phase, previous: number | undefined) => {
       if (phase === MatchPhase.Playing && previous === MatchPhase.Over) this.onMatchStart();
     });
     this.restartAt = 0;
@@ -743,11 +759,11 @@ class Game {
       const sorted = [...this.pingSamples].sort((a, b) => a - b);
       this.pingMs = sorted[Math.floor(sorted.length / 2)];
     });
-    $(state).listen("tick", (tick: number) => {
+    callbacks.listen(state, "tick", (tick) => {
       this.lastPatchTick = tick;
       this.serverClock.onTick(tick, performance.now());
     });
-    $(state).listen("serverTime", (t: number) => this.serverClock.onServerTime(t, performance.now()));
+    callbacks.listen(state, "serverTime", (t) => this.serverClock.onServerTime(t, performance.now()));
     if (this.debugHitboxes) {
       const debug = this.debugHitboxes;
       room.onMessage("debugOrbits", (frame: DebugOrbitFrame) => debug.push(frame));
@@ -786,7 +802,7 @@ class Game {
       this.recordOrbitSegment(key, p);
       this.renderAlive.set(key, !!p.alive);
       let aliveSeen = !!p.alive;
-      $(p).onChange(() => {
+      callbacks.onChange(p, () => {
         const now = performance.now();
         this.recordOrbitSegment(key, p);
         view.setSnapshot(p.x, p.y, now);
@@ -809,7 +825,7 @@ class Game {
         if (isLocal) this.needReconcile = true;
       });
     };
-    $(state).players.onAdd(onPlayerAdd, true);
+    callbacks.onAdd(state, "players", onPlayerAdd, true);
 
     // Retrait d'un joueur (mort, sorti de la zone d'intérêt, caché dans un
     // buisson, parti) : au tick du patch sur la ligne de temps, comme ses
@@ -818,7 +834,7 @@ class Game {
     // coup fatal à l'écran, et l'élimination, jouée à son tick, ne le
     // trouvait plus (ni explosion, ni effet d'élimination, ni gain affiché
     // au tueur). L'élimination, reçue avant, passe la première au même tick.
-    $(state).players.onRemove((p: any, key: string) => {
+    callbacks.onRemove(state, "players", (p, key) => {
       const v = this.players.get(key);
       if (!v) return;
       this.departing.set(key, p);
@@ -845,29 +861,29 @@ class Game {
       if (ownerId || this.blades.isOrbiting(key) || this.pendingBlades.has(key)) this.deferBlade(key, apply);
       else apply();
     };
-    $(state).blades.onAdd((b: any, key: string) => {
+    callbacks.onAdd(state, "blades", (b, key) => {
       bladeChanged(b, key);
-      $(b).onChange(() => bladeChanged(b, key));
+      callbacks.onChange(b, () => bladeChanged(b, key));
       // Pluie de lames : chaque lame qui tombe dans la zone jette des
       // étincelles à sa couleur.
       if (!b.ownerId && !b.isProjectile) this.rainSpark(b.x, b.y, b.rarity as BladeRarity);
     }, true);
-    $(state).blades.onRemove((_b: any, key: string) => {
+    callbacks.onRemove(state, "blades", (_b, key) => {
       if (this.blades.isOrbiting(key) || this.pendingBlades.has(key)) this.deferBlade(key, () => this.blades.remove(key));
       else this.blades.remove(key);
     });
 
-    $(state).crates.onAdd((c: any, key: string) => {
+    callbacks.onAdd(state, "crates", (c, key) => {
       this.crates.add(key, c.x, c.y, c.hp, c.maxHp, !!c.legendary);
     }, true);
-    $(state).crates.onRemove((_c: any, key: string) => {
+    callbacks.onRemove(state, "crates", (_c, key) => {
       this.crates.remove(key);
     });
 
-    $(state).powerups.onAdd((pu: any, key: string) => {
+    callbacks.onAdd(state, "powerups", (pu, key) => {
       this.powerups.add(key, pu.type as PowerUpType, pu.rarity as BladeRarity, pu.x, pu.y);
     }, true);
-    $(state).powerups.onRemove((_pu: any, key: string) => {
+    callbacks.onRemove(state, "powerups", (_pu, key) => {
       this.powerups.remove(key);
     });
 

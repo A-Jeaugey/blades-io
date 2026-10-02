@@ -1,5 +1,5 @@
 import { Client } from "@colyseus/core";
-import { $changes, StateView } from "@colyseus/schema";
+import { StateView } from "@colyseus/schema";
 import {
   BUSH_REVEAL_MARGIN,
   VIEW_RADIUS_DEFAULT,
@@ -16,7 +16,7 @@ import { Blade } from "../state/Blade";
 import { OWNER_VIEW_TAG, Player } from "../state/Player";
 
 // Zone d'intérêt (tâche 2.4) : chaque client ne reçoit que les joueurs et
-// les lames proches de lui (StateView de Colyseus 0.16), et jamais un
+// les lames proches de lui (StateView de Colyseus), et jamais un
 // joueur caché dans un buisson tant que leurs orbites ne peuvent pas se
 // toucher. Avant, l'état complet partait à tout le monde : ~95 Ko/s par
 // client à 60 joueurs, et un client modifié voyait à travers les buissons.
@@ -213,16 +213,10 @@ export class InterestManager {
       }
     }
 
-    for (const p of players) {
-      if (v.players.has(p)) continue;
-      // Retour dans la vue après des changements manqués : Colyseus 0.16
-      // (« invisible ») renverrait alors tous ses champs, y compris ceux
-      // réservés à son propriétaire (OWNER_VIEW_TAG). Les champs publics
-      // repartent de toute façon en entier. À revoir avec Colyseus 0.18 (T.6).
-      const tree = p[$changes];
-      if (tree) v.view.invisible.delete(tree);
-      v.view.add(p);
-    }
+    // Un joueur qui revient dans la vue repart avec ses seuls champs publics :
+    // ceux réservés à son propriétaire (OWNER_VIEW_TAG) n'y sont pas, même
+    // après des changements manqués (cf. tests de zone d'intérêt).
+    for (const p of players) if (!v.players.has(p)) v.view.add(p);
     for (const p of v.players) {
       // Retiré de l'état entre-temps : l'encodeur transmet la suppression.
       if (!players.has(p) && this.entryById.get(p.id)?.p === p) v.view.remove(p);

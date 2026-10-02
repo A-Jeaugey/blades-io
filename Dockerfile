@@ -1,5 +1,5 @@
 # Serveur Colyseus de blade.io, déployable sur Railway / Fly.io / n'importe quel Node host.
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Installe les dépendances des workspaces nécessaires au serveur
@@ -18,7 +18,7 @@ RUN npm run build:shared
 RUN npm run build --workspace=@bladeio/server
 
 # --- Runtime ---
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 

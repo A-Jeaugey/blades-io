@@ -73,7 +73,7 @@ Usually 30 % easy, 40 % normal and 30 % hard. While a beginner (first game on th
 ```
 shared/   Types and constants — single source of truth for game design
 server/   Authoritative Colyseus room (60 Hz tick and patches, 60 player cap)
-client/   Vite + Three.js + Colyseus.js
+client/   Vite + Three.js + Colyseus SDK
 ```
 
 The server runs the entire simulation (positions, collisions, kills, drops, projectiles). The client sends one input every 1/60 s (`dx, dy, boost, throw`, plus the aim direction of a throw); the server applies each input as one movement step, in order, and acknowledges the last one applied. The local player is predicted with input replay: on each server state, the client re-applies its unacknowledged inputs with the same step function as the server (`shared/src/movement.ts`), so it reacts instantly at any latency and is only corrected by what it cannot foresee (a clash knockback, a push from another player). Remote entities are rendered 80 ms in the past (interpolation between snapshots). Blade orbits are derived from a per-player orbit clock synced by the server, and combat events carry the server tick they happened on, so clients draw blades exactly where the server collides them and play each clash on the frame where the blades touch.
@@ -97,7 +97,7 @@ Sound effects are 100 % procedural — Tone.js synths for pickups, throws, the b
 
 ## Run locally
 
-Prereqs: **Node 22** (the version CI uses; Node 20 still builds).
+Prereqs: **Node 22** or later (required by Colyseus 0.18; `npm install` refuses older versions, see `.npmrc`).
 
 ```bash
 npm install
@@ -259,7 +259,7 @@ curl -fsSL https://raw.githubusercontent.com/A-Jeaugey/blades-io/main/deploy.sh 
 
 The script:
 
-- installs Node 20 and pm2 if missing (Node 20 or later is supported)
+- installs Node 22 and pm2 if missing (Node 22 or later is required)
 - clones / pulls the repo into `~/bladeio`
 - builds, tests and starts the first release with `auto-deploy.sh` (below)
 - enables pm2 auto-start at boot
@@ -270,7 +270,7 @@ The server listens on **2567**, serves the client at `/`, and exposes `/api` and
 
 `auto-deploy.sh` deploys the latest `main` without cutting matches short:
 
-1. **Separate build.** The commit is built in its own release directory, `~/bladeio-releases/<commit>`: `npm ci`, full build, tests. The live version is not touched until all of that succeeds. A version that failed is not retried until a new commit lands (or with `--force`).
+1. **Separate build.** The commit is built in its own release directory, `~/bladeio-releases/<commit>`: `npm ci`, full build, tests. The live version is not touched until all of that succeeds. A version that failed is not retried until a new commit lands (or with `--force`). On a machine still running Node 20, `npm ci` stops right away (`engine-strict` in `.npmrc`): the live version stays up until Node 22 is installed.
 2. **Atomic switch.** `~/bladeio-current` is switched to the new release, then pm2 restarts the server (`ecosystem.config.js`). The running server announces the restart: players see a 60 s countdown and new players are refused. The server closes when the last player leaves or the countdown ends, and it saves every match on the way out. Clients wait for the new version to answer, then return to the menu.
 3. **Health check.** The script polls `/healthz` and rolls back to the previous release if the new one does not answer.
 

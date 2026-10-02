@@ -13,8 +13,9 @@
 //             (BENCH_SEED=<n> pour une partie reproductible, BENCH_VIEWERS=<n>
 //             pour autant de clients connectés)
 //
-// Attention : s'appuie sur des internes de @colyseus/core 0.16 (__init,
-// _simulationInterval). À revalider lors d'une montée de version Colyseus.
+// Attention : s'appuie sur des internes de @colyseus/core 0.18 (_listing,
+// __init, _simulationInterval). À revalider lors d'une montée de version
+// Colyseus.
 const path = require("path");
 const { performance } = require("perf_hooks");
 
@@ -42,7 +43,10 @@ const realDateNow = Date.now;
 Date.now = () => simNow;
 
 const { ArenaRoom } = require(path.join(ROOT, "server/dist/rooms/ArenaRoom"));
-const { pack } = require(require.resolve("@colyseus/msgpackr", { paths: [path.join(ROOT, "server")] }));
+// Taille des messages : même encodeur et mêmes options que Colyseus.
+const { Packr } = require(require.resolve("msgpackr", { paths: [path.join(ROOT, "server/node_modules/@colyseus/core")] }));
+const packr = new Packr({ useRecords: false });
+const pack = (v) => packr.pack(v);
 
 const N = parseInt(process.argv[2] || "60", 10);
 const SIM_SECONDS = parseInt(process.argv[3] || "300", 10);
@@ -50,7 +54,8 @@ const PRIVATE = process.argv[4] === "private";
 const DT = 1 / 60;
 
 const room = new ArenaRoom();
-room.listing = { metadata: null, save: async () => {}, markModified: () => {} };
+// Fiche de matchmaking, d'ordinaire posée par le matchmaker avant onCreate.
+room._listing = { name: "arena", metadata: undefined };
 room.__init();
 
 const bcast = new Map();
@@ -65,11 +70,12 @@ room.broadcast = (type, msg) => {
 };
 
 room.onCreate(PRIVATE ? { code: "BENCH", bots: true } : { code: "" });
-// On pilote la boucle nous-mêmes : coupe l'intervalle de simulation et
-// l'intervalle de patch installés par onCreate.
+// On pilote la boucle nous-mêmes : coupe l'intervalle de patch et celui de
+// simulation installés par onCreate. Dans cet ordre : sans simulation,
+// couper les patchs relancerait une minuterie pour l'horloge de la room.
+room.patchRate = null;
 clearInterval(room._simulationInterval);
 room._simulationInterval = undefined;
-room.patchRate = null;
 // Remplit la room de bots jusqu'à N (au lieu du cap BOT_MAX_TOTAL).
 room.bots.desiredBotCount = () => N;
 

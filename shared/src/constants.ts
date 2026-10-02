@@ -27,9 +27,10 @@ export const MAX_INPUT_QUEUE = 20;
 // hoquet réseau puis livrés d'un coup) ne doit pas expulser un joueur
 // légitime, qui envoie un input par SERVER_DT (60 par seconde).
 export const MAX_INPUT_VIOLATIONS = 3;
-// Code de fermeture WebSocket envoyé au client expulsé pour flood d'inputs
-// (plage 4000-4999 réservée aux applications).
-export const CLOSE_CODE_INPUT_FLOOD = 4003;
+// Code de fermeture WebSocket envoyé au client expulsé pour flood d'inputs.
+// La plage 4000-4999 revient aux applications, mais Colyseus en garde 4000
+// à 4010 (4003, l'ancienne valeur, y signale un échec de reconnexion).
+export const CLOSE_CODE_INPUT_FLOOD = 4100;
 
 // --- Joueur ---
 export const PLAYER_SPEED = 11; // unités / seconde

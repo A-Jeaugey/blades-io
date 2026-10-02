@@ -18,7 +18,8 @@ export class TestRoom {
 
   constructor(private readonly clock: FakeClock, options: { code?: string; bots?: boolean; mode?: string } = {}) {
     const room: any = new ArenaRoom();
-    room.listing = { metadata: null, save: async () => {}, markModified: () => {}, updateOne: async () => {} };
+    // Fiche de matchmaking, d'ordinaire posée par le matchmaker avant onCreate.
+    room._listing = { name: "arena", metadata: undefined };
     room.autoDispose = false;
     room.__init();
     room.broadcast = (type: string, message: any) => {
@@ -30,6 +31,9 @@ export class TestRoom {
       this.events.push({ type, message });
     };
     room.onCreate({ bots: false, ...options });
+    // L'intervalle de simulation, arrêté, reste référencé : couper ensuite
+    // les patchs ne relance pas la minuterie que Colyseus donne à l'horloge
+    // d'une room sans simulation.
     clearInterval(room._simulationInterval);
     room.patchRate = null;
     this.room = room;
