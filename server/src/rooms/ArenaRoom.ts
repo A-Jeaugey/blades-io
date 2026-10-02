@@ -198,8 +198,13 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       get state() { return room.state; },
       get isPrivate() { return room.isPrivate; },
       endMatch: (intermissionMs) => this.endMatch(intermissionMs),
+      emit: (type, payload) => this.emit(type, payload),
     };
     this.mode = createMode(modeId, host);
+    // Objectifs des bots propres au mode (modes équipe : adversaires,
+    // drapeaux), en balance avec leurs autres envies.
+    const mode = this.mode;
+    if (mode.botGoal) this.bots.setGoals((bot) => mode.botGoal!(bot));
     // Première partie : un mode à fin y règle sa minuterie.
     this.mode.onMatchStart(Date.now());
     // NB: pas de setPrivate(true) sur les rooms à code. Colyseus exclut
@@ -387,7 +392,10 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     this.mode.onJoin(p);
     const spawn = this.mode.spawnPoint(p);
     p.x = spawn.x; p.y = spawn.y;
-    p.alive = true;
+    // Dernière équipe en vie : qui arrive en pleine manche la regarde, sans
+    // lames, jusqu'à la suivante.
+    const waits = this.mode.spawnsOnJoin?.(p) === false;
+    p.alive = !waits;
     p.spawnedAt = Date.now();
     p.spinPhase = Math.random() * Math.PI * 2;
     p.spinScale = 0.75 + Math.random() * 0.5;
@@ -399,7 +407,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
     this.state.players.set(client.sessionId, p);
-    for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
+    if (!waits) for (let i = 0; i < INITIAL_BLADE_COUNT; i++) this.spawnInitialBladeFor(p);
     this.interest.addViewer(client, p);
   }
 
@@ -544,6 +552,8 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   }
 
   private cleanupPlayer(sessionId: string): void {
+    const leaving = this.state.players.get(sessionId);
+    if (leaving) this.mode.onLeave?.(leaving);
     this.debugOrbitClients.delete(sessionId);
     this.interest.removeViewer(sessionId);
     const toRemove: string[] = [];
@@ -864,7 +874,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
     this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
     this.updateLeader(dt);
-    this.bots.cleanupDead(this.state);
+    if (!this.mode.keepsEliminatedBots?.()) this.bots.cleanupDead(this.state);
     // Règles du mode : minuteries, fin de partie.
     this.mode.tick(Date.now());
   }
@@ -884,7 +894,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
       this.recordLifeEnd(p, "match_end", null, p.bladeCount, null);
       this.persistMatchIfAuthed(p);
     });
-    const ev: MatchEndEvent = { standings, nextAt: this.state.phaseEndsAt };
+    const ev: MatchEndEvent = { standings, nextAt: this.state.phaseEndsAt, ...this.mode.matchResult?.(standings) };
     this.emit("matchEnd", ev);
   }
 
@@ -893,7 +903,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   private standings(): MatchStanding[] {
     const ranked: Array<{ p: Player; row: MatchStanding }> = [];
     this.state.players.forEach((p) => {
-      ranked.push({ p, row: { id: p.id, name: p.name, bot: p.isBot, ...this.mode.standing(p), bonus: 0 } });
+      ranked.push({ p, row: { id: p.id, name: p.name, bot: p.isBot, team: p.team, ...this.mode.standing(p), bonus: 0 } });
     });
     ranked.sort((a, b) => b.row.score - a.row.score);
     ranked.forEach(({ p, row }, rank) => {
@@ -948,13 +958,14 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   }
 
   // Ce que la zone d'intérêt ne donne plus : classement complet, joueurs de
-  // la minimap (hors buissons), lames légendaires au sol.
+  // la minimap (hors buissons, sauf porteur de drapeau), lames légendaires
+  // au sol.
   private buildSummary(): RoomSummary {
     const summary: RoomSummary = { board: [], map: [], legendaries: [], leader: null };
     this.state.players.forEach((p) => {
-      if (p.alive && !isInBush(p.x, p.y)) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
+      if (p.alive && (p.revealed || !isInBush(p.x, p.y))) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
       if (p.id === this.leaderId) summary.leader = [summary.board.length, bountyFor(p.score)];
-      summary.board.push([p.id, p.name, this.mode.standing(p).score, p.bladeCount, p.isBot]);
+      summary.board.push([p.id, p.name, this.mode.standing(p).score, p.bladeCount, p.isBot, p.team]);
     });
     this.state.blades.forEach((b) => {
       if (!b.ownerId && !b.isProjectile && b.rarity === BladeRarity.Legendary) {
@@ -1078,6 +1089,7 @@ export class ArenaRoom extends Room<ArenaState> implements RestartAware {
   }
 
   private maintainBots(): void {
+    if (this.mode.botsMayJoin?.() === false) return;
     let bots = 0;
     this.state.players.forEach((p) => { if (p.isBot) bots++; });
     const want = this.bots.desiredBotCount(this.state);

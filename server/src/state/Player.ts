@@ -72,6 +72,8 @@ export class Player extends Schema {
   @type("string") bladeSkin: string = "";
   @type("string") trail: string = "";
   @type("string") killFx: string = "";
+  // Équipe (modes équipe, tâche 7.2) : 0 hors équipe, 1 ou 2.
+  @type("uint8") team: number = 0;
 
   // Champs non synchronisés (gestion serveur)
   // ID Supabase auth.users du joueur authentifié ; null pour les invités et
@@ -86,6 +88,9 @@ export class Player extends Schema {
   // XP du compte ou du portefeuille invité, lue au join et augmentée des
   // trophées crédités à chaque fin de vie (cf. levelForXp).
   xp: number = 0;
+  // Visible de tous, même dans un buisson (porteur d'un drapeau) : zones
+  // d'intérêt, bots et minimap.
+  revealed: boolean = false;
   // Input courant : celui des bots, ou le dernier appliqué pour un humain.
   inputDx: number = 0;
   inputDy: number = 0;

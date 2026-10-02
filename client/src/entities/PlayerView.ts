@@ -75,6 +75,11 @@ export class PlayerView {
   private trailLook: TrailLook | null = null;
   private baseTrailColor = new THREE.Color();
   private trailTail = new THREE.Color();
+  // Modes équipe (tâche 7.2) : un allié prend la couleur d'anneau du joueur
+  // local, avec quatre losanges autour (la forme en plus de la couleur,
+  // tâche 3.8). Repères créés au premier allié seulement.
+  private ally = false;
+  private allyMarks: THREE.Mesh | null = null;
 
   constructor(isLocal: boolean, q: QualityConfig) {
     this.root = new THREE.Group();
@@ -377,6 +382,23 @@ export class PlayerView {
     return this.protected_;
   }
 
+  setAlly(ally: boolean): void {
+    if (ally === this.ally || this.isLocal) return;
+    this.ally = ally;
+    const palette = getActiveTheme().palette;
+    const color = ally ? palette.playerLocal.accent : palette.playerRemote.accent;
+    (this.ring.material as THREE.MeshBasicMaterial).color.setHex(color);
+    if (ally && !this.allyMarks) {
+      const geo = allyMarksGeometry();
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+      // Enfant de l'anneau : à plat comme lui.
+      this.allyMarks = new THREE.Mesh(geo, mat);
+      this.ring.add(this.allyMarks);
+      this.disposables.push(geo, mat);
+    }
+    if (this.allyMarks) this.allyMarks.visible = ally;
+  }
+
   setProtected(active: boolean): void {
     if (this.protected_ === active) return;
     this.protected_ = active;
@@ -555,4 +577,22 @@ export class PlayerView {
     this.clearAccessory();
     for (const d of this.disposables) d.dispose();
   }
+}
+
+// Quatre losanges dans le plan de l'anneau, en diagonale, entre l'anneau
+// (0,72) et le halo de protection (1,0).
+function allyMarksGeometry(): THREE.BufferGeometry {
+  const r = 0.88;
+  const h = 0.1;
+  const pos: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const a = (i + 0.5) * (Math.PI / 2);
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    pos.push(x + h, y, 0, x, y + h, 0, x - h, y, 0);
+    pos.push(x - h, y, 0, x, y - h, 0, x + h, y, 0);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  return geo;
 }

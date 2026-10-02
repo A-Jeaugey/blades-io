@@ -12,6 +12,7 @@ import {
   tierBladeHitbox,
   tierHitlagMs,
   tierKnockback,
+  sameTeam,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
@@ -107,6 +108,8 @@ interface OwnerBucket {
   reach: number;
   spawnProtected: boolean;
   shielded: boolean;
+  // Équipe (modes équipe) : deux alliés ne se touchent pas.
+  team: number;
   blades: OrbitingEntry[];
 }
 
@@ -141,6 +144,7 @@ export function resolveCollisions(
       reach: outerOrbitRadius(p.bladeCount) + tierBladeHitbox(tier),
       spawnProtected: p.spawnProtectionUntil > nowMs,
       shielded: p.shieldUntil > nowMs,
+      team: p.team,
       blades: [],
     };
     buckets.set(bucket.id, bucket);
@@ -185,6 +189,8 @@ export function resolveCollisions(
       // la narrow phase. Empêche un joueur de se faire shred avant d'avoir
       // chargé le HUD, et empêche aussi le spawn-camp offensif.
       if (A.spawnProtected || B.spawnProtected) continue;
+      // Alliés (modes équipe) : leurs lames se traversent.
+      if (sameTeam(A.team, B.team)) continue;
 
       // Narrow phase. Les deux orbites se touchent : on teste les lames
       // entre elles. On tolère un coût O(N_a × N_b) car ce cas (deux
@@ -252,7 +258,7 @@ export function resolveCollisions(
     if (target.spawnProtected) continue;
     let killed = false;
     for (const owner of owners) {
-      if (owner.id === target.id) continue;
+      if (owner.id === target.id || sameTeam(owner.team, target.team)) continue;
       // L'attaquant est protégé → ses lames ne font pas de dégât.
       if (owner.spawnProtected) continue;
       // Broad phase : la cible peut-elle être à portée d'une lame ?
@@ -278,10 +284,10 @@ export function resolveCollisions(
   // -------- Phase 4 : body-vs-body (joueurs sans lame) ---------------------
   // bladeCount est lu ici, après les destructions de lames des phases
   // précédentes ; alive est relu à chaque paire.
-  const bodies: Array<{ player: Player; x: number; y: number; empty: boolean; spawnProtected: boolean }> = [];
+  const bodies: Array<{ player: Player; x: number; y: number; empty: boolean; spawnProtected: boolean; team: number }> = [];
   for (const o of owners) {
     if (o.player.alive) {
-      bodies.push({ player: o.player, x: o.x, y: o.y, empty: o.player.bladeCount <= 0, spawnProtected: o.spawnProtected });
+      bodies.push({ player: o.player, x: o.x, y: o.y, empty: o.player.bladeCount <= 0, spawnProtected: o.spawnProtected, team: o.team });
     }
   }
   for (let i = 0; i < bodies.length; i++) {
@@ -290,7 +296,7 @@ export function resolveCollisions(
       const b = bodies[j];
       // Spawn protection : aucun des deux ne peut tuer ou être tué pendant
       // l'invuln (autant le défendre, autant l'empêcher d'aller body-camper).
-      if (a.spawnProtected || b.spawnProtected) continue;
+      if (a.spawnProtected || b.spawnProtected || sameTeam(a.team, b.team)) continue;
       if (!a.empty && !b.empty) continue;
       const dx = a.x - b.x;
       const dy = a.y - b.y;

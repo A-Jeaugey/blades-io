@@ -51,6 +51,7 @@ client/src/
 │   │                    (ruban échantillonné dans le temps, joueur local)
 │   ├── CrateView.ts     Boîte émissive + edges
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
+│   ├── FlagView.ts      Drapeaux et bases de la capture du drapeau
 │   └── AimIndicator.ts  Trajectoire du prochain lancer au sol (visée)
 ├── fx/
 │   ├── Particles.ts     Pool de Points pour bursts (sparks/explosions),
@@ -73,7 +74,8 @@ client/src/
 │                        compte ou de l'appareil), LeaderboardView
 │                        (classements à onglets : lobby et profil),
 │                        share (partage natif ou lien copié, invitations),
-│                        MatchUi (minuterie et podium d'une manche)
+│                        MatchUi (minuterie et podium d'une partie à fin,
+│                        tableau par équipe), FlagHud (état des drapeaux)
 ├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
@@ -414,7 +416,7 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   (`GameModeId`, `GAME_MODES` : proposé en partie rapide et/ou en salon
   privé), règles côté serveur dans `server/src/modes/` : l'interface
   `GameMode` est une série de hooks appelés par `ArenaRoom` (`onJoin`,
-  `spawnPoint`, `canRespawn`, `onKill`, `standingScore`, `tick`,
+  `spawnPoint`, `canRespawn`, `onKill`, `standing`, `rankBonus`, `tick`,
   `onMatchStart`) ; le combat, le butin et les lancers restent communs. Un
   mode qui a une fin appelle `host.endMatch(entracte)` : classement figé
   (évènement `matchEnd`), vies en cours enregistrées (cause `match_end`),
@@ -438,6 +440,32 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   (`zoneInner`, `systems/spawnPoint.ts`), lancers, bots
   (`botSafeRadius`), et côté client `arenaRadius()` (mur, minimap, alerte
   de bord). Seuls le sol et ses décors gardent la taille de la carte.
+- **Modes équipe (tâche 7.2)** : `Player.team` (0 hors équipe, 1 ou 2) et
+  `sameTeam()` (`shared/src/modes.ts`). Deux alliés ne se touchent jamais :
+  ni clash, ni lame ou corps qui tue (`systems/collisions.ts`), ni
+  projectile (`Blade.thrownTeam`, gardé même si le lanceur part), ni
+  poursuite ou lancer de bot ; un allié dans un buisson reste visible de
+  son équipe (`systems/interest.ts`). **Toute nouvelle source de dégâts
+  doit sauter les alliés.** Règles dans `server/src/modes/teams.ts`
+  (`TeamMode` : répartition dans la moins nombreuse, apparition dans son
+  camp, `teamBase`, classement comme une manche, scores d'équipe
+  `state.teamScore1/2`, MVP ; `TdmMode`, `LtsMode`) et `ctf.ts` (drapeaux
+  dans `state.flags`, publics, sans zone d'intérêt). Hooks facultatifs de
+  `GameMode` : `matchResult` (équipes et MVP dans `matchEnd`),
+  `spawnsOnJoin` (arrivée en pleine manche : spectateur), `botsMayJoin`,
+  `keepsEliminatedBots`, `onLeave`, `botGoal`. Objectifs des bots
+  (`BotGoal`, `BotController.setGoals`) : une action de plus, notée sur la
+  même échelle que les autres (fuite au-dessus de 1000, récolte sous 110,
+  errance vers 10) ; `targetId` en fait une poursuite, `urgent` autorise les
+  lancers à peu de lames. Porteur d'un drapeau : `Player.revealed`, visible
+  de tous (zones d'intérêt, bots, minimap). Dernière équipe en vie : un
+  humain hors jeu suit un coéquipier, le serveur place sa position sur lui
+  (aucun système ne lit la position d'un mort), d'où sa caméra et sa zone
+  d'intérêt. Client : un allié a la couleur d'anneau du joueur local
+  (`PlayerView.setAlly`) et la marque ◆ (losanges autour de l'anneau,
+  nametags, minimap, classement, podium) ; variables CSS `--ally-rgb` et
+  `--foe-rgb` ; drapeaux `entities/FlagView.ts` (le sien carré, celui d'en
+  face triangulaire), état `ui/FlagHud.ts`, évènements `flag` dans le fil.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client

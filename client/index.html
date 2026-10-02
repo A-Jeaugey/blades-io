@@ -109,6 +109,16 @@
         <div id="restart-banner" class="restart-banner hidden" role="status"></div>
         <!-- Minuterie d'une partie qui a une fin (manches, cf. ui/MatchUi.ts). -->
         <div id="match-timer" class="match-timer hidden" role="timer" aria-live="off"></div>
+        <!-- Capture du drapeau : état des deux drapeaux (cf. ui/FlagHud.ts). -->
+        <div id="flag-status" class="flag-status hidden">
+          <span class="fs-chip fs-mine"></span>
+          <span class="fs-chip fs-theirs"></span>
+        </div>
+        <!-- Spectateur (dernière équipe en vie) : jusqu'à la manche suivante. -->
+        <div id="spectate-banner" class="spectate-banner hidden" role="status">
+          <span class="sb-text"></span>
+          <button id="spectate-menu" type="button" data-i18n="death.backToMenu">BACK TO MENU</button>
+        </div>
         <!-- Caméra sur le tueur (tâche 3.5), avant la carte de fin de vie. -->
         <div id="killcam" class="killcam hidden" aria-live="polite">
           <div class="kc-label"></div>
@@ -151,10 +161,10 @@
             <span class="bio2-rail-title" data-i18n="lobby.patchNotes">PATCH NOTES</span>
           </div>
           <ul class="bio2-rail-list">
-            <li data-i18n-html="lobby.patch1"><b>NEW</b> rounds · 5 minutes, shrinking arena, podium</li>
-            <li data-i18n-html="lobby.patch2"><b>NEW</b> cosmetics · skins, trails, daily deals</li>
-            <li data-i18n-html="lobby.patch3"><b>NEW</b> levels, challenges and seasons</li>
-            <li data-i18n-html="lobby.patch4"><b>NEW</b> profile · your stats and last games</li>
+            <li data-i18n-html="lobby.patch1"><b>NEW</b> team modes · deathmatch, last team, capture the flag</li>
+            <li data-i18n-html="lobby.patch2"><b>NEW</b> rounds · 5 minutes, shrinking arena, podium</li>
+            <li data-i18n-html="lobby.patch3"><b>NEW</b> cosmetics · skins, trails, daily deals</li>
+            <li data-i18n-html="lobby.patch4"><b>NEW</b> levels, challenges and seasons</li>
           </ul>
           <div class="bio2-rail-foot">
             <span class="bio2-tb-key" data-i18n="lobby.build">BUILD</span>
@@ -404,6 +414,7 @@
                 <li data-i18n-html="howto.challenges">Every day, three challenges (easy, medium, hard), and one per week: the same for everyone, renewed at midnight Paris time. Your lives in public rooms count; rewards are trophies. Find them in PROFILE.</li>
                 <li data-i18n-html="howto.trophies2">They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.</li>
                 <li data-i18n-html="howto.rounds"><b>ROUNDS</b> (game mode, in the lobby): 5-minute rounds, and the arena shrinks during the last minute. Your points add up over all your lives in the round; the top 3 earn 150, 100 and 50 trophies (public games).</li>
+                <li data-i18n-html="howto.teams"><b>TEAM MODES</b> (private rooms, bots optional): two teams, ◆ marks yours (ring, name, map). <b>TEAM DEATHMATCH</b>: first team to 30 kills. <b>LAST TEAM STANDING</b>: no respawn, the arena shrinks in the last minute; when you are out, you watch a teammate. <b>CAPTURE THE FLAG</b>: take their flag and bring it to your base while yours is home; touch your dropped flag to send it back. 3 captures win.</li>
                 <li data-i18n-html="howto.cosmetics">Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>, where three are 20% off each day (FEATURED) and every item can be tried on in 3D. They never change hitboxes, rarity colors or the rings on the ground.</li>
               </ul>
             </section>
@@ -546,7 +557,12 @@
       <div id="podium" class="podium hidden" role="dialog" aria-labelledby="podium-title">
         <div class="podium-card">
           <h2 id="podium-title" data-i18n="match.over">ROUND OVER</h2>
+          <!-- Modes équipe : score des deux équipes (la tienne d'abord) et MVP. -->
+          <p id="podium-teams" class="podium-teams hidden"></p>
+          <p id="podium-mvp" class="podium-mvp hidden"></p>
           <ol id="podium-steps" class="podium-steps"></ol>
+          <!-- Modes équipe : les joueurs de chaque équipe, la tienne à gauche. -->
+          <div id="podium-table" class="podium-table hidden"></div>
           <!-- Annoncé une fois ; le compte à rebours, lui, ne l'est pas. -->
           <p id="podium-me" class="podium-me" aria-live="polite"></p>
           <p id="podium-next" class="podium-next"></p>

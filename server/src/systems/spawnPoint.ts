@@ -9,6 +9,7 @@ import {
   SPAWN_RADIUS,
   WALL_KILL_THICKNESS,
   resolveDecorCollision,
+  sameTeam,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 
@@ -43,6 +44,15 @@ export function spawnClearance(bladeCount: number): number {
   return Math.min(SPAWN_CLEARANCE_MAX, SPAWN_CLEARANCE_BASE + SPAWN_CLEARANCE_PER_BLADE * bladeCount);
 }
 
+// Modes équipe (tâche 7.2) : `camp` restreint les tirages au disque du camp
+// de l'équipe, et seuls les adversaires comptent comme menaces.
+export interface SpawnCamp {
+  x: number;
+  y: number;
+  radius: number;
+  team: number;
+}
+
 // Point d'apparition d'un joueur (tâche 3.2) : le meilleur de
 // SPAWN_CANDIDATES tirages uniformes dans le disque de rayon SPAWN_RADIUS,
 // ou dans l'arène resserrée d'une fin de manche (7.1), loin de son mur.
@@ -50,17 +60,19 @@ export function spawnClearance(bladeCount: number): number {
 // requise (spawnClearance). Parmi les points sûrs, celui qui a le plus de
 // lames au sol à portée (de quoi grossir tout de suite) ; s'il n'y en a
 // aucun, celui qui s'en approche le plus (plus grande marge).
-export function pickSpawnPoint(state: ArenaState): Point {
+export function pickSpawnPoint(state: ArenaState, camp?: SpawnCamp): Point {
   const others: Array<{ x: number; y: number; need: number }> = [];
   state.players.forEach((p) => {
-    if (p.alive) others.push({ x: p.x, y: p.y, need: spawnClearance(p.bladeCount) });
+    if (p.alive && !(camp && sameTeam(p.team, camp.team))) others.push({ x: p.x, y: p.y, need: spawnClearance(p.bladeCount) });
   });
   const loot: Point[] = [];
   state.blades.forEach((b) => {
     if (!b.ownerId && !b.isProjectile) loot.push({ x: b.x, y: b.y });
   });
   const lootR2 = SPAWN_LOOT_RADIUS * SPAWN_LOOT_RADIUS;
-  const spawnR = Math.min(SPAWN_RADIUS, zoneInner(state, SPAWN_WALL_MARGIN));
+  const spawnR = Math.min(camp ? camp.radius : SPAWN_RADIUS, zoneInner(state, SPAWN_WALL_MARGIN));
+  const cx = camp ? camp.x : 0;
+  const cy = camp ? camp.y : 0;
 
   let best: Point | null = null;
   let bestSafe = false;
@@ -68,8 +80,8 @@ export function pickSpawnPoint(state: ArenaState): Point {
   for (let i = 0; i < SPAWN_CANDIDATES; i++) {
     const r = Math.sqrt(Math.random()) * spawnR;
     const a = Math.random() * Math.PI * 2;
-    const x = Math.cos(a) * r;
-    const y = Math.sin(a) * r;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
     if (inDecor(x, y)) continue;
     let margin = Infinity;
     for (const o of others) {

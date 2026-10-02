@@ -11,6 +11,7 @@ import {
   WALL_KILL_THICKNESS,
   isHiddenFrom,
   outerOrbitRadius,
+  sameTeam,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -153,6 +154,8 @@ interface BotState {
   // Pas de nouveau lancer sur un humain avant (ms) : pause des bots
   // faciles.
   nextThrowAt: number;
+  // La poursuite en cours vient d'un objectif urgent (cf. BotGoal.urgent).
+  urgent: boolean;
 }
 
 // Cache vélocité par joueur — une seule entrée par playerID, mise à jour
@@ -192,6 +195,23 @@ function predictIntercept(
   return { x: px, y: py, t };
 }
 
+// Objectif fixé par le mode de jeu (modes équipe, tâche 7.2) : un point où
+// aller, noté sur la même échelle que les autres actions (fuite au-dessus
+// de 1000, poursuite vers 100, récolte sous 110, errance vers 10).
+// targetId : joueur à rattraper (porteur de son drapeau), poursuivi et visé
+// par les lancers comme en chasse.
+export interface BotGoal {
+  x: number;
+  y: number;
+  score: number;
+  boost: boolean;
+  targetId?: string;
+  // Cible à arrêter coûte que coûte (porteur d'un drapeau) : le bot lui
+  // lance ses lames même s'il en a peu ; à la course, à vitesse égale, il
+  // ne la rattrape jamais.
+  urgent?: boolean;
+}
+
 export class BotController {
   private state = new Map<string, BotState>();
   // Vélocité lissée des joueurs (humans + bots) — utilisée pour les
@@ -211,6 +231,13 @@ export class BotController {
   // nouveau venu (débutant ou rampe de grâce) n'a qu'un poursuivant à la
   // fois (tâche 4.6).
   private chasers = new Map<string, string>();
+  // Objectifs du mode de jeu (cf. BotGoal), null hors des modes qui en
+  // donnent.
+  private goalFor: ((bot: Player) => BotGoal | null) | null = null;
+
+  setGoals(fn: ((bot: Player) => BotGoal | null) | null): void {
+    this.goalFor = fn;
+  }
 
   // place : le point d'apparition, ou la règle du mode qui le choisit
   // (cf. modes/), appelée avant l'entrée du bot dans l'arène.
@@ -307,6 +334,7 @@ export class BotController {
           ignoreId: null,
           ignoreUntil: 0,
           nextThrowAt: 0,
+          urgent: false,
         };
         this.state.set(p.id, st);
       }
@@ -393,9 +421,10 @@ export class BotController {
 
   // Un bot ne voit pas un joueur caché dans un buisson, avec la même règle
   // que les clients (tâche 2.4) : ni fuite, ni poursuite, ni lancer.
-  // Avant, les buissons ne cachaient rien aux bots.
+  // Avant, les buissons ne cachaient rien aux bots. Un porteur de drapeau
+  // ne se cache pas.
   private hiddenFrom(bot: Player, other: Player): boolean {
-    return isHiddenFrom(bot.x, bot.y, reachOf(bot), other.x, other.y, reachOf(other));
+    return !other.revealed && isHiddenFrom(bot.x, bot.y, reachOf(bot), other.x, other.y, reachOf(other));
   }
 
   // Ce bot poursuit-il ce joueur (dernière décision) ? Un clash entre eux
@@ -461,8 +490,26 @@ export class BotController {
 
     scores.push(this.scoreWander(bot, arena, st));
 
+    // Objectif du mode de jeu, en balance avec le reste : un bot fuit plus
+    // gros que lui, sauf objectif noté plus haut que la fuite (assaut à
+    // plusieurs sur un porteur de drapeau).
+    const goal = this.goalFor?.(bot) ?? null;
+    const goalAction = goal
+      ? { type: goal.targetId ? "chase" : "goal", score: goal.score, x: goal.x, y: goal.y, boost: goal.boost }
+      : null;
+    if (goalAction) scores.push(goalAction);
+
     scores.sort((a, b) => b.score - a.score);
     const bestAction = scores[0];
+    st.urgent = !!goal?.urgent && bestAction === goalAction;
+    if (goal?.targetId && bestAction === goalAction) {
+      // Poursuite imposée : même suivi qu'une chasse (lancers, allure du
+      // niveau du bot face à un humain).
+      const target = arena.players.get(goal.targetId);
+      if (goal.targetId !== st.currentTargetId) st.chaseSince = Date.now();
+      st.currentTargetId = goal.targetId;
+      st.chaseSpeed = target ? profileAgainst(st, target).chaseSpeed : 1;
+    }
 
     // Clamp la cible dans la safe zone pour ne jamais viser hors de la map.
     const safe = clampToSafe(bestAction.x, bestAction.y, botSafeRadius(arena));
@@ -488,7 +535,7 @@ export class BotController {
     let maxDanger = 0;
 
     arena.players.forEach((other) => {
-      if (other.id === bot.id || !other.alive) return;
+      if (other.id === bot.id || !other.alive || sameTeam(bot.team, other.team)) return;
       if (other.bladeCount <= bot.bladeCount) return;
       if (this.hiddenFrom(bot, other)) return;
 
@@ -513,7 +560,7 @@ export class BotController {
       let perpDy = 0;
       arena.players.forEach((other) => {
         if (perpDx !== 0 || perpDy !== 0) return;
-        if (other.id === bot.id || !other.alive) return;
+        if (other.id === bot.id || !other.alive || sameTeam(bot.team, other.team)) return;
         if (other.bladeCount <= bot.bladeCount) return;
         if (this.hiddenFrom(bot, other)) return;
         const dx = bot.x - other.x;
@@ -583,7 +630,7 @@ export class BotController {
       st.currentTargetId = null;
     }
     arena.players.forEach((other) => {
-      if (other.id === bot.id || !other.alive) return;
+      if (other.id === bot.id || !other.alive || sameTeam(bot.team, other.team)) return;
       if (other.id === st.ignoreId && nowMs < st.ignoreUntil) return;
       if (this.leavesAlone(bot, st, other)) return;
       if (this.isNewcomer(other, nowMs)) {
@@ -856,6 +903,7 @@ export class BotController {
     else if (st.personality === BotPersonality.Hunter) minBlades = 5;
     else if (st.personality === BotPersonality.Farmer) minBlades = 9;
     else if (st.personality === BotPersonality.Camper) minBlades = 7;
+    if (st.urgent) minBlades = 2;
     if (bot.bladeCount < minBlades) return;
 
     // Plage de portée utile : trop près (<12) le projectile clash sur ses
@@ -882,7 +930,7 @@ export class BotController {
       let pursuer = null as Player | null;
       let best = Infinity;
       arena.players.forEach((other) => {
-        if (other.id === bot.id || !other.alive || other.bladeCount <= bot.bladeCount) return;
+        if (other.id === bot.id || !other.alive || other.bladeCount <= bot.bladeCount || sameTeam(bot.team, other.team)) return;
         if (other.graceUntil > now || this.hiddenFrom(bot, other) || this.leavesAlone(bot, st, other)) return;
         const d = Math.hypot(other.x - bot.x, other.y - bot.y);
         if (d < best) { best = d; pursuer = other; }
@@ -947,6 +995,8 @@ export class BotController {
     maxDist: number,
   ): { x: number; y: number } | null {
     if (!target.alive || target.spawnProtectionUntil > now || target.graceUntil > now) return null;
+    // Jamais sur un allié (modes équipe) : le projectile le traverserait.
+    if (sameTeam(bot.team, target.team)) return null;
     if (this.hiddenFrom(bot, target)) return null;
     const d = Math.hypot(target.x - bot.x, target.y - bot.y);
     if (d < minDist || d > maxDist) return null;

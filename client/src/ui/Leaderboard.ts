@@ -6,6 +6,8 @@ export interface LeaderboardEntry {
   score: number;
   bladeCount: number;
   bot?: boolean;
+  // Modes équipe (tâche 7.2) : de son équipe (marqué ◆).
+  ally?: boolean;
 }
 
 // Repliable (tâche 3.6) : sur téléphone, le classement cachait le haut de
@@ -86,8 +88,10 @@ function initiallyCollapsed(): boolean {
 function row(e: LeaderboardEntry, rank: number, me: boolean, leader: boolean): string {
   const bot = e.bot ? `<span class="lb-bot" title="Bot">${t("hud.bot")}</span>` : "";
   const crown = leader ? `<span class="lb-crown">👑</span>` : "";
-  return `<div class="${me ? "lb-row me" : "lb-row"}">
-    <span class="name"><span class="lb-name">${rank + 1}. ${escapeHtml(e.name)}</span>${bot}${crown}</span>
+  const ally = e.ally ? `<span class="lb-ally" aria-hidden="true">◆</span> ` : "";
+  const cls = me ? "lb-row me" : e.ally ? "lb-row ally" : "lb-row";
+  return `<div class="${cls}">
+    <span class="name"><span class="lb-name">${rank + 1}. ${ally}${escapeHtml(e.name)}</span>${bot}${crown}</span>
     <div class="lb-stat"><span class="icon">🏆</span><span class="val">${e.score}</span></div>
     <div class="lb-stat"><span class="icon">🗡️</span><span class="val">${e.bladeCount}</span></div>
   </div>`;

@@ -135,6 +135,10 @@ export function applyThemeCss(theme: Theme = activeTheme): void {
   // Couleurs de menace communes à tous les thèmes (nametags, alertes).
   root.style.setProperty("--danger-rgb", rgbTriplet(THREAT_COLORS.danger));
   root.style.setProperty("--prey-rgb", rgbTriplet(THREAT_COLORS.prey));
+  // Équipes (tâche 7.2) : la sienne à la couleur de son propre anneau, les
+  // adversaires à celle des autres joueurs (minimap, nametags, drapeaux).
+  root.style.setProperty("--ally-rgb", rgbTriplet(theme.palette.playerLocal.accent));
+  root.style.setProperty("--foe-rgb", rgbTriplet(theme.palette.playerRemote.accent));
   // Couleurs des raretés pour les éléments UI qui les affichent (rarity
   // strip dots du login screen, badges éventuels). Tirées de
   // theme.palette.rarityColor pour rester cohérent avec le rendu 3D.

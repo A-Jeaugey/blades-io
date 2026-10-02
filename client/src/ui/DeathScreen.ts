@@ -51,8 +51,11 @@ export class DeathScreen {
   private shareTimer = 0;
   // Dernière carte affichée : le texte du partage en est tiré.
   lastStats: DeathStats | null = null;
+  // Mode sans réapparition (dernière équipe en vie) : le bouton REJOUER
+  // devient REGARDER.
+  private spectateMode = false;
 
-  constructor(onRespawn: () => void, onBackToMenu: () => void, onShare: () => void) {
+  constructor(onRespawn: () => void, onSpectate: () => void, onBackToMenu: () => void, onShare: () => void) {
     this.root = document.getElementById("death-screen")!;
     this.title = this.root.querySelector("h2")!;
     this.stats = document.getElementById("death-stats")!;
@@ -60,7 +63,7 @@ export class DeathScreen {
     this.back = document.getElementById("back-menu-btn") as HTMLButtonElement;
     this.shareBtn = document.getElementById("share-btn") as HTMLElement;
     this.shareLabel = this.shareBtn.querySelector(".share-label") as HTMLElement;
-    this.respawn.addEventListener("click", onRespawn);
+    this.respawn.addEventListener("click", () => (this.spectateMode ? onSpectate() : onRespawn()));
     this.back.addEventListener("click", onBackToMenu);
     this.shareBtn.addEventListener("click", onShare);
     document.addEventListener("keydown", (e) => {
@@ -68,6 +71,13 @@ export class DeathScreen {
         onBackToMenu();
       }
     });
+  }
+
+  setSpectate(on: boolean): void {
+    this.spectateMode = on;
+    const key = on ? "death.spectate" : "death.respawn";
+    this.respawn.dataset.i18n = key;
+    this.respawn.textContent = t(key);
   }
 
   get visible(): boolean {

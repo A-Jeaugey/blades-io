@@ -10,6 +10,19 @@ export interface MinimapPlayer {
   x: number;
   y: number;
   isMe: boolean;
+  // Modes équipe (tâche 7.2) : allié (losange) ou adversaire ; absent hors
+  // équipe.
+  side?: "ally" | "foe";
+}
+
+// Drapeau de la capture du drapeau : où il est, à qui, et sa base.
+export interface MinimapFlag {
+  x: number;
+  y: number;
+  baseX: number;
+  baseY: number;
+  ally: boolean;
+  atBase: boolean;
 }
 
 export interface MinimapBlade {
@@ -29,6 +42,8 @@ export class Minimap {
   private othersFill: string;
   private legendaryFill: string;
   private meFill: string;
+  private allyFill: string;
+  private foeFill: string;
 
   constructor() {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
@@ -45,10 +60,19 @@ export class Minimap {
     this.othersFill = theme.ui.accentCool;
     this.legendaryFill = rgba(theme.palette.rarityColor[BladeRarity.Legendary], 1);
     this.meFill = rgba(theme.palette.playerLocal.primary, 1);
+    // Équipes : couleurs des anneaux (le sien, celui des autres).
+    this.allyFill = rgba(theme.palette.playerLocal.accent, 1);
+    this.foeFill = rgba(theme.palette.playerRemote.accent, 1);
   }
 
   // arenaRadius : rayon de l'arène du moment (resserrée en fin de manche).
-  draw(me: MinimapPlayer, others: MinimapPlayer[], legendaries: MinimapBlade[], arenaRadius = MAP_RADIUS): void {
+  draw(
+    me: MinimapPlayer,
+    others: MinimapPlayer[],
+    legendaries: MinimapBlade[],
+    arenaRadius = MAP_RADIUS,
+    flags: MinimapFlag[] = [],
+  ): void {
     const ctx = this.ctx;
     const S = this.size;
     ctx.clearRect(0, 0, S, S);
@@ -84,8 +108,8 @@ export class Minimap {
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.restore();
-    // Autres joueurs
-    ctx.fillStyle = this.othersFill;
+    // Autres joueurs ; en équipe, les alliés en losange (la forme en plus
+    // de la couleur, tâche 3.8).
     for (const p of others) {
       const dx = p.x - me.x;
       const dy = p.y - me.y;
@@ -93,10 +117,22 @@ export class Minimap {
       const screenY = S / 2 + dy * scale;
       const d = Math.hypot(dx, dy);
       if (d > MAP_RADIUS) continue;
+      ctx.fillStyle = p.side === "ally" ? this.allyFill : p.side === "foe" ? this.foeFill : this.othersFill;
       ctx.beginPath();
-      ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
+      if (p.side === "ally") {
+        ctx.moveTo(screenX, screenY - 3.5);
+        ctx.lineTo(screenX + 3.5, screenY);
+        ctx.lineTo(screenX, screenY + 3.5);
+        ctx.lineTo(screenX - 3.5, screenY);
+        ctx.closePath();
+      } else {
+        ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
+      }
       ctx.fill();
     }
+    // Drapeaux et bases : toujours sur la carte, ramenés au bord quand ils
+    // sont hors de portée de la minimap (direction à suivre).
+    for (const f of flags) this.drawFlag(f, me, scale);
     // Légendaires proches en flèche
     ctx.fillStyle = this.legendaryFill;
     for (const b of legendaries) {
@@ -127,5 +163,59 @@ export class Minimap {
     ctx.strokeStyle = this.meFill;
     ctx.lineWidth = 1;
     ctx.stroke();
+  }
+
+  // Drapeau à la couleur de son équipe, et de forme différente (tâche
+  // 3.8) : le sien carré, celui d'en face en fanion triangulaire. Sa base,
+  // quand il n'y est pas : losange creux pour la sienne, cercle sinon.
+  private drawFlag(f: MinimapFlag, me: MinimapPlayer, scale: number): void {
+    const ctx = this.ctx;
+    const S = this.size;
+    const color = f.ally ? this.allyFill : this.foeFill;
+    const edge = S / 2 - 8;
+    const at = (x: number, y: number): [number, number] => {
+      let dx = (x - me.x) * scale;
+      let dy = (y - me.y) * scale;
+      const d = Math.hypot(dx, dy);
+      if (d > edge) {
+        dx *= edge / d;
+        dy *= edge / d;
+      }
+      return [S / 2 + dx, S / 2 + dy];
+    };
+    if (!f.atBase) {
+      const [bx, by] = at(f.baseX, f.baseY);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (f.ally) {
+        ctx.moveTo(bx, by - 5);
+        ctx.lineTo(bx + 5, by);
+        ctx.lineTo(bx, by + 5);
+        ctx.lineTo(bx - 5, by);
+        ctx.closePath();
+      } else {
+        ctx.arc(bx, by, 4, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+    }
+    const [x, y] = at(f.x, f.y);
+    ctx.strokeStyle = this.meFill;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - 2, y + 5);
+    ctx.lineTo(x - 2, y - 6);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    if (f.ally) {
+      ctx.rect(x - 2, y - 6, 7, 5);
+    } else {
+      ctx.moveTo(x - 2, y - 6);
+      ctx.lineTo(x + 6, y - 3);
+      ctx.lineTo(x - 2, y);
+      ctx.closePath();
+    }
+    ctx.fill();
   }
 }

@@ -548,6 +548,8 @@ canvas#game {
   text-overflow: ellipsis;
 }
 .lb-crown { flex: none; margin-left: 3px; }
+/* Son équipe (modes équipe) : losange à la couleur de son anneau. */
+.lb-ally { color: rgb(var(--ally-rgb)); }
 /* Mention des bots (décision D8, tâche 4.6) : discrète, mais lisible. */
 .lb-bot {
   flex: none;
@@ -1277,6 +1279,70 @@ button:hover {
 .match-timer.hidden { display: none; }
 .match-timer .mt-time { font-variant-numeric: tabular-nums; }
 
+/* Capture du drapeau (tâche 7.2) : état des deux drapeaux sous la
+   minuterie, le sien à gauche ; le sien emporté ou à terre passe en
+   alerte (couleur d'en face et contour plein). */
+.flag-status {
+  position: absolute;
+  top: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.flag-status.hidden { display: none; }
+.fs-chip {
+  padding: 3px 9px;
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--fg-bright);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.fs-mine { border-left: 3px solid rgba(var(--ally-rgb), 0.9); }
+.fs-theirs { border-left: 3px solid rgba(var(--foe-rgb), 0.9); }
+.fs-label { color: var(--fg-muted); }
+.fs-chip[data-tone="good"] .fs-state { color: rgb(var(--ally-rgb)); }
+.fs-chip[data-tone="alert"] {
+  border-color: rgba(var(--foe-rgb), 0.9);
+  background: rgba(var(--foe-rgb), 0.18);
+}
+/* Les bandeaux passent sous l'état des drapeaux. */
+body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0px) + 80px); }
+.kf-line.kf-flag-good { border-color: rgba(var(--ally-rgb), 0.8); }
+.kf-line.kf-flag-bad { border-color: rgba(var(--foe-rgb), 0.8); }
+
+/* Spectateur (dernière équipe en vie, tâche 7.2) : en bas au centre, entre
+   les commandes tactiles, inutiles hors jeu. */
+.spectate-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 32px);
+  padding: 8px 10px 8px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg-bright);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.spectate-banner.hidden { display: none; }
+.spectate-banner button { margin: 0; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+/* Spectateur : rien à piloter, les commandes tactiles s'effacent. */
+#hud.spectating #joystick,
+#hud.spectating #boost-btn,
+#hud.spectating #throw-btn { display: none; }
+
 /* Podium de fin de manche : trois marches (2e, 1er, 3e), la ligne du
    joueur, le compte à rebours de la suivante. */
 #podium {
@@ -1308,6 +1374,20 @@ button:hover {
   letter-spacing: 4px;
   color: var(--cyan);
 }
+.podium-teams {
+  margin: -8px 0 6px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--fg-bright);
+  font-variant-numeric: tabular-nums;
+}
+.podium-mvp {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: var(--fg-bright);
+}
+.podium-teams.hidden, .podium-mvp.hidden { display: none; }
 .podium-steps {
   display: flex;
   align-items: flex-end;
@@ -1351,6 +1431,61 @@ button:hover {
 .podium-step .lb-bot { margin: 0; }
 .podium-points { font-size: 13px; color: var(--fg-bright); }
 .podium-kills { font-size: 12px; color: var(--fg-muted); }
+/* Modes équipe : une colonne par équipe, la sienne à gauche. */
+.podium-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 14px;
+  text-align: left;
+}
+.podium-table.hidden, .podium-steps.hidden { display: none; }
+.podium-col {
+  min-width: 0;
+  padding: 8px 8px 6px;
+  border: 1px solid var(--panel-border);
+  border-top: 3px solid rgba(var(--foe-rgb), 0.85);
+  border-radius: 4px;
+  background: rgba(var(--foe-rgb), 0.05);
+}
+.podium-col.ally {
+  border-top-color: rgba(var(--ally-rgb), 0.85);
+  background: rgba(var(--ally-rgb), 0.07);
+}
+.podium-col-head {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--fg-bright);
+}
+.podium-col.ally .podium-col-head { color: rgb(var(--ally-rgb)); }
+.podium-col ol { margin: 0; padding: 0; list-style: none; }
+.podium-col li { padding: 3px 4px; border-radius: 3px; }
+.podium-col li.is-me { box-shadow: inset 0 0 0 1px var(--pink); }
+.pt-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg-bright);
+}
+.pt-n {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pt-name .lb-bot { margin: 0; }
+.pt-stats {
+  display: block;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
 .podium-me {
   margin: 0 0 6px;
   font-size: 14px;
@@ -1470,18 +1605,28 @@ button:hover {
      et la minimap ; le temps seul. Bandeaux en dessous. Le classement
      déplié passe par-dessus, le temps d'un coup d'œil. */
   .match-timer { top: 60px; padding: 3px 9px; font-size: 13px; }
-  .match-timer .mt-label { display: none; }
+  .match-timer .mt-label,
+  .match-timer .mt-score-label { display: none; }
+  .spectate-banner { flex-direction: column; gap: 8px; width: calc(100% - 32px); padding: 10px 12px; text-align: center; }
+  /* Drapeaux : sous la minuterie, l'état seul, l'un sous l'autre (côte à
+     côte, ils mordaient sur l'état du joueur et la minimap). Les bandeaux
+     descendent. */
+  .flag-status { top: 88px; flex-direction: column; align-items: center; gap: 3px; }
+  .flag-status .fs-label { display: none; }
+  .fs-chip { padding: 2px 7px; font-size: 11px; }
+  body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0px) + 210px); }
   #top-right:has(#leaderboard:not(.collapsed)) ~ .match-timer { visibility: hidden; }
   .challenge-toast { top: calc(var(--safe-t, 0px) + 92px); font-size: 13px; letter-spacing: .5px; }
   .podium-card { padding: 18px 14px 14px; }
   .podium-card h2 { font-size: 18px; letter-spacing: 2px; }
+  /* Calé à droite, sous la minimap : centré, il passait sur le badge du
+     salon (salons privés, modes équipe compris) et la colonne de gauche. */
   #kill-feed {
     position: fixed;
     top: 140px;
-    left: 50%;
-    transform: translateX(-50%);
-    align-items: center;
-    max-width: 60vw;
+    right: 10px;
+    align-items: flex-end;
+    max-width: calc(100% - 170px);
   }
   /* Sans cadre : au-dessus du joueur, le fil ne doit pas cacher le jeu. */
   .kf-line {
@@ -3336,6 +3481,14 @@ button:hover {
 }
 .nametag.threat-weaker .nametag-blades { color: rgb(var(--prey-rgb)); }
 .nametag.threat-weaker .nametag-blades::after { content: " ▼"; }
+/* Allié (modes équipe) : couleur de son équipe et losange, comme son
+   anneau. */
+.nametag.threat-ally {
+  border-color: rgba(var(--ally-rgb), .85);
+  box-shadow: 0 0 10px rgba(var(--ally-rgb), .3);
+  --arrow-color: rgba(var(--ally-rgb), .85);
+}
+.nametag.threat-ally .nametag-name::before { content: "◆ "; color: rgb(var(--ally-rgb)); }
 .nametag::after {
   content: "";
   position: absolute;
@@ -3526,6 +3679,18 @@ button:hover {
      cachée quand on le déplie (il est translucide). */
   .match-timer { top: 60px; }
   #top-right:has(#leaderboard:not(.collapsed)) ~ .match-timer { visibility: hidden; }
+  /* Drapeaux sous la minuterie, l'état seul ; les bandeaux en dessous, entre
+     l'état du joueur et la minimap (sinon ils recouvraient la minuterie). */
+  .flag-status { top: 86px; }
+  .flag-status .fs-label { display: none; }
+  .challenge-toast { top: calc(var(--safe-t, 0px) + 86px); max-width: calc(100% - 420px); }
+  #kill-feed { max-width: 190px; }
+  .kf-line { font-size: 11px; padding: 1px 6px; gap: 4px; }
+  /* Plus petit : à 140 px, il touchait le badge du salon (salons privés). */
+  #joystick { width: 128px; height: 128px; left: 18px; bottom: 18px; }
+  /* Spectateur : en bas à gauche, à la place du joystick, loin du chat. */
+  .spectate-banner { left: 24px; transform: none; flex-direction: column; gap: 8px; max-width: 280px; text-align: center; }
+  body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0px) + 112px); }
   /* Chat : à gauche de THROW, dans la grappe du pouce droit (il touchait la
      minimap). */
   .chat-fab { right: 258px; bottom: 71px; }
@@ -3593,6 +3758,7 @@ button:hover {
   }
   #leaderboard.collapsed .lb-head { min-height: 44px; }
   #room-badge { min-height: 44px; display: flex; align-items: center; }
+  .spectate-banner button { min-height: 44px; }
   .bio2-cta,
   .bio2-cta-secondary,
   .onboard-ok,

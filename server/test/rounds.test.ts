@@ -56,7 +56,7 @@ test("rayon : plein jusqu'à la dernière minute, puis linéaire jusqu'au rayon 
 });
 
 test("manche : 5 minutes, podium de 15 s, puis manche suivante", () => {
-  const r = new TestRoom(clock, { mode: "rounds" } as any);
+  const r = new TestRoom(clock, { mode: "rounds" });
   const start = clock.now;
   assert.equal(r.state.mode, "rounds");
   assert.equal(r.state.phase, MatchPhase.Playing);
@@ -77,7 +77,7 @@ test("manche : 5 minutes, podium de 15 s, puis manche suivante", () => {
 });
 
 test("arène resserrée : le mur tue au rayon du moment, les apparitions restent dedans", () => {
-  const r = new TestRoom(clock, { mode: "rounds" } as any);
+  const r = new TestRoom(clock, { mode: "rounds" });
   const inside = r.join("inside");
   const outside = r.join("outside");
   jumpTo(r, ROUND_SHRINK_MS / 2);
@@ -107,7 +107,7 @@ test("arène resserrée : le mur tue au rayon du moment, les apparitions restent
 });
 
 test("classement : points de toutes les vies de la manche, kills, morts ; podium crédité en public", () => {
-  const r = new TestRoom(clock, { mode: "rounds" } as any);
+  const r = new TestRoom(clock, { mode: "rounds" });
   const a = r.join("a", { userId: "u-a" });
   const b = r.join("b", { guestId: "g-b" });
   const c = r.join("c");
@@ -144,7 +144,7 @@ test("classement : points de toutes les vies de la manche, kills, morts ; podium
   assert.deepEqual(lives.filter((l) => l.cause === "match_end").map((l) => l.gameMode), ["rounds", "rounds"]);
 
   // Salon privé : ni trophées, ni bonus.
-  const priv = new TestRoom(clock, { mode: "rounds", code: "ABCDE" } as any);
+  const priv = new TestRoom(clock, { mode: "rounds", code: "ABCDE" });
   const p = priv.join("p", { userId: "u-p" });
   p.bonusScore = 500;
   credits.length = 0;
@@ -154,7 +154,7 @@ test("classement : points de toutes les vies de la manche, kills, morts ; podium
 });
 
 test("manche suivante : classement remis à zéro, tout le monde en jeu", () => {
-  const r = new TestRoom(clock, { mode: "rounds" } as any);
+  const r = new TestRoom(clock, { mode: "rounds" });
   const a = r.join("a");
   a.bonusScore = 200;
   r.tick();
@@ -167,7 +167,7 @@ test("manche suivante : classement remis à zéro, tout le monde en jeu", () => 
 });
 
 test("bots : la dernière minute se joue dans l'arène resserrée sans s'y jeter", () => {
-  const r = new TestRoom(clock, { mode: "rounds", bots: true } as any);
+  const r = new TestRoom(clock, { mode: "rounds", bots: true });
   r.join("human");
   r.state.phaseEndsAt = clock.now + ROUND_SHRINK_MS + 5000;
   let ticks = 0;

@@ -16,6 +16,7 @@ import {
   WALL_KILL_THICKNESS,
   CRATE_HITBOX,
   outerOrbitRadius,
+  sameTeam,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
@@ -92,6 +93,7 @@ export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
     target.ownerId = "";
     target.isProjectile = true;
     target.thrownBy = p.id;
+    target.thrownTeam = p.team;
     target.pierceLeft = THROW_PIERCE[target.rarity as BladeRarity] ?? 1;
     target.x = startX;
     target.y = startY;
@@ -183,6 +185,7 @@ function landProjectile(b: Blade, now: number, cb: ThrowCallbacks): void {
   }
   b.isProjectile = false;
   b.thrownBy = "";
+  b.thrownTeam = 0;
   b.pierceLeft = 0;
   b.vx = 0;
   b.vy = 0;
@@ -257,6 +260,8 @@ export function resolveProjectileCollisions(
       if (proj.pierceLeft <= 0) return;
       if (!target.alive) return;
       if (target.id === proj.thrownBy) return;
+      // Alliés du lanceur (modes équipe) : traversés, lames comme corps.
+      if (sameTeam(proj.thrownTeam, target.team)) return;
       if (proj.hitIds.has(target.id)) return;
       // Spawn protection : intangible.
       if (target.spawnProtectionUntil > Date.now()) return;

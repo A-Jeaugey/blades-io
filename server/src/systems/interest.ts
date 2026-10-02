@@ -9,6 +9,7 @@ import {
   isInBush,
   outerOrbitRadius,
   tierBladeHitbox,
+  sameTeam,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
@@ -65,6 +66,7 @@ interface PlayerEntry {
   reach: number;
   inBush: boolean;
   alive: boolean;
+  team: number;
 }
 
 // Lames au sol et en vol, rangées par case pour ne parcourir que les cases
@@ -140,7 +142,8 @@ export class InterestManager {
     this.entries.length = 0;
     this.entryById.clear();
     state.players.forEach((p) => {
-      const e: PlayerEntry = { p, x: p.x, y: p.y, reach: reachOf(p), inBush: isInBush(p.x, p.y), alive: p.alive };
+      const inBush = !p.revealed && isInBush(p.x, p.y);
+      const e: PlayerEntry = { p, x: p.x, y: p.y, reach: reachOf(p), inBush, alive: p.alive, team: p.team };
       this.entries.push(e);
       this.entryById.set(p.id, e);
     });
@@ -177,8 +180,9 @@ export class InterestManager {
       const lim = r + e.reach;
       if (d2 > lim * lim) continue;
       // Caché dans un buisson tant que les orbites ne peuvent pas se
-      // toucher (même règle que isHiddenFrom, qui sert aux bots).
-      if (e.inBush) {
+      // toucher (même règle que isHiddenFrom, qui sert aux bots), sauf
+      // pour ses alliés (modes équipe).
+      if (e.inBush && !sameTeam(me.team, e.team)) {
         const reveal = me.reach + e.reach + BUSH_REVEAL_MARGIN;
         if (d2 > reveal * reveal) continue;
       }

@@ -34,7 +34,8 @@ interface TagEntry {
 
 // Menace relative au joueur local, d'après le nombre de lames. Tolérance de
 // 10 % (1 lame minimum) : à quelques lames près, le combat est incertain.
-type Threat = "stronger" | "weaker" | "even";
+// Un allié (modes équipe) n'est pas une menace : marqué ◆.
+type Threat = "stronger" | "weaker" | "even" | "ally";
 function threatOf(theirs: number, mine: number): Threat {
   const margin = Math.max(1, Math.round(mine * 0.1));
   if (theirs - mine > margin) return "stronger";
@@ -90,6 +91,8 @@ export class NametagOverlay {
     bladesOf: (id: string) => number,
     // Niveau de compte (tâche 5.2), 0 pour un bot : pas de badge.
     levelOf: (id: string) => number,
+    // Allié du joueur local (modes équipe).
+    isAlly: (id: string) => boolean,
     camera: THREE.PerspectiveCamera,
     width: number,
     height: number,
@@ -165,7 +168,7 @@ export class NametagOverlay {
         tag.bladesEl.textContent = String(blades);
         tag.lastBlades = blades;
       }
-      const threat = threatOf(blades, myBlades);
+      const threat = isAlly(id) ? "ally" : threatOf(blades, myBlades);
       if (threat !== tag.lastThreat) {
         tag.el.classList.remove(`threat-${tag.lastThreat}`);
         tag.el.classList.add(`threat-${threat}`);

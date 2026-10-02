@@ -1,6 +1,7 @@
-import type { GameModeId, KillCause } from "@bladeio/shared";
+import type { GameModeId, KillCause, MatchEndEvent, MatchStanding } from "@bladeio/shared";
 import type { ArenaState } from "../state/ArenaState";
 import type { Player } from "../state/Player";
+import type { BotGoal } from "../systems/bots";
 
 export interface Point {
   x: number;
@@ -24,6 +25,9 @@ export interface ModeHost {
   // en cours enregistrées, simulation à l'arrêt pendant l'entracte, puis
   // nouvelle partie (arène vidée, tout le monde réapparaît, onMatchStart).
   endMatch(intermissionMs: number): void;
+  // Évènement de partie pour tous les clients, estampillé du tick courant
+  // (cf. TickStamped) : à ne pas utiliser pour une position à cacher.
+  emit(type: string, payload: object): void;
 }
 
 // Règles d'un mode de jeu (tâche 7.3). La room appelle ces hooks aux moments
@@ -50,4 +54,22 @@ export interface GameMode {
   tick(now: number): void;
   // Nouvelle partie : joueurs réapparus, phase de jeu.
   onMatchStart(now: number): void;
+
+  // Hooks facultatifs (modes équipe, tâche 7.2).
+  // Résultat d'équipe de la partie (scores, gagnante, MVP), ajouté à
+  // l'évènement matchEnd.
+  matchResult?(standings: MatchStanding[]): Pick<MatchEndEvent, "teams" | "mvp">;
+  // Un joueur qui arrive en cours de partie apparaît-il tout de suite ?
+  // (Dernière équipe en vie : non, il attend la manche suivante.)
+  spawnsOnJoin?(p: Player): boolean;
+  // Le remplissage par les bots peut-il en ajouter un maintenant ?
+  botsMayJoin?(): boolean;
+  // Les bots éliminés restent-ils dans la partie jusqu'à sa fin (classement,
+  // podium) au lieu d'être retirés aussitôt ?
+  keepsEliminatedBots?(): boolean;
+  // Départ définitif d'un joueur (drapeau qu'il portait…).
+  onLeave?(p: Player): void;
+  // Objectif d'un bot propre au mode (aller chercher un drapeau…), mis en
+  // balance avec ses autres envies (cf. BotController.setGoals).
+  botGoal?(bot: Player): BotGoal | null;
 }

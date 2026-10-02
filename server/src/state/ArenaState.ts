@@ -1,9 +1,10 @@
-import { Schema, type, view, MapSchema } from "@colyseus/schema";
+import { ArraySchema, Schema, type, view, MapSchema } from "@colyseus/schema";
 import { MAP_RADIUS } from "@bladeio/shared";
 import { Player } from "./Player";
 import { Blade } from "./Blade";
 import { Crate } from "./Crate";
 import { PowerUp } from "./PowerUp";
+import { Flag } from "./Flag";
 
 export class ArenaState extends Schema {
   // Filtrés par client (zone d'intérêt, cf. systems/interest.ts) : chacun ne
@@ -29,4 +30,10 @@ export class ArenaState extends Schema {
   @type("string") mode: string = "ffa";
   @type("uint8") phase: number = 0;
   @type("float64") phaseEndsAt: number = 0;
+  // Score des deux équipes (modes équipe, tâche 7.2) : éliminations,
+  // joueurs en vie ou captures selon le mode.
+  @type("uint16") teamScore1: number = 0;
+  @type("uint16") teamScore2: number = 0;
+  // Drapeaux de la capture du drapeau (un par équipe), vide sinon.
+  @type([Flag]) flags = new ArraySchema<Flag>();
 }

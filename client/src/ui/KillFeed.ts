@@ -57,6 +57,20 @@ export class KillFeed {
       if (e.bounty) el.append(span("kf-bounty", `👑 +${e.bounty}`));
       if (e.underdog) el.append(span("kf-underdog", t("feed.underdog")));
     }
+    this.add(el, now);
+  }
+
+  // Évènement d'un drapeau (capture du drapeau, tâche 7.2) : qui, ⚑, quoi.
+  // good : bon pour son équipe (couleur des alliés), sinon celle d'en face.
+  pushFlag(name: string | null, text: string, good: boolean, now: number): void {
+    const el = document.createElement("div");
+    el.className = `kf-line ${good ? "kf-flag-good" : "kf-flag-bad"}`;
+    if (name) el.append(span("kf-name", name));
+    el.append(span("kf-icon", "⚑"), span("kf-flag", text));
+    this.add(el, now);
+  }
+
+  private add(el: HTMLDivElement, now: number): void {
     this.root.appendChild(el);
     this.lines.push({ el, until: now + LINE_MS });
     while (this.lines.length > MAX_LINES) this.lines.shift()!.el.remove();

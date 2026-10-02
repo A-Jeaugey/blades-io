@@ -40,7 +40,15 @@ import {
   POWERUP_DURATION,
   PowerUpPickupEvent,
   PowerUpType,
+  CTF_BASE_RADIUS,
+  FlagEvent,
+  TEAM_NONE,
   isInBush,
+  isTeamMode,
+  modeRespawns,
+  modeShrinks,
+  sameTeam,
+  teamBase,
   tierClashShake,
 } from "@bladeio/shared";
 import { getStateCallbacks } from "colyseus.js";
@@ -57,6 +65,7 @@ import { AimIndicator } from "./entities/AimIndicator";
 import { BladeRenderer, PlayerPositionProvider } from "./entities/BladeView";
 import { CrateRenderer } from "./entities/CrateView";
 import { PowerUpRenderer } from "./entities/PowerUpView";
+import { FlagRenderer, FlagSnapshot } from "./entities/FlagView";
 import { ParticlePool } from "./fx/Particles";
 import { Haptics } from "./fx/Haptics";
 import { AmbientWisps } from "./scene/AmbientWisps";
@@ -65,11 +74,12 @@ import { Hud } from "./ui/Hud";
 import { LoginScreen, LoginResult } from "./ui/LoginScreen";
 import { DeathScreen } from "./ui/DeathScreen";
 import { Leaderboard, LeaderboardEntry } from "./ui/Leaderboard";
-import { Minimap } from "./ui/Minimap";
+import { Minimap, MinimapFlag, MinimapPlayer } from "./ui/Minimap";
+import { FLAG_FEED_KEYS, FlagHud, FlagStatus } from "./ui/FlagHud";
 import { BORDER_WARNING_DISTANCE, BorderWarning } from "./ui/BorderWarning";
 import { CombatFeedback } from "./ui/CombatFeedback";
 import { KillFeed, KillFeedEntry } from "./ui/KillFeed";
-import { MatchUi } from "./ui/MatchUi";
+import { MatchHud, MatchUi } from "./ui/MatchUi";
 import { getBest, submitScore } from "./ui/personalBest";
 import { recordLocalLife } from "./ui/localStats";
 import { ProfilePanel } from "./ui/ProfilePanel";
@@ -161,6 +171,13 @@ class Game {
   private blades!: BladeRenderer;
   private crates!: CrateRenderer;
   private powerups!: PowerUpRenderer;
+  // Capture du drapeau (tâche 7.2) : drapeaux, bases, état sous la minuterie.
+  private flagsView!: FlagRenderer;
+  private flagHud = new FlagHud();
+  private flagStates: Array<FlagSnapshot & FlagStatus> = [];
+  private flagCarrierPos = { x: 0, y: 0 };
+  // « Ton drapeau doit être à ta base » : une fois par drapeau emporté.
+  private needHomeShown = false;
   // Durée max observée pour chaque effet actif local — sert à normaliser
   // la barre du badge dans le HUD (sinon on ne sait pas combien il restait
   // au départ).
@@ -271,6 +288,11 @@ class Game {
   private killFeed = new KillFeed();
   // Partie à fin (manches, tâche 7.1) : minuterie et podium.
   private match = new MatchUi(() => void this.returnToMenu());
+  // Spectateur (dernière équipe en vie, tâche 7.2) : éliminé ou arrivé en
+  // cours de manche, on suit un coéquipier jusqu'à la manche suivante. Le
+  // serveur place notre joueur hors jeu sur lui : la caméra suit notre
+  // position, interpolée comme celle des autres.
+  private spectating = false;
   // Aller-retour réseau mesuré par ping/pong : médiane des dernières
   // mesures (ms), null tant qu'aucune réponse n'est arrivée. La médiane
   // écarte une mesure prise pendant un chargement ou une pause du GC.
@@ -336,6 +358,7 @@ class Game {
     this.blades = new BladeRenderer(this.quality.simpleMaterials);
     this.crates = new CrateRenderer(this.quality);
     this.powerups = new PowerUpRenderer(this.quality);
+    this.flagsView = new FlagRenderer(this.sceneStack.scene, this.quality);
     this.particles = new ParticlePool(this.quality.maxParticles, this.quality.particleScale);
     this.wisps = new AmbientWisps(this.quality);
     this.ground = createGround(this.quality);
@@ -428,7 +451,13 @@ class Game {
       try { this.room?.send("report", { targetId, reason }); } catch { /* noop */ }
     });
     this.login = new LoginScreen((res) => this.start(res));
-    this.death = new DeathScreen(() => this.respawn(), () => this.returnToMenu(), () => void this.shareScore());
+    this.death = new DeathScreen(
+      () => this.respawn(),
+      () => this.spectate(),
+      () => this.returnToMenu(),
+      () => void this.shareScore(),
+    );
+    document.getElementById("spectate-menu")?.addEventListener("click", () => void this.returnToMenu());
     // Caméra sur le tueur : un clic sur le jeu ou Espace, Entrée, Échap
     // passent directement à la carte (Échap la ferme ensuite, cf.
     // DeathScreen). L'écouteur de la carte, sur document, passe avant
@@ -638,6 +667,8 @@ class Game {
     // seul : tout le monde réapparaît.
     this.match.reset();
     room.onMessage("matchEnd", (ev: MatchEndEvent) => this.onMatchEnd(ev));
+    // Capture du drapeau : prises, chutes, retours, captures, au tick.
+    room.onMessage("flag", (ev: FlagEvent & { tick?: number }) => this.atTick(ev.tick, () => this.onFlagEvent(ev), false));
     $(state).listen("phase", (phase: number, previous: number | undefined) => {
       if (phase === MatchPhase.Playing && previous === MatchPhase.Over) this.onMatchStart();
     });
@@ -688,6 +719,9 @@ class Game {
       if (isLocal) {
         this.resetPrediction();
         this.needReconcile = true;
+        // Arrivé en pleine manche sans réapparition (dernière équipe en
+        // vie) : spectateur jusqu'à la suivante.
+        if (!p.alive && state.phase === MatchPhase.Playing && !modeRespawns(state.mode ?? "ffa")) this.setSpectating(true);
       }
       this.recordOrbitSegment(key, p);
       this.renderAlive.set(key, !!p.alive);
@@ -1002,6 +1036,7 @@ class Game {
     this.blades.clear();
     this.crates.clear();
     this.powerups.clear();
+    this.flagsView.clear();
     this.resetPrediction();
     try {
       const next = await this.conn.reconnect(token);
@@ -1289,6 +1324,9 @@ class Game {
   private showDeathCard(): void {
     if (!this.pendingDeath) return;
     document.getElementById("killcam")?.classList.add("hidden");
+    // Sans réapparition (dernière équipe en vie) : REGARDER au lieu de
+    // REJOUER.
+    this.death.setSpectate(!modeRespawns(this.room?.state?.mode ?? "ffa"));
     this.death.show(this.pendingDeath);
     this.pendingDeath = null;
   }
@@ -1300,10 +1338,26 @@ class Game {
   }
 
   // Minuterie de la partie ; la dernière minute d'une manche est annoncée.
+  // Modes équipe : les deux scores, celui de son équipe d'abord.
   private updateMatchUi(serverNowMs: number): void {
     const state = this.room?.state;
     if (!state) return;
-    if (this.match.update(state.phase ?? MatchPhase.Playing, state.phaseEndsAt ?? 0, serverNowMs)) {
+    const mode: string = state.mode ?? "ffa";
+    const hud: MatchHud = {
+      phase: state.phase ?? MatchPhase.Playing,
+      endsAt: state.phaseEndsAt ?? 0,
+      roundBased: mode !== "tdm" && mode !== "ctf",
+      shrinks: modeShrinks(mode),
+      team: null,
+    };
+    const mine = this.myTeam();
+    const label = TEAM_SCORE_LABELS[mode];
+    if (label && mine !== TEAM_NONE) {
+      const a: number = state.teamScore1 ?? 0;
+      const b: number = state.teamScore2 ?? 0;
+      hud.team = { label: t(label), mine: mine === 1 ? a : b, theirs: mine === 1 ? b : a };
+    }
+    if (this.match.update(hud, serverNowMs)) {
       this.toasts.push(t("match.shrinkToast"));
       this.sound.borderWarning(1);
       this.haptics.play("hitTaken");
@@ -1389,21 +1443,31 @@ class Game {
   // Classement de toute la room : résumé du serveur (2 Hz), avec mes
   // propres valeurs prises dans l'état, plus frais. Avant le premier
   // résumé : les joueurs reçus (ceux de ma zone).
+  // Mon score : celui de ma vie, plus frais que le résumé, dans l'arène ;
+  // ailleurs, le classement compte toute la partie (GameMode.standing) et
+  // seul le résumé le connaît (avant, ma ligne n'avait que ma vie en cours
+  // dans les manches). Modes équipe : ◆ sur son équipe.
   private boardEntries(): LeaderboardEntry[] {
     const entries: LeaderboardEntry[] = [];
     const me = this.room?.state?.players?.get(this.myId);
+    const mine = this.myTeam();
+    const lifeScore = (this.room?.state?.mode ?? "ffa") === "ffa";
     if (this.summary) {
-      for (const [id, name, score, bladeCount, bot] of this.summary.board) {
-        if (id === this.myId && me) entries.push({ id, name: me.name, score: me.score, bladeCount: me.bladeCount });
-        else entries.push({ id, name, score, bladeCount, bot });
+      for (const [id, name, score, bladeCount, bot, team] of this.summary.board) {
+        const ally = sameTeam(mine, team ?? TEAM_NONE);
+        if (id === this.myId && me) {
+          entries.push({ id, name: me.name, score: lifeScore ? me.score : score, bladeCount: me.bladeCount, ally });
+        } else {
+          entries.push({ id, name, score, bladeCount, bot, ally });
+        }
       }
       if (me && !entries.some((e) => e.id === this.myId)) {
-        entries.push({ id: this.myId, name: me.name, score: me.score, bladeCount: me.bladeCount });
+        entries.push({ id: this.myId, name: me.name, score: me.score, bladeCount: me.bladeCount, ally: mine !== TEAM_NONE });
       }
       return entries;
     }
     this.room?.state?.players?.forEach((p: any, id: string) => {
-      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount, bot: p.isBot });
+      entries.push({ id, name: p.name, score: p.score, bladeCount: p.bladeCount, bot: p.isBot, ally: sameTeam(mine, p.team ?? TEAM_NONE) });
     });
     return entries;
   }
@@ -1413,6 +1477,11 @@ class Game {
   private arenaRadius(): number {
     const r = this.room?.state?.mapRadius;
     return typeof r === "number" && r > 0 ? r : MAP_RADIUS;
+  }
+
+  // Équipe du joueur local (modes équipe), TEAM_NONE sinon.
+  private myTeam(): number {
+    return this.room?.state?.players?.get(this.myId)?.team ?? TEAM_NONE;
   }
 
   // Entracte d'une partie à fin : rien ne bouge, plus d'inputs.
@@ -1427,9 +1496,82 @@ class Game {
     if (me?.alive && !this.dead) this.submitLife(me);
     this.death.hide();
     this.endKillCam();
+    this.setSpectating(false);
     this.resetPrediction();
-    this.match.showPodium(ev, this.myId);
+    this.match.showPodium(ev, this.myId, this.myTeam());
     this.sound.challengeDone();
+  }
+
+  // Drapeaux synchronisés (capture du drapeau), relus à chaque image.
+  private readFlags(): Array<FlagSnapshot & FlagStatus> {
+    const out = this.flagStates;
+    out.length = 0;
+    this.room?.state?.flags?.forEach((f: any) => {
+      out.push({ team: f.team, x: f.x, y: f.y, carrierId: f.carrierId ?? "", atBase: !!f.atBase, returnsAt: f.returnsAt ?? 0 });
+    });
+    return out;
+  }
+
+  private updateFlags(myTeam: number, dt: number, serverNowMs: number): void {
+    const flags = this.readFlags();
+    this.flagsView.update(flags, myTeam, (id) => {
+      const v = this.players.get(id);
+      if (!v || !(this.renderAlive.get(id) ?? false)) return null;
+      this.flagCarrierPos.x = v.renderX;
+      this.flagCarrierPos.y = v.renderY;
+      return this.flagCarrierPos;
+    }, dt);
+    if (this.matchOver()) this.flagHud.hide();
+    else this.flagHud.update(flags, myTeam, this.myId, serverNowMs);
+    // Porteur rentré chez lui alors que son drapeau n'y est pas : la règle,
+    // une fois.
+    const carried = flags.find((f) => f.carrierId === this.myId);
+    const home = flags.find((f) => f.team === myTeam);
+    const me = this.players.get(this.myId);
+    if (!carried) {
+      this.needHomeShown = false;
+    } else if (!this.needHomeShown && home && !home.atBase && me) {
+      const base = teamBase(myTeam);
+      if (Math.hypot(me.renderX - base.x, me.renderY - base.y) <= CTF_BASE_RADIUS) {
+        this.needHomeShown = true;
+        this.toasts.push(t("flag.toast.needHome"));
+      }
+    }
+  }
+
+  // Fil et bandeaux des évènements de drapeau, vus de son équipe.
+  private onFlagEvent(ev: FlagEvent): void {
+    const mine = this.myTeam();
+    if (mine === TEAM_NONE) return;
+    const ours = ev.team === mine;
+    const now = performance.now();
+    const name = ev.name ?? null;
+    const i = ours ? 0 : 1;
+    switch (ev.kind) {
+      case "take":
+        this.killFeed.pushFlag(name, t(FLAG_FEED_KEYS.take[i]), !ours, now);
+        if (ev.playerId === this.myId) {
+          this.toasts.push(t("flag.toast.carry"));
+          this.sound.tierUp(2);
+        } else if (ours) {
+          this.sound.borderWarning(0.6);
+          this.haptics.play("hitTaken");
+        }
+        break;
+      case "drop":
+        this.killFeed.pushFlag(name, t(FLAG_FEED_KEYS.drop[i]), ours, now);
+        break;
+      case "return":
+        if (name) this.killFeed.pushFlag(name, t(FLAG_FEED_KEYS.return[i]), ours, now);
+        else this.killFeed.pushFlag(null, t(FLAG_FEED_KEYS.home[i]), ours, now);
+        break;
+      case "capture":
+        this.killFeed.pushFlag(name, t(FLAG_FEED_KEYS.capture[i]), !ours, now);
+        this.toasts.push(t(ours ? "flag.toast.conceded" : "flag.toast.scored"));
+        if (ours) this.sound.bladeLost();
+        else this.sound.challengeDone();
+        break;
+    }
   }
 
   // Partie suivante : le serveur a remis tout le monde en jeu, avec les
@@ -1438,6 +1580,7 @@ class Game {
     this.match.hidePodium();
     this.death.hide();
     this.endKillCam();
+    this.setSpectating(false);
     this.dead = false;
     this.bestSubmitted = false;
     this.resetPrediction();
@@ -1453,6 +1596,29 @@ class Game {
     this.room?.send("respawn", { name: this.myName });
   }
 
+  // Dernière équipe en vie : pas de réapparition pendant la manche. La
+  // carte de fin de vie s'efface, on regarde la suite.
+  private spectate(): void {
+    this.death.hide();
+    this.endKillCam();
+    this.setSpectating(true);
+  }
+
+  private setSpectating(on: boolean): void {
+    if (this.spectating === on) return;
+    this.spectating = on;
+    document.getElementById("hud")?.classList.toggle("spectating", on);
+    const banner = document.getElementById("spectate-banner");
+    banner?.classList.toggle("hidden", !on);
+    if (on && banner) {
+      // Éliminé, ou arrivé en cours de manche.
+      const text = banner.querySelector(".sb-text") as HTMLElement;
+      const key: I18nKey = this.dead ? "match.spectating" : "match.spectatingLate";
+      text.dataset.i18n = key;
+      text.textContent = t(key);
+    }
+  }
+
   private async returnToMenu(): Promise<void> {
     // Quitter en vie termine la vie : son score compte pour le record.
     const meAlive = this.room?.state?.players?.get(this.myId);
@@ -1460,6 +1626,7 @@ class Game {
     this.death.hide();
     this.endKillCam();
     this.match.reset();
+    this.setSpectating(false);
     this.restartAt = 0;
     document.getElementById("restart-banner")?.classList.add("hidden");
     this.borderWarning.hide();
@@ -1490,6 +1657,8 @@ class Game {
     this.blades.clear();
     this.crates.clear();
     this.powerups.clear();
+    this.flagsView.clear();
+    this.flagHud.hide();
     this.dead = false;
     // Bloque ici jusqu'à confirmation de fermeture (timeout 1.5s pour ne
     // pas geler indéfiniment si la connexion est cassée). Le login n'est
@@ -1827,13 +1996,17 @@ class Game {
     // Minimap : joueurs et légendaires du résumé de la room (le serveur
     // n'envoie plus les entités lointaines ; les joueurs cachés dans un
     // buisson n'y figurent pas).
-    const others: Array<{ id: string; x: number; y: number; isMe: boolean }> = [];
+    const others: MinimapPlayer[] = [];
     const legendaries: Array<{ x: number; y: number; legendary: boolean }> = [];
     const summary = this.summary;
+    const mine = this.myTeam();
     if (summary) {
       for (const [i, x, y] of summary.map) {
-        const id = summary.board[i]?.[0];
-        if (id && id !== this.myId) others.push({ id, x, y, isMe: false });
+        const row = summary.board[i];
+        const id = row?.[0];
+        if (!id || id === this.myId) continue;
+        const side = mine === TEAM_NONE ? undefined : sameTeam(mine, row[5] ?? TEAM_NONE) ? "ally" : "foe";
+        others.push({ id, x, y, isMe: false, side });
       }
       for (const [x, y] of summary.legendaries) legendaries.push({ x, y, legendary: true });
     }
@@ -1842,7 +2015,14 @@ class Game {
       const db = (b.x - me.x) ** 2 + (b.y - me.y) ** 2;
       return da - db;
     });
-    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius());
+    const flags: MinimapFlag[] = [];
+    if (mine !== TEAM_NONE) {
+      for (const f of this.flagStates) {
+        const base = teamBase(f.team);
+        flags.push({ x: f.x, y: f.y, baseX: base.x, baseY: base.y, ally: f.team === mine, atBase: f.atBase });
+      }
+    }
+    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags);
   }
 
   // Pilote la résolution dynamique et le downgrade auto de preset.
@@ -1976,14 +2156,17 @@ class Game {
       // de rendu pour les autres (affichés 80 ms dans le passé).
       const serverNowMs = this.serverNow();
       const serverRenderMs = this.serverClock.isEpochReady ? this.serverClock.epochAt(now - RENDER_DELAY) : serverNowMs;
+      const myTeam = this.myTeam();
       for (const [id, v] of this.players) {
-        if (id === this.myId) this.updateLocalPrediction(dt, v);
+        if (id === this.myId && !this.spectating) this.updateLocalPrediction(dt, v);
         else v.interpolate(now, RENDER_DELAY);
         // Spawn protection visuel : halo cyan pulsé tant que
         // spawnProtectionUntil est dans le futur. Lu directement du state
         // serveur ; la dérive d'horloge sur ~2.5s reste imperceptible.
         const ps = this.room?.state?.players?.get(id);
         v.setProtected(!!ps && ps.spawnProtectionUntil > (id === this.myId ? serverNowMs : serverRenderMs));
+        // Modes équipe : alliés à la couleur de son propre anneau.
+        if (id !== this.myId) v.setAlly(sameTeam(myTeam, ps?.team ?? TEAM_NONE));
         v.animate(dt);
         v.updateTrail(dt);
         // Buissons : le serveur ne nous envoie un joueur caché qu'à portée
@@ -2032,6 +2215,7 @@ class Game {
       this.wall.update(this.elapsed * 0.001);
       this.wall.setRadius(this.arenaRadius());
       this.updateMatchUi(serverNowMs);
+      this.updateFlags(myTeam, dt, serverNowMs);
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
@@ -2061,6 +2245,7 @@ class Game {
         (id) => this.room?.state?.players?.get(id)?.name ?? "?",
         (id) => this.room?.state?.players?.get(id)?.bladeCount ?? 0,
         (id) => this.room?.state?.players?.get(id)?.level ?? 0,
+        (id) => sameTeam(myTeam, this.room?.state?.players?.get(id)?.team ?? TEAM_NONE),
         this.sceneStack.camera,
         window.innerWidth,
         window.innerHeight,
@@ -2123,6 +2308,13 @@ new Game();
 
 // Badge d'effet d'un power-up (aucun pour Blades, instantané) : la clé de
 // son libellé sert aussi d'identifiant du badge.
+// Libellé du score des équipes dans la minuterie, par mode.
+const TEAM_SCORE_LABELS: Partial<Record<string, I18nKey>> = {
+  tdm: "match.score.tdm",
+  lts: "match.score.lts",
+  ctf: "match.score.ctf",
+};
+
 function powerUpEffectKey(t: PowerUpType): I18nKey | null {
   switch (t) {
     case PowerUpType.Speed: return "hud.fxSpeed";

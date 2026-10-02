@@ -65,6 +65,7 @@ function withMode(r: TestRoom): KillRaceMode {
     get state() { return r.room.state; },
     isPrivate: false,
     endMatch: (ms) => r.room.endMatch(ms),
+    emit: (type, payload) => r.room.emit(type, payload),
   };
   const mode = new KillRaceMode(host);
   r.room.mode = mode;
@@ -85,7 +86,7 @@ test("matchmaking : la room s'inscrit sous son mode, même créée par un client
   assert.equal(legacy.room.listing.mode, "ffa");
   assert.equal(legacy.state.mode, "ffa");
   assert.equal(legacy.room.metadata.mode, "ffa");
-  const odd = new TestRoom(clock, { mode: "nope" } as any);
+  const odd = new TestRoom(clock, { mode: "nope" });
   assert.equal(odd.room.listing.mode, "ffa");
 });
 

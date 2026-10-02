@@ -45,4 +45,7 @@ export class Blade extends Schema {
   // fois la portée maximale atteinte.
   originX: number = 0;
   originY: number = 0;
+  // Équipe du lanceur au moment du lancer (modes équipe) : le projectile
+  // traverse ses alliés, même si le lanceur a quitté la partie.
+  thrownTeam: number = 0;
 }
