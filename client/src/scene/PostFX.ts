@@ -63,6 +63,57 @@ const ChromaShader = {
   `,
 };
 
+// Garde-fou du bloom : un seul pixel NaN ou infini dans la cible HDR (un
+// shader qui divise par zéro, élève un négatif à une puissance, normalise
+// un vecteur nul…) passait dans le filtre de luminosité, puis dans le flou
+// des cinq mips : un carré noir d'un millier de pixels de côté en 1080p,
+// tant que le pixel fautif restait à l'image (constaté sur Opera GX sous
+// Windows, où ANGLE passe par Direct3D). L'entrée du bloom ne garde que les
+// valeurs finies, ramenées entre 0 et BLOOM_INPUT_MAX : il ne reste que le
+// pixel fautif, invisible. Le plafond est loin de ce qu'atteint une scène
+// normale (lames émissives, effets additifs empilés : quelques unités) et
+// évite qu'une valeur énorme mais finie devienne une tache blanche.
+// Aucune comparaison avec NaN n'est vraie : le test « fini » l'écarte
+// (isnan() peut disparaître à l'optimisation chez certains pilotes).
+const BLOOM_INPUT_MAX = "64.0";
+const SANITIZE_TEXEL = /* glsl */ `
+  bvec3 finite = lessThan(abs(texel.rgb), vec3(65504.0));
+  texel.rgb = clamp(vec3(finite.x ? texel.r : 0.0, finite.y ? texel.g : 0.0, finite.z ? texel.b : 0.0), 0.0, ${BLOOM_INPUT_MAX});
+`;
+// Lecture de la scène par le filtre de luminosité de UnrealBloomPass.
+const BLOOM_INPUT_READ = "vec4 texel = texture2D( tDiffuse, vUv );";
+
+// Repli si une version de three.js change ce filtre : la même correction
+// dans une passe à part, avant le bloom (une passe plein écran de plus).
+const SanitizeShader = {
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    varying vec2 vUv;
+    void main() {
+      vec4 texel = texture2D(tDiffuse, vUv);
+      ${SANITIZE_TEXEL}
+      gl_FragColor = texel;
+    }
+  `,
+};
+
+// Corrige le filtre de luminosité du bloom ; false s'il n'a pas la forme
+// attendue.
+function sanitizeBloomInput(bloom: UnrealBloomPass): boolean {
+  const mat = bloom.materialHighPassFilter;
+  if (!mat.fragmentShader.includes(BLOOM_INPUT_READ)) return false;
+  mat.fragmentShader = mat.fragmentShader.replace(BLOOM_INPUT_READ, BLOOM_INPUT_READ + SANITIZE_TEXEL);
+  mat.needsUpdate = true;
+  return true;
+}
+
 export class PostFX {
   // Quand postFx=false, on ne crée AUCUNE des structures EffectComposer.
   // render() devient un simple renderer.render() — exactement le minimum.
@@ -115,6 +166,7 @@ export class PostFX {
         q.bloomRadius,
         q.bloomThreshold,
       );
+      if (!sanitizeBloomInput(this.bloom)) this.composer.addPass(new ShaderPass(SanitizeShader));
       this.composer.addPass(this.bloom);
     }
     if (q.chroma) {

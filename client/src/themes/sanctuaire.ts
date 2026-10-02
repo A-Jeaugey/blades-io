@@ -114,7 +114,9 @@ const FRAG_RICH_SANCT = /* glsl */ `
 
     // ─── 5. Cercles rituels ───
     float rings = 0.5 + 0.5 * sin(r * 0.18 - uTime * 0.4);
-    rings = pow(rings, 8.0);
+    // max() : un sin() approché sort parfois de [-1, 1], et pow() d'un
+    // négatif donne NaN.
+    rings = pow(max(rings, 0.0), 8.0);
 
     // Composition par mélanges seulement (contrat du sol, readability.ts) :
     // bandes discrètes, contours fins plus marqués. L'œil voit la structure
@@ -156,7 +158,7 @@ const FRAG_SIMPLE_SANCT = /* glsl */ `
     float edgeFade = smoothstep(uRadius, uRadius - 40.0, r);
     float mist = vnoise(vWorld * 0.025) * 0.6 + vnoise(vWorld * 0.05) * 0.4;
     float rings = 0.5 + 0.5 * sin(r * 0.18);
-    rings = pow(rings, 8.0);
+    rings = pow(max(rings, 0.0), 8.0);
     vec3 col = mix(uBase, uMid, mist);
     col = mix(col, uSacred, rings * 0.45);
     col *= edgeFade;

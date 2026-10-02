@@ -416,6 +416,14 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   qui code une information se vérifie sous daltonisme simulé.
 - **Shaders** : commentez les passes (qu'est-ce qui anime, qu'est-ce qui dérive).
   Précisez `precision highp/mediump/lowp` selon le niveau de qualité visé.
+  Jamais de NaN ni d'infini : pas de `pow()` d'une base qui peut être
+  négative (même d'un rien, comme `1.0 - dot()` de deux vecteurs
+  normalisés), de `normalize()` d'un vecteur qui peut être nul, d'`atan(0,
+  0)` ni de division par ce qui peut s'annuler. Le flou du bloom étalait un
+  seul pixel NaN en carré noir d'un millier de pixels de côté (Opera GX
+  sous Windows : ANGLE y passe par Direct3D) ; son entrée est assainie
+  (`PostFX.ts`, avec une passe de repli si three.js change son filtre de
+  luminosité), mais le pixel fautif reste noir.
 - **Performance** :
   - Le serveur de production est une seedbox à 40 Gbit/s (décision D6 du
     plan) : ni la bande passante ni le CPU ne sont des contraintes (tick à

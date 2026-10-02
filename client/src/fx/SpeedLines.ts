@@ -20,7 +20,10 @@ varying float vAlpha;
 varying vec3 vColor;
 void main() {
   vec3 base = aStart + aAxis * position.x;
-  vec3 side = normalize(cross(aAxis, cameraPosition - base));
+  // Ligne de longueur nulle (joueur à l'arrêt) : côté nul, quad plat, au
+  // lieu de normaliser un vecteur nul (NaN).
+  vec3 across = cross(aAxis, cameraPosition - base);
+  vec3 side = across * inversesqrt(max(dot(across, across), 1e-12));
   vec3 p = base + side * position.y * aParams.y;
   vUv = position.xy;
   vAlpha = aParams.x;

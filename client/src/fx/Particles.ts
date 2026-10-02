@@ -17,7 +17,9 @@ void main() {
   vColor = aColor;
   vAlpha = aAlpha;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = aSize * uScale / -mvPosition.z;
+  // Borné : une particule dans le plan de la caméra diviserait par zéro
+  // (elle est de toute façon hors champ, avant le plan proche).
+  gl_PointSize = aSize * uScale / max(-mvPosition.z, 0.1);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
 }
@@ -35,7 +37,7 @@ varying float vAlpha;
 void main() {
   float d = length(gl_PointCoord - 0.5) * 2.0;
   if (d > 1.0) discard;
-  float a = vAlpha * uIntensity * smoothstep(1.0, 0.35, d);
+  float a = vAlpha * uIntensity * (1.0 - smoothstep(0.35, 1.0, d));
   #ifdef USE_FOG
     a *= 1.0 - smoothstep(fogNear, fogFar, vFogDepth);
   #endif

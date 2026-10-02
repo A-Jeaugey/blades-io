@@ -58,7 +58,9 @@ const DOME_VERT = /* glsl */ `
     vNormalW = normalize(mat3(modelMatrix * instanceMatrix) * normal);
     vViewDir = normalize(cameraPosition - wp.xyz);
     vHeight = position.y;
-    vAround = atan(position.z, position.x) / 6.2831853 + 0.5;
+    // Tour du dôme, de 0 à 1 : la coordonnée u de la sphère, les mêmes
+    // valeurs que atan(z, x), qui n'est pas défini au pôle (x = z = 0).
+    vAround = 1.0 - uv.x;
     vSeed = aSeed;
     vInside = aInside;
     gl_Position = projectionMatrix * viewMatrix * wp;
@@ -80,7 +82,10 @@ const DOME_FRAG = /* glsl */ `
   varying float vSeed;
   varying float vInside;
   void main() {
-    float fres = pow(1.0 - abs(dot(normalize(vNormalW), normalize(vViewDir))), 2.0);
+    // Sans pow() : le produit scalaire de deux vecteurs normalisés dépasse
+    // parfois 1 d'un rien, et pow() d'un négatif donne NaN (Direct3D).
+    float rim = 1.0 - min(abs(dot(normalize(vNormalW), normalize(vViewDir))), 1.0);
+    float fres = rim * rim;
     float light = fres * 0.8;
     #ifdef GLITCH
     // Lignes de balayage qui montent.
