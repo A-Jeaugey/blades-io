@@ -666,8 +666,9 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   modes équipe. Difficiles et chasseurs : ne fuient qu'un joueur
   `CHAMPION_FLEE_RATIO` fois plus gros, ne poursuivent que des proies d'au
   moins `CHAMPION_PREY_RATIO` de leurs lames (jamais un débutant ni un
-  joueur en grâce ou en rampe), et ne vont ni récolter ni errer au contact
-  d'un nouveau venu (`fresh`, `nearGraced`). Ils ne boostent qu'à
+  joueur en grâce ou en rampe), ne vont ni récolter ni errer au contact
+  d'un nouveau venu (`fresh`, `nearGraced`) et s'en écartent s'il passe à
+  portée de leur orbite (`scoreAvoidFresh`). Ils ne boostent qu'à
   l'approche finale et lâchent une poursuite au bout de 12 s : sinon ils
   fondaient en boostant après un joueur aussi rapide qu'eux (deux lames par
   seconde). Une room de bots seuls (bancs du snowball et du débutant) n'en

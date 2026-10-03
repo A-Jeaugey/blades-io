@@ -490,6 +490,21 @@ test("champions : des proies à leur mesure, pas de fuite devant un peu plus gro
   assert.equal(decision(champ), "flee", "nettement plus gros : il fuit");
 });
 
+test("champions : s'écartent d'un nouveau venu qui passe à portée", () => {
+  const champ = addPlayer(state, { x: 0, y: -100, blades: 120, isBot: true });
+  champ.champion = true;
+  const fresh = addPlayer(state, { x: 10, y: -100, blades: 3 });
+  fresh.graceRampUntil = clock.now + 20000;
+  bots.update(DT, state);
+  rethink(champ);
+  assert.equal(decision(champ), "avoid_fresh");
+  assert.ok(champ.inputDx < 0, "il part du côté opposé");
+  // Rampe finie : un joueur ordinaire, trop petit pour l'intéresser.
+  fresh.graceRampUntil = 0;
+  rethink(champ);
+  assert.notEqual(decision(champ), "avoid_fresh");
+});
+
 test("champions : jamais après un débutant", () => {
   const champ = addPlayer(state, { x: 0, y: -100, blades: 60, isBot: true });
   champ.champion = true;

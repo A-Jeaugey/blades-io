@@ -104,6 +104,9 @@ const CHAMPION_PROFILE: SkillProfile = { ...SKILLS[BotSkill.Hard], giveUpMs: 120
 const CHAMPION_BOOST_MIN = 6;
 const CHAMPION_BOOST_MAX = 18;
 const CHAMPION_FLEE_BOOST_RANGE = 12;
+// Marge entre l'orbite d'un champion et celle d'un nouveau venu, en deçà de
+// laquelle le champion s'écarte (scoreAvoidFresh).
+const CHAMPION_FRESH_KEEPOUT = 8;
 
 // Profil d'un bot face à ce joueur : son niveau contre un humain, normal
 // contre un autre bot ; celui d'un champion contre tous.
@@ -573,6 +576,11 @@ export class BotController {
     const fleeAction = this.scoreFlee(bot, arena, st);
     if (fleeAction) scores.push(fleeAction);
 
+    if (bot.champion) {
+      const avoidFresh = this.scoreAvoidFresh(bot);
+      if (avoidFresh) scores.push(avoidFresh);
+    }
+
     const chaseAction = this.scoreChase(bot, arena, st);
     if (chaseAction) scores.push(chaseAction);
 
@@ -695,6 +703,31 @@ export class BotController {
         ? nearest < CHAMPION_FLEE_BOOST_RANGE
         : bot.bladeCount > 2 && (maxDanger > 10 || st.threatLevel >= 4),
     };
+  }
+
+  // Champion (tâche 4.12) : il s'écarte d'un nouveau venu (débutant, grâce
+  // ou rampe) qui passe à portée de son orbite, qui le tuerait au moindre
+  // contact. Ne pas le viser ni récolter près de lui ne suffisait pas : au
+  // banc de survie, un joueur qui revient mourait plus souvent avant 30 s
+  // (5,4 → 8,5 %, 24 graines), en croisant un champion en chemin. Au-dessus
+  // de tout sauf la fuite et le mur.
+  private scoreAvoidFresh(bot: Player) {
+    if (this.fresh.length === 0) return null;
+    const botReach = reachOf(bot);
+    let ax = 0;
+    let ay = 0;
+    for (const f of this.fresh) {
+      const dx = bot.x - f.x;
+      const dy = bot.y - f.y;
+      const d = Math.hypot(dx, dy);
+      const keep = botReach + f.reach + CHAMPION_FRESH_KEEPOUT;
+      if (d >= keep || d < 1e-3) continue;
+      ax += (dx / d) * (keep - d);
+      ay += (dy / d) * (keep - d);
+    }
+    const m = Math.hypot(ax, ay);
+    if (m < 1e-6) return null;
+    return { type: "avoid_fresh", score: 900, x: bot.x + (ax / m) * 20, y: bot.y + (ay / m) * 20, boost: false };
   }
 
   private scoreChase(bot: Player, arena: ArenaState, st: BotState) {
