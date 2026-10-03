@@ -87,7 +87,7 @@ Each client only receives what is near it (interest management with Colyseus `St
 - **InstancedMesh** rendering — one mesh per (rarity × tier), growing as needed (no cap), O(1) removal; round additive particles (point-sprite shader) and a time-sampled ribbon trail; combat effects drawn in one call each (instanced rings, shards, light columns and speed lines, every blade trail in a single ribbon mesh), their shaders compiled on the first frame rather than on the first clash
 - **Light first load** — the page first loads only the lobby (about 175 KB of JavaScript, 55 KB gzipped, against 1.5 MB before); the game engine (three.js, Colyseus, rendering) loads in parallel while you pick a name, the sound engine on your first click, the account library only when you sign in or resume a session, the shop when you open it. Libraries have their own files and build assets are cached for good (fingerprinted names): a game update does not re-download three.js
 - **French and English** — the language follows the browser (English otherwise) and can be changed live in the settings; all UI text lives in `client/src/i18n/`
-- **Quality presets** (high/medium/low/ultra, auto-detected; `ultra` is the lightest) — bloom, particles and decor density adapt. An FPS monitor lowers the resolution first, then the preset; a lower preset picked mid-match applies back at the menu, never during a game
+- **Quality presets** (high/medium/low/ultra, auto-detected; `ultra` is the lightest) — bloom, particles and decor density adapt. An FPS monitor lowers the resolution first (without reallocating anything when post-processing is on), then the preset; mid-match, a lower preset only switches off bloom, screen effects and MSAA (no shader recompiles) and fully applies back at the menu, never during a game. Every shader is compiled in the lobby, so nothing new on screen (a player, a crate, a power-up) stalls the game
 - **Anti-cheat** — server clamps `|dx|, |dy| ≤ 1`, ignores inputs above 80/s and disconnects a client that stays above that cap for 3 consecutive seconds
 
 ### Audio
@@ -131,7 +131,7 @@ BENCH_RETURNING=1 node tools/bench-survival.js first  # same for a returning pla
 node tools/bench-snowball.js        # bot rooms: leader reign length, underdog kills (after npm test)
 ```
 
-Add `?debug=hitbox` to the game URL to overlay the server-side hitboxes of nearby orbiting blades and display the measured client/server drift.
+Add `?debug=hitbox` to the game URL to overlay the server-side hitboxes of nearby orbiting blades and display the measured client/server drift. Add `?debug=perf` to display frame pacing (FPS, median, p95 and worst frame time), the render scale, draw calls and the number of shaders compiled since the match started (it should stay at +0: every shader is compiled in the lobby).
 
 Every push and pull request runs the same build in GitHub Actions (`.github/workflows/ci.yml`): shared, server (full `tsc`) and client (`tsc` + `vite build`), then the server tests.
 

@@ -41,7 +41,6 @@ export interface QualityConfig {
   postFx: boolean;
   bloomEnabled: boolean;
   bloomStrength: number;
-  bloomResScale: number;
   // Threshold UnrealBloom : pixels au-dessus de cette luminance bloomeront.
   // 0.85 = seuls les vrais highlights → image nette. 0.65 = tout glow → wash.
   bloomThreshold: number;
@@ -115,7 +114,6 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     // mais avec radius 0.35 + threshold 0.85 → les halos restent serrés.
     // L'image garde la chaleur émissive sans baver sur les edges.
     bloomStrength: 0.65,
-    bloomResScale: 0.5,
     bloomThreshold: 0.85,
     bloomRadius: 0.35,
     samples: 2,
@@ -152,7 +150,6 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     postFx: true,
     bloomEnabled: true,
     bloomStrength: 0.5,
-    bloomResScale: 0.5,
     bloomThreshold: 0.85,
     bloomRadius: 0.35,
     samples: 0, // pas de MSAA en medium pour économiser le coût GPU
@@ -188,7 +185,6 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     postFx: false,
     bloomEnabled: false,
     bloomStrength: 0,
-    bloomResScale: 0.25,
     bloomThreshold: 0.85,
     bloomRadius: 0.35,
     samples: 0,
@@ -222,7 +218,6 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     postFx: false,
     bloomEnabled: false,
     bloomStrength: 0,
-    bloomResScale: 0.2,
     bloomThreshold: 0.85,
     bloomRadius: 0.35,
     samples: 0,
@@ -318,7 +313,13 @@ export function detectPreset(): QualityPreset {
   // GPU NVIDIA : pas d'iGPU NVIDIA en pratique (tous dédiés). Traités en
   // bloc côté dédié.
   const hasNvidia = /nvidia|geforce|gtx|rtx|quadro/.test(gpu);
+  // Cartes dédiées d'entrée de gamme (GeForce MX des portables, GT 7xx à
+  // 1030, Radeon RX 4x0 et 5x0 en deçà de 570, RX 6400/6500) : la qualité
+  // haute (MSAA, pixel ratio 1,5) les faisait démarrer en sous-régime, le
+  // temps que la résolution dynamique et la baisse de preset s'en aperçoivent.
+  const entryLevel = /\bmx\s?\d{2,3}\b|\bgt\s?\d{3,4}\b|\brx\s?(4[0-6]0|5[0-6]0|6[45]00)\b/.test(gpu);
   if (hasNvidia || isAmdDiscrete) {
+    if (entryLevel) return "medium";
     if (mem !== undefined && mem <= 3) return "medium";
     if (cores >= 6) return "high";
     return "medium";

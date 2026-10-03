@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BUSHES } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { DecorVariant } from "../themes";
+import { scalePointsWithViewport } from "./renderScale";
 
 // Buissons (tâche 4.7). Ils cachent joueurs et lames aux autres : règle du
 // serveur (tâche 2.4), le client n'en reçoit rien. Ici, leur visuel, qui
@@ -37,8 +38,10 @@ const DOME_ALPHA_INSIDE = 0.18;
 const DOME_VERT = /* glsl */ `
   attribute float aSeed;
   attribute float aInside;
-  uniform float uTime;
-  uniform float uFlash;
+  // Même précision que dans le fragment (mediump) : un uniform partagé par
+  // les deux étapes avec deux précisions fait échouer le lien du programme.
+  uniform mediump float uTime;
+  uniform mediump float uFlash;
   varying vec3 vNormalW;
   varying vec3 vViewDir;
   varying float vHeight;
@@ -269,6 +272,7 @@ export function createBushField(q: QualityConfig, v: DecorVariant): BushField {
     disposables.push(geo, mat);
     const points = new THREE.Points(geo, mat);
     points.frustumCulled = false;
+    scalePointsWithViewport(points, mat);
     points.matrixAutoUpdate = false;
     group.add(points);
   }

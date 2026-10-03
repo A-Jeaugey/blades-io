@@ -30,6 +30,12 @@ interface TagEntry {
   lastName: string;
   lastBlades: number;
   lastThreat: Threat;
+  // Dernier style écrit : rien n'est réécrit (donc rien à recalculer par
+  // le navigateur) tant que le tag ne bouge pas d'un quart de pixel.
+  shown: boolean;
+  lastX: number;
+  lastY: number;
+  lastOpacity: number;
 }
 
 // Menace relative au joueur local, d'après le nombre de lames. Tolérance de
@@ -59,6 +65,8 @@ export class NametagOverlay {
   private tags = new Map<string, TagEntry>();
   private enabled = false;
   private projected = new THREE.Vector3();
+  // Joueurs vus à cette frame (réutilisé d'une frame à l'autre).
+  private stillPresent = new Set<string>();
 
   constructor() {
     this.container = document.getElementById("nametag-layer")!;
@@ -104,7 +112,8 @@ export class NametagOverlay {
     const ly = localView?.renderY ?? 0;
     const myBlades = bladesOf(localId);
 
-    const stillPresent = new Set<string>();
+    const stillPresent = this.stillPresent;
+    stillPresent.clear();
 
     players.forEach((view, id) => {
       // Skip self.
@@ -122,9 +131,7 @@ export class NametagOverlay {
         // Toujours créer/cacher pour éviter de constamment churner du
         // DOM ; ce sera display:none via opacity 0 + display none via
         // class.
-        const tag = this.getOrCreateTag(id);
-        tag.el.style.opacity = "0";
-        tag.el.style.display = "none";
+        this.hide(this.getOrCreateTag(id));
         return;
       }
 
@@ -135,9 +142,7 @@ export class NametagOverlay {
       // NDC z hors [-1..1] = derrière la caméra ou trop loin du clipping
       // far plane. On hide.
       if (this.projected.z < -1 || this.projected.z > 1) {
-        const tag = this.getOrCreateTag(id);
-        tag.el.style.opacity = "0";
-        tag.el.style.display = "none";
+        this.hide(this.getOrCreateTag(id));
         return;
       }
 
@@ -174,12 +179,23 @@ export class NametagOverlay {
         tag.el.classList.add(`threat-${threat}`);
         tag.lastThreat = threat;
       }
-      tag.el.style.display = "";
-      tag.el.style.opacity = String(fadeT);
-      // translate(-50%, -100%) : centre horizontalement + ancre par le
-      // BAS du label sur la position projetée → le tag flotte au-dessus
-      // de la tête sans la chevaucher.
-      tag.el.style.transform = `translate(${screenX}px, ${screenY}px) translate(-50%, -100%)`;
+      if (!tag.shown) {
+        tag.shown = true;
+        tag.el.style.display = "";
+      }
+      const opacity = Math.round(fadeT * 50) / 50;
+      if (opacity !== tag.lastOpacity) {
+        tag.lastOpacity = opacity;
+        tag.el.style.opacity = String(opacity);
+      }
+      if (Math.abs(screenX - tag.lastX) >= 0.25 || Math.abs(screenY - tag.lastY) >= 0.25) {
+        tag.lastX = screenX;
+        tag.lastY = screenY;
+        // translate(-50%, -100%) : centre horizontalement + ancre par le
+        // BAS du label sur la position projetée → le tag flotte au-dessus
+        // de la tête sans la chevaucher.
+        tag.el.style.transform = `translate(${screenX}px, ${screenY}px) translate(-50%, -100%)`;
+      }
     });
 
     // Cleanup : retire les tags des joueurs disparus (déco, kill, etc).
@@ -204,10 +220,21 @@ export class NametagOverlay {
       bladesEl.className = "nametag-blades";
       el.append(levelEl, nameEl, bladesEl);
       this.container.appendChild(el);
-      tag = { el, levelEl, nameEl, bladesEl, lastLevel: -1, lastName: "", lastBlades: -1, lastThreat: "even" };
+      // Créé caché : le premier affichage écrit tout son style.
+      el.style.display = "none";
+      tag = {
+        el, levelEl, nameEl, bladesEl, lastLevel: -1, lastName: "", lastBlades: -1, lastThreat: "even",
+        shown: false, lastX: -1e9, lastY: -1e9, lastOpacity: -1,
+      };
       this.tags.set(id, tag);
     }
     return tag;
+  }
+
+  private hide(tag: TagEntry): void {
+    if (!tag.shown) return;
+    tag.shown = false;
+    tag.el.style.display = "none";
   }
 
   clear(): void {

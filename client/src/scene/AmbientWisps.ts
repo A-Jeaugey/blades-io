@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { MAP_RADIUS } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
+import { scalePointsWithViewport } from "./renderScale";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AmbientWisps — particules d'âme en suspension permanente.
@@ -81,6 +82,7 @@ export class AmbientWisps {
     });
     const points = new THREE.Points(this.geometry, this.material);
     points.frustumCulled = false;
+    scalePointsWithViewport(points, this.material);
     this.object3d = points;
   }
 

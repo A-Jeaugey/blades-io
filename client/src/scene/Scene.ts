@@ -22,7 +22,11 @@ export class SceneStack {
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: q.antialias,
+      // Avec post-FX, le canvas ne reçoit que la passe finale (un triangle
+      // plein écran) : son MSAA ne servait à rien et coûtait de la mémoire
+      // et de la bande passante à chaque image. L'AA vient alors de la
+      // cible de la scène (PostFX, q.samples).
+      antialias: q.antialias && !q.postFx,
       powerPreference: "high-performance",
       // Évite la lecture pixel par pixel pour les screenshots ; gain mineur
       // mais gratuit côté code.

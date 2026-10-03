@@ -455,7 +455,8 @@ canvas#game.booting {
 }
 
 /* Mode debug hitbox (?debug=hitbox) : mesure affichée en bas à gauche. */
-.debug-hitbox-label {
+.debug-hitbox-label,
+.debug-perf-label {
   position: fixed;
   left: 12px;
   bottom: 64px;
@@ -465,6 +466,10 @@ canvas#game.booting {
   color: var(--fg-bright);
   background: rgba(0, 0, 0, .65);
   pointer-events: none;
+}
+
+.debug-perf-label {
+  bottom: 88px;
 }
 
 #hud {

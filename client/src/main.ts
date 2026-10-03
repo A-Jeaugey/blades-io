@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   BladeRarity,
+  POWERUP_TYPE_VALUES,
   AckState,
   InputPredictor,
   CLOSE_CODE_INPUT_FLOOD,
@@ -64,6 +65,8 @@ import { SceneStack } from "./scene/Scene";
 import { BoundaryWall, GroundSurface, createGround, createBoundaryWall } from "./scene/Ground";
 import { DecorHandle, createDecor } from "./scene/Decor";
 import { PostFX } from "./scene/PostFX";
+import { ShaderWarmup } from "./scene/shaderWarmup";
+import { PerfOverlay } from "./ui/PerfOverlay";
 import { CameraRig } from "./scene/Camera";
 import { PlayerView } from "./entities/PlayerView";
 import { AimIndicator } from "./entities/AimIndicator";
@@ -263,6 +266,9 @@ export class Game {
   private lowFpsAccum = 0;
   private highFpsAccum = 0;
   private lastDowngradeAt = 0;
+  // Dernière baisse de résolution (performance.now()) : on ne remonte pas
+  // avant RES_RAISE_COOLDOWN_MS (pas de va-et-vient d'un palier à l'autre).
+  private lastResLowerAt = -Infinity;
   // Baisse de preset décidée pendant une partie : appliquée (reload) au
   // prochain retour au menu, jamais en plein match.
   private input: InputManager;
@@ -283,6 +289,12 @@ export class Game {
   // rendu est 80 ms dans le passé, un nouveau segment a pu commencer depuis.
   private orbitSegments = new Map<string, OrbitSegment[]>();
   private debugHitboxes: DebugHitboxes | null = null;
+  // Shaders compilés au lobby (scene/shaderWarmup.ts), et les joueurs
+  // d'échantillon dont les matériaux les gardent en cache.
+  private shaderWarmup: ShaderWarmup | null = null;
+  private warmupViews: PlayerView[] = [];
+  // Mesure de fluidité en jeu (?debug=perf).
+  private perfOverlay: PerfOverlay | null = null;
   // Ligne de temps du rendu : ce qui est reçu ~80 ms avant que le rendu
   // n'atteigne son tick (évènements de combat, changements des lames en
   // orbite, morts) y attend ce tick. Joué tout de suite, l'étincelle d'un
@@ -435,7 +447,7 @@ export class Game {
     this.quality = getPresetConfig(detectPreset());
     console.log(`[blade.io] quality preset: ${this.quality.preset}`);
     this.sceneStack = new SceneStack(this.canvas, this.quality);
-    this.postFx = new PostFX(this.sceneStack.renderer, this.sceneStack.scene, this.sceneStack.camera, this.quality);
+    this.postFx = new PostFX(this.sceneStack.renderer, this.quality);
     this.camera = new CameraRig(this.sceneStack.camera, (d) => this.sceneStack.setViewDistance(d));
     this.blades = new BladeRenderer(this.quality.simpleMaterials);
     this.crates = new CrateRenderer(this.quality);
@@ -464,6 +476,17 @@ export class Game {
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
     this.borderWarning = new BorderWarning();
+    if (new URLSearchParams(window.location.search).get("debug") === "perf") {
+      this.perfOverlay = new PerfOverlay(this.sceneStack.renderer);
+      // Pour les bancs scriptés : position du joueur local, sans le flux de
+      // debug des orbites de ?debug=hitbox (qui fausserait la mesure).
+      (window as any).__bladePerf = {
+        me: () => {
+          const p = this.room?.state?.players?.get(this.myId);
+          return p ? { x: p.x, y: p.y, alive: !!p.alive, blades: p.bladeCount } : null;
+        },
+      };
+    }
     if (new URLSearchParams(window.location.search).get("debug") === "hitbox") {
       this.debugHitboxes = new DebugHitboxes(this.sceneStack.scene);
       (window as any).__bladeDebug = {
@@ -612,12 +635,47 @@ export class Game {
     this.hud.onInvite(() => void this.invite((r) => { if (r === "copied") this.hud.flashCopied(); }));
     this.conn = new Connection(resolveServerEndpoint());
     window.addEventListener("beforeunload", () => { this.conn.leave(); });
+    this.warmUpShaders();
     this.loop();
     // L'arène apparaît en fondu derrière le lobby, déjà affiché (boot.ts).
     requestAnimationFrame(() => this.canvas.classList.remove("booting"));
   }
 
+  // Tous les shaders de la partie compilés pendant que le joueur est au
+  // menu : ce que la scène contient déjà, même caché (lames de chaque
+  // rareté et palier, effets de combat, évènements de carte…), plus un
+  // échantillon de ce qui n'existe qu'en partie (joueurs, caisses,
+  // power-ups). Les échantillons de joueurs restent en mémoire, hors de la
+  // scène : leurs matériaux retiennent les programmes en cache.
+  private warmUpShaders(): void {
+    const scene = this.sceneStack.scene;
+    const local = new PlayerView(true, this.quality);
+    const remote = new PlayerView(false, this.quality);
+    remote.setAlly(true);
+    this.warmupViews = [local, remote];
+    for (const v of this.warmupViews) scene.add(v.root, v.trail);
+    const ids: string[] = [];
+    const sample = (kind: string) => {
+      const id = `__warmup:${kind}`;
+      ids.push(id);
+      return id;
+    };
+    this.crates.add(sample("crate"), 0, 0, 1, 1, false);
+    this.crates.add(sample("legendary"), 0, 0, 1, 1, true);
+    for (const type of POWERUP_TYPE_VALUES) {
+      this.powerups.add(sample(`pu${type}`), type, BladeRarity.Common, 0, 0);
+      this.powerups.add(sample(`pu${type}e`), type, BladeRarity.Epic, 0, 0);
+    }
+    this.shaderWarmup = new ShaderWarmup(this.sceneStack.renderer, scene, this.sceneStack.camera, this.postFx.sceneTarget);
+    for (const v of this.warmupViews) scene.remove(v.root, v.trail);
+    for (const id of ids) {
+      this.crates.remove(id);
+      this.powerups.remove(id);
+    }
+  }
+
   async start(res: LoginResult): Promise<void> {
+    this.perfOverlay?.markGameStart();
     this.myName = res.name;
     this.login.hide();
     this.hud.show();
@@ -2287,13 +2345,16 @@ export class Game {
       this.highFpsAccum = Math.max(0, this.highFpsAccum - tick * 0.5);
     }
 
-    const cur = this.sceneStack.getResScale();
+    const cur = this.getRenderScale();
     const minScale = this.quality.dynResMin;
     if (this.lowFpsAccum >= 2.0) {
-      const next = Math.max(minScale, cur - 0.1);
+      // Très bas : un grand pas, pour converger en quelques secondes plutôt
+      // qu'une dizaine de mauvaises secondes en début de partie.
+      const next = Math.max(minScale, cur - (fps < 35 ? 0.2 : 0.1));
       if (next < cur) {
-        this.sceneStack.setResScale(next);
+        this.setRenderScale(next);
         this.lowFpsAccum = 0;
+        this.lastResLowerAt = performance.now();
         console.log(`[blade.io] dynRes: ${cur.toFixed(2)} → ${next.toFixed(2)} (fps=${fps.toFixed(0)})`);
       } else if (
         this.quality.autoDowngrade &&
@@ -2308,9 +2369,10 @@ export class Game {
           savePresetChoice(lower);
           this.lastDowngradeAt = Date.now();
           if (this.room) {
-            // En partie : le bloom et les passes plein écran sont le plus
-            // gros poste GPU et se coupent sans reconstruire la scène.
-            this.postFx.setEnabled(false);
+            // En partie : le bloom, les effets plein écran et le MSAA sont
+            // le plus gros poste GPU et se coupent sans recompiler un seul
+            // shader (la scène reste rendue dans la même cible).
+            this.postFx.setLite(true);
             reloadAtMenu();
           } else {
             // Hors partie : les matériaux/shaders sont construits au boot
@@ -2319,14 +2381,28 @@ export class Game {
           }
         }
       }
-    } else if (this.highFpsAccum >= 5.0 && cur < 1.0) {
-      const next = Math.min(1.0, cur + 0.05);
+    } else if (this.highFpsAccum >= 5.0 && cur < 1.0 && performance.now() - this.lastResLowerAt > RES_RAISE_COOLDOWN_MS) {
+      // Sans post-FX, chaque palier redimensionne le canvas (un à-coup) :
+      // moins de paliers, plus grands.
+      const next = Math.min(1.0, cur + (this.postFx.active ? 0.05 : 0.1));
       if (next > cur) {
-        this.sceneStack.setResScale(next);
+        this.setRenderScale(next);
         this.highFpsAccum = 0;
         console.log(`[blade.io] dynRes: ${cur.toFixed(2)} → ${next.toFixed(2)} (fps=${fps.toFixed(0)})`);
       }
     }
+  }
+
+  // Résolution de rendu : avec post-FX, la scène est rendue dans une partie
+  // de sa cible (rien n'est réalloué) ; sans, c'est le canvas qui change de
+  // taille, un à-coup à chaque palier, d'où le délai avant de remonter.
+  private getRenderScale(): number {
+    return this.postFx.active ? this.postFx.renderScale : this.sceneStack.getResScale();
+  }
+
+  private setRenderScale(scale: number): void {
+    if (this.postFx.active) this.postFx.setRenderScale(scale);
+    else this.sceneStack.setResScale(scale);
   }
 
   private loop(): void {
@@ -2496,7 +2572,12 @@ export class Game {
       );
       this.updateHud();
       this.updateToast(performance.now());
+      if (this.shaderWarmup) {
+        this.shaderWarmup.step(4);
+        if (this.shaderWarmup.done) this.shaderWarmup = null;
+      }
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
+      this.perfOverlay?.frame(now, { preset: this.quality.preset, scale: this.getRenderScale(), lite: this.postFx.isLite });
 
       // Crown UI rendering
       const crownEl = this.crownEl;
@@ -2540,6 +2621,11 @@ export class Game {
     requestAnimationFrame(tick);
   }
 }
+
+// Délai après une baisse de la résolution dynamique avant de pouvoir la
+// remonter : une machine juste à la limite oscillait d'un palier à l'autre
+// toutes les quelques secondes.
+const RES_RAISE_COOLDOWN_MS = 20000;
 
 // Badge d'effet d'un power-up (aucun pour Blades, instantané) : la clé de
 // son libellé sert aussi d'identifiant du badge.

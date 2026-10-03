@@ -99,15 +99,20 @@ export class ParticlePool {
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      precision: "mediump",
+      // Pas de `precision` par matériau : dans three.js r163, elle restait
+      // ensuite celle de tous les programmes compilés après (variable
+      // partagée de WebGLPrograms). La précision de chaque shader dépendait
+      // de l'ordre de compilation, et un shader compilé d'avance n'avait
+      // plus la même clé que celui demandé en partie : recompilé.
     });
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.frustumCulled = false;
     // Taille en pixels de la cible de rendu courante (post-FX et résolution
     // dynamique compris), comme le fait PointsMaterial.
     this.points.onBeforeRender = (renderer) => {
+      // Partie de la cible réellement dessinée (résolution dynamique).
       const target = renderer.getRenderTarget();
-      const height = target ? target.height : renderer.getDrawingBufferSize(this.bufferSize).y;
+      const height = target ? target.viewport.w : renderer.getDrawingBufferSize(this.bufferSize).y;
       this.material.uniforms.uScale.value = height * 0.5;
     };
 

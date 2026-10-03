@@ -64,6 +64,19 @@ vec3 dissolveTint = mix(uDissolveColor, vec3(1.0), dissolveEdge * 0.6);
 gl_FragColor.rgb = mix(gl_FragColor.rgb, dissolveTint, clamp(dissolveEdge + min(1.0, uDissolve * 5.0) * 0.4, 0.0, 1.0) * uDissolveGlow);
 `;
 
+// Géométries partagées par tous les joueurs d'un même niveau de détail : un
+// joueur qui entre dans le champ ne recalcule plus ses capsules, sphères et
+// anneaux ni ne les renvoie au GPU, et ne les jette plus en sortant.
+const sharedGeos = new Map<string, THREE.BufferGeometry>();
+function sharedGeo(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  let geo = sharedGeos.get(key);
+  if (!geo) {
+    geo = make();
+    sharedGeos.set(key, geo);
+  }
+  return geo;
+}
+
 export class PlayerView {
   root: THREE.Group;
   body: THREE.Mesh;
@@ -174,30 +187,30 @@ export class PlayerView {
     // Tronc — segments capsule réduits selon detail.
     const torsoCapSeg = detail === "rich" ? 6 : detail === "low" ? 4 : 4;
     const torsoRadSeg = detail === "rich" ? 3 : 2;
-    const torsoGeo = new THREE.CapsuleGeometry(0.28, 0.55, torsoRadSeg, torsoCapSeg);
+    const torsoGeo = sharedGeo(`torso:${detail}`, () => new THREE.CapsuleGeometry(0.28, 0.55, torsoRadSeg, torsoCapSeg));
     const torsoMat = mkMat(primary, accentDim, 0.5);
     this.body = new THREE.Mesh(torsoGeo, torsoMat);
     this.body.position.y = 0.95;
     this.root.add(this.body);
-    this.disposables.push(torsoGeo, torsoMat);
+    this.disposables.push(torsoMat);
 
     // Tête — sphère segments selon detail.
     const headSeg = detail === "rich" ? 14 : detail === "low" ? 8 : 6;
     const headRingSeg = Math.max(6, headSeg - 4);
-    const headGeo = new THREE.SphereGeometry(0.26, headSeg, headRingSeg);
+    const headGeo = sharedGeo(`head:${detail}`, () => new THREE.SphereGeometry(0.26, headSeg, headRingSeg));
     this.sphereHeadGeo = headGeo;
     const headMat = mkMat(primary, accentDim, 0.4);
     this.head = new THREE.Mesh(headGeo, headMat);
     this.head.position.y = 1.55;
     this.root.add(this.head);
-    this.disposables.push(headGeo, headMat);
+    this.disposables.push(headMat);
 
     // Membres — uniquement en rich/low. En minimal (ultra), on n'ajoute pas
     // les bras/jambes : le corps + tête suffit.
     if (detail !== "minimal") {
       const armCapSeg = detail === "rich" ? 6 : 4;
       const armRadSeg = detail === "rich" ? 3 : 2;
-      const armGeo = new THREE.CapsuleGeometry(0.09, 0.45, armRadSeg, armCapSeg);
+      const armGeo = sharedGeo(`arm:${detail}`, () => new THREE.CapsuleGeometry(0.09, 0.45, armRadSeg, armCapSeg));
       const armMat = mkMat(primary, accentDim, 0.45);
       this.leftArm = new THREE.Mesh(armGeo, armMat);
       this.rightArm = new THREE.Mesh(armGeo, armMat);
@@ -205,11 +218,11 @@ export class PlayerView {
       this.rightArm.position.set(0.38, 1.05, 0);
       this.root.add(this.leftArm);
       this.root.add(this.rightArm);
-      this.disposables.push(armGeo, armMat);
+      this.disposables.push(armMat);
 
       const legCapSeg = detail === "rich" ? 6 : 4;
       const legRadSeg = detail === "rich" ? 3 : 2;
-      const legGeo = new THREE.CapsuleGeometry(0.12, 0.5, legRadSeg, legCapSeg);
+      const legGeo = sharedGeo(`leg:${detail}`, () => new THREE.CapsuleGeometry(0.12, 0.5, legRadSeg, legCapSeg));
       const legMat = mkMat(primary, accentDim, 0.35);
       this.leftLeg = new THREE.Mesh(legGeo, legMat);
       this.rightLeg = new THREE.Mesh(legGeo, legMat);
@@ -217,12 +230,12 @@ export class PlayerView {
       this.rightLeg.position.set(0.14, 0.35, 0);
       this.root.add(this.leftLeg);
       this.root.add(this.rightLeg);
-      this.disposables.push(legGeo, legMat);
+      this.disposables.push(legMat);
     }
 
     // Anneau néon au sol (cercle d'ancrage). Segments réduits en low/ultra.
     const ringSeg = detail === "rich" ? 32 : detail === "low" ? 20 : 16;
-    const ringGeo = new THREE.RingGeometry(0.55, 0.72, ringSeg);
+    const ringGeo = sharedGeo(`ring:${detail}`, () => new THREE.RingGeometry(0.55, 0.72, ringSeg));
     const ringMat = new THREE.MeshBasicMaterial({
       color: accent,
       transparent: true,
@@ -233,12 +246,12 @@ export class PlayerView {
     this.ring.rotation.x = -Math.PI / 2;
     this.ring.position.y = 0.03;
     this.root.add(this.ring);
-    this.disposables.push(ringGeo, ringMat);
+    this.disposables.push(ringMat);
 
     // Halo de spawn protection : optionnel selon q.playerHalo.
     if (q.playerHalo) {
       const protSeg = detail === "rich" ? 36 : 20;
-      const protGeo = new THREE.RingGeometry(1.0, 1.6, protSeg);
+      const protGeo = sharedGeo(`halo:${detail}`, () => new THREE.RingGeometry(1.0, 1.6, protSeg));
       const protMat = new THREE.MeshBasicMaterial({
         color: t.palette.playerLocal.accent,
         transparent: true,
@@ -250,7 +263,7 @@ export class PlayerView {
       this.protHalo.position.y = 0.04;
       this.protHalo.visible = false;
       this.root.add(this.protHalo);
-      this.disposables.push(protGeo, protMat);
+      this.disposables.push(protMat);
     } else {
       this.protHalo = null;
     }
@@ -287,10 +300,7 @@ export class PlayerView {
       }
     });
     const box = look?.headShape === "box";
-    if (box && !this.boxHeadGeo) {
-      this.boxHeadGeo = new THREE.BoxGeometry(0.42, 0.42, 0.42);
-      this.disposables.push(this.boxHeadGeo);
-    }
+    if (box && !this.boxHeadGeo) this.boxHeadGeo = sharedGeo("boxHead", () => new THREE.BoxGeometry(0.42, 0.42, 0.42));
     this.head.geometry = box ? this.boxHeadGeo! : this.sphereHeadGeo;
     this.clearAccessory();
     // Accessoires absents en qualité potato : le corps et la tête suffisent.
@@ -305,40 +315,41 @@ export class PlayerView {
       : new THREE.MeshStandardMaterial({ color: look.accent, emissive: look.accent, emissiveIntensity: 0.8, metalness: 0.2, roughness: 0.4 });
     this.addDissolve(mat);
     this.accessoryDisposables.push(mat);
-    const add = (geo: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, rz = 0) => {
+    let part = 0;
+    const add = (make: () => THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, rz = 0) => {
+      const geo = sharedGeo(`acc:${look.accessory}:${this.q.playerDetail}:${part++}`, make);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(x, y, z);
       mesh.rotation.set(rx, 0, rz);
       g.add(mesh);
-      this.accessoryDisposables.push(geo);
     };
     const seg = this.q.playerDetail === "rich" ? 16 : 10;
     switch (look.accessory) {
       case "headband":
-        add(new THREE.TorusGeometry(0.27, 0.035, 6, seg), 0, 0.05, 0, Math.PI / 2);
+        add(() => new THREE.TorusGeometry(0.27, 0.035, 6, seg), 0, 0.05, 0, Math.PI / 2);
         break;
       case "antenna":
-        add(new THREE.CylinderGeometry(0.018, 0.018, 0.28, 6), 0, 0.33, 0);
-        add(new THREE.SphereGeometry(0.06, 8, 6), 0, 0.5, 0);
+        add(() => new THREE.CylinderGeometry(0.018, 0.018, 0.28, 6), 0, 0.33, 0);
+        add(() => new THREE.SphereGeometry(0.06, 8, 6), 0, 0.5, 0);
         break;
       case "visor":
-        add(new THREE.BoxGeometry(0.4, 0.1, 0.06), 0, 0.03, 0.24);
+        add(() => new THREE.BoxGeometry(0.4, 0.1, 0.06), 0, 0.03, 0.24);
         break;
       case "horns":
-        add(new THREE.ConeGeometry(0.07, 0.3, 8), -0.16, 0.24, 0, 0, 0.5);
-        add(new THREE.ConeGeometry(0.07, 0.3, 8), 0.16, 0.24, 0, 0, -0.5);
+        add(() => new THREE.ConeGeometry(0.07, 0.3, 8), -0.16, 0.24, 0, 0, 0.5);
+        add(() => new THREE.ConeGeometry(0.07, 0.3, 8), 0.16, 0.24, 0, 0, -0.5);
         break;
       case "crest":
         // Cimier de heaume, d'avant en arrière.
-        add(new THREE.BoxGeometry(0.06, 0.2, 0.44), 0, 0.3, -0.02);
+        add(() => new THREE.BoxGeometry(0.06, 0.2, 0.44), 0, 0.3, -0.02);
         break;
       case "hood":
         // Capuche pointue, ouverte : elle coiffe la tête sans la masquer.
-        add(new THREE.ConeGeometry(0.34, 0.6, seg, 1, true), 0, 0.14, -0.04, -0.15);
+        add(() => new THREE.ConeGeometry(0.34, 0.6, seg, 1, true), 0, 0.14, -0.04, -0.15);
         break;
       case "ears":
-        add(new THREE.ConeGeometry(0.08, 0.22, 4), -0.15, 0.25, 0, 0, 0.3);
-        add(new THREE.ConeGeometry(0.08, 0.22, 4), 0.15, 0.25, 0, 0, -0.3);
+        add(() => new THREE.ConeGeometry(0.08, 0.22, 4), -0.15, 0.25, 0, 0, 0.3);
+        add(() => new THREE.ConeGeometry(0.08, 0.22, 4), 0.15, 0.25, 0, 0, -0.3);
         break;
       case "none":
         break;
@@ -509,12 +520,12 @@ export class PlayerView {
     const color = ally ? palette.playerLocal.accent : palette.playerRemote.accent;
     (this.ring.material as THREE.MeshBasicMaterial).color.setHex(color);
     if (ally && !this.allyMarks) {
-      const geo = allyMarksGeometry();
+      const geo = sharedGeo("allyMarks", allyMarksGeometry);
       const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
       // Enfant de l'anneau : à plat comme lui.
       this.allyMarks = new THREE.Mesh(geo, mat);
       this.ring.add(this.allyMarks);
-      this.disposables.push(geo, mat);
+      this.disposables.push(mat);
     }
     if (this.allyMarks) this.allyMarks.visible = ally;
   }

@@ -45,7 +45,11 @@ client/src/
 │   │                    DISPATCH cyber/spirit selon theme.decor.kind
 │   ├── Bushes.ts        Buissons « Glitch Fields » (dôme, halo, particules)
 │   ├── Structures.ts    Panneaux holo, arches, racks, pads à drone, cristaux
-│   ├── PostFX.ts        EffectComposer (bloom + chroma + vignette + grain)
+│   ├── PostFX.ts        Cible HDR de la scène, bloom, puis une passe finale
+│   │                    (chroma, vignette, grain, sRGB) ; résolution
+│   │                    dynamique dans une partie de la cible
+│   ├── shaderWarmup.ts  Shaders compilés au lobby (tâche 2.9)
+│   ├── renderScale.ts   Tailles en pixels rapportées à la partie dessinée
 │   ├── MapEventView.ts  Zone au sol d'un évènement de carte (pluie, zone dorée)
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
 │   └── palette.ts       Façade rétrocompat sur le thème actif
@@ -81,6 +85,7 @@ client/src/
 ├── audio/SoundManager.ts Tone.js synth (chargé au premier geste, toneLib.ts)
 │                        + HTMLAudio tracks
 ├── ui/                  HUD, Login, Death, Leaderboard, Minimap, Settings,
+│                        PerfOverlay (mesure de fluidité, ?debug=perf),
 │                        CombatFeedback (repères de perte, gains « +N 🏆 »),
 │                        KillFeed (fil des éliminations), personalBest
 │                        (record local), Onboarding (carte des contrôles,
@@ -148,6 +153,12 @@ client/src/
   `room.state.players`. Un corps qui se dissout finit dans `corpses`.
 - **Mode debug** : `?debug=hitbox` dans l'URL dessine les hitbox serveur
   des lames proches et affiche l'écart client/serveur (orbites, étincelles).
+  `?debug=perf` affiche la fluidité (FPS, temps de frame médian, p95 et
+  pire, échelle de rendu, mode allégé, draw calls, shaders compilés depuis
+  l'entrée en partie, qui doit rester à +0) : une capture d'écran suffit à
+  diagnostiquer la machine d'un joueur. `window.__bladePerf.me()` y donne
+  la position du joueur local aux bancs scriptés, sans le flux de debug
+  des orbites de `?debug=hitbox` (qui fausserait la mesure).
 
 ### Quality presets — important
 
@@ -155,11 +166,18 @@ client/src/
 parmi `ultra | low | medium | high` (`ultra` est le mode le plus **léger**,
 « potato mode », pas le plus beau). Chaque module de rendu prend `q: QualityConfig`
 en constructeur et adapte son détail (segments, post-FX, instances). Un moniteur
-FPS adaptatif baisse `resScale` runtime puis downgrade le preset si nécessaire
-(en pleine partie : post-FX coupés à chaud, preset appliqué au retour menu —
-jamais de rechargement pendant un match). Il se met en pause boutique ouverte
-(`isBoutiqueOpen`) : l'aperçu 3D y fausse la mesure, et changer de preset au
-lobby recharge la page.
+FPS adaptatif baisse la résolution de rendu puis downgrade le preset si
+nécessaire (en pleine partie : `PostFX.setLite`, bloom, effets et MSAA coupés
+sans recompiler un shader, preset appliqué au retour menu — jamais de
+rechargement pendant un match). Avec post-FX, la résolution dynamique rend la
+scène dans une partie de sa cible (`PostFX.setRenderScale`) : rien n'est
+réalloué ; sans post-FX, c'est le canvas qui change de taille (un à-coup),
+d'où des paliers plus grands et 20 s avant de remonter après une baisse. Il se
+met en pause boutique ouverte (`isBoutiqueOpen`) : l'aperçu 3D y fausse la
+mesure, et changer de preset au lobby recharge la page. Ne jamais couper le
+post-FX en partie autrement que par `setLite` : la destination des matériaux
+change, donc tous leurs shaders (une quarantaine de recompilations, des
+secondes de gel sous Windows).
 
 **Conséquence** : tout nouveau code de rendu doit gérer **les 3 niveaux de
 détail** (`rich`, `simple`, `minimal`) ou au moins ne pas casser les low/ultra.
@@ -422,8 +440,13 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   0)` ni de division par ce qui peut s'annuler. Le flou du bloom étalait un
   seul pixel NaN en carré noir d'un millier de pixels de côté (Opera GX
   sous Windows : ANGLE y passe par Direct3D) ; son entrée est assainie
-  (`PostFX.ts`, avec une passe de repli si three.js change son filtre de
-  luminosité), mais le pixel fautif reste noir.
+  (filtre de luminosité de `PostFX.ts`), mais le pixel fautif reste noir.
+  Jamais de `precision` sur un matériau : dans three.js r163, elle fuit sur
+  tous les programmes compilés ensuite (la précision dépendait de l'ordre de
+  compilation, et un shader compilé d'avance n'avait plus la même clé).
+  Un uniform déclaré dans les deux étapes a la même précision dans les deux
+  (un fragment en `precision mediump` qui partage `uTime` avec son vertex
+  shader le déclare `mediump` des deux côtés), sinon le lien échoue.
 - **Performance** :
   - Le serveur de production est une seedbox à 40 Gbit/s (décision D6 du
     plan) : ni la bande passante ni le CPU ne sont des contraintes (tick à
@@ -607,6 +630,22 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `dist/index.html`. three.js et Colyseus ont leurs fichiers
   (`manualChunks`) et `/assets/` est servi en cache permanent (noms à
   empreinte) : une mise à jour du jeu ne les fait pas retélécharger.
+- **Fluidité (tâche 2.9)** : chaque shader compilé en pleine partie est un
+  gel (50 à 300 ms sous Windows, où ANGLE passe par Direct3D) : tous le
+  sont au lobby (`warmUpShaders` dans `main.ts`, `scene/shaderWarmup.ts`).
+  `renderer.compile` couvre tout ce que la scène contient, même caché ; ce
+  qui n'existe qu'en partie (joueurs, caisses, power-ups) y entre par un
+  échantillon. Un nouveau genre d'objet créé en partie ajoute le sien, et se
+  vérifie à `?debug=perf` (« +0 en partie »). Les joueurs d'échantillon
+  restent en mémoire, hors de la scène : leurs matériaux retiennent les
+  programmes, que three.js détruit sinon avec le dernier matériau qui les
+  utilise (le dernier joueur d'un genre sorti du champ emportait le
+  shader, recompilé à l'arrivée du suivant). Géométries des joueurs
+  partagées (`sharedGeo` dans `PlayerView.ts`) : jamais de `dispose()`
+  dessus. Post-traitement : une passe finale au lieu de cinq passes plein
+  écran à résolution MSAA (`PostFX.ts`) ; le canvas n'a plus d'antialiasing
+  à lui avec post-FX. Ce qui se mesure en pixels sur la cible (taille des
+  points) suit la partie dessinée (`scene/renderScale.ts`).
 - **Carte (tâche 4.7)** : `shared/src/decor.ts` décrit tout ce qui se
   voit ou bloque, pareil pour tous les thèmes. `DECOR_COLLIDERS` = pilier
   central, `OBELISKS`, puis les colliders des `STRUCTURES`
