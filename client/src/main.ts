@@ -2477,7 +2477,11 @@ export class Game {
         // Mort : le corps reste le temps de se dissoudre (tâche 4.9).
         const shown = shouldBeVisible || dissolving;
         if (v.root.visible !== shown) v.root.visible = shown;
-        if (v.trail.visible !== (shouldBeVisible && isLocal)) v.trail.visible = shouldBeVisible && isLocal;
+        // Traînée : la sienne, et celle des autres joueurs qui en ont une
+        // d'équipée (cosmétique visible par tous ; auparavant cachée ici,
+        // seul son propriétaire la voyait).
+        const trailShown = shouldBeVisible && v.showsTrail;
+        if (v.trail.visible !== trailShown) v.trail.visible = trailShown;
         // Lignes de vitesse (tâche 4.9) : le joueur local d'après son
         // dernier input, sans attendre le serveur ; les autres d'après l'état.
         const boosting = isLocal ? this.localBoosting && !this.dead : !!ps?.boost;

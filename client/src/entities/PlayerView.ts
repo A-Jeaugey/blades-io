@@ -365,6 +365,12 @@ export class PlayerView {
     this.accessoryDisposables = [];
   }
 
+  // A une traînée à afficher : le joueur local, ou un autre joueur qui en a
+  // une d'équipée.
+  get showsTrail(): boolean {
+    return this.hasTrail;
+  }
+
   // Traînée équipée : visible pour tous ; sans elle, seul le joueur local
   // en a une, à sa couleur. Aucune en basse qualité (q.playerTrail).
   private applyTrail(look: TrailLook | null): void {

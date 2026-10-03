@@ -60,7 +60,8 @@ client/src/
 │   │                    dessinée des lames rapides → traînées (setTrailSink)
 │   ├── bladeGeometries.ts Une forme par palier (dague → lame à aura)
 │   ├── PlayerView.ts    Capsule corps + tête + ring + halo + traînée
-│   │                    (ruban échantillonné dans le temps, joueur local)
+│   │                    (ruban échantillonné dans le temps : joueur local,
+│   │                    et tout joueur qui a une traînée équipée)
 │   │                    + dissolution à la mort (shader injecté)
 │   ├── CrateView.ts     Boîte émissive + edges
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
