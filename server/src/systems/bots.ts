@@ -736,8 +736,11 @@ export class BotController {
     let targetX = 0, targetY = 0;
     const farmRadius = bot.bladeCount < 6 ? 100 : 50;
 
+    const now = Date.now();
     arena.blades.forEach((b) => {
-      if (b.ownerId) return;
+      // Ni lame en vol, ni butin réservé au tueur d'un autre.
+      if (b.ownerId || b.isProjectile) return;
+      if (b.claimUntil > now && b.claimedBy !== bot.id) return;
       const dx = b.x - bot.x;
       const dy = b.y - bot.y;
       const d = Math.hypot(dx, dy);

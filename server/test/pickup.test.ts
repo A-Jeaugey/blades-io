@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   BladeRarity,
   GROUND_BLADE_FRICTION,
+  KILL_LOOT_PULL_SPEED,
   MAP_RADIUS,
   MAX_BLADES_PER_PLAYER,
   PICKUP_MAGNET_RADIUS,
@@ -115,6 +116,49 @@ test("aimant : rayon doublé par le power-up, sans effet sur une lame verrouill�
   updateBladePositions(DT, 0, state, new OrbitPositionCache());
   assert.ok(boosted.x > -7);
   assert.equal(locked.x, 3);
+});
+
+// Butin d'un kill : réservé au tueur, aspiré vers lui d'où qu'il soit, à
+// l'écart de l'aimant des autres.
+test("butin réservé : aspiré vers son tueur seul, ramassé par lui seul", () => {
+  const killer = addPlayer(state, { x: 0, y: -20 });
+  const bystander = addPlayer(state, { x: 21, y: -20 });
+  const loot = addGroundBlade(state, { x: 20, y: -20, expiresAt: clock.now + 15000 });
+  loot.claimedBy = killer.id;
+  loot.claimUntil = clock.now + 3000;
+  updateBladePositions(DT, 0, state, new OrbitPositionCache());
+  // Vers le tueur, à 20 u, pas vers le joueur collé à elle.
+  assert.ok(Math.abs(loot.x - (20 - KILL_LOOT_PULL_SPEED * DT)) < 1e-6, `x = ${loot.x}`);
+  const pickup = new PickupSystem();
+  const picked: string[] = [];
+  pickup.update(state, (p) => { picked.push(p.id); });
+  assert.equal(picked.length, 0, "le voisin ne le ramasse pas");
+  assert.equal(bystander.bladeCount, 0);
+  // Arrivé au tueur en moins d'une seconde, ramassé.
+  for (let i = 0; i < 60 && !loot.ownerId; i++) {
+    updateBladePositions(DT, i, state, new OrbitPositionCache());
+    pickup.update(state, (p) => { picked.push(p.id); });
+  }
+  assert.equal(loot.ownerId, killer.id);
+  assert.deepEqual(picked, [killer.id]);
+  assert.equal(loot.claimedBy, "");
+});
+
+test("butin réservé : ordinaire à l'échéance ou si le tueur meurt", () => {
+  const killer = addPlayer(state, { x: 0, y: -20 });
+  addPlayer(state, { x: 24, y: -20 });
+  const expired = addGroundBlade(state, { x: 20, y: -20 });
+  expired.claimedBy = killer.id;
+  expired.claimUntil = clock.now - 1;
+  updateBladePositions(DT, 0, state, new OrbitPositionCache());
+  assert.ok(expired.x > 20, "aimant du voisin");
+  const orphan = addGroundBlade(state, { x: 40, y: -20 });
+  orphan.claimedBy = killer.id;
+  orphan.claimUntil = clock.now + 3000;
+  killer.alive = false;
+  updateBladePositions(DT, 0, state, new OrbitPositionCache());
+  assert.equal(orphan.claimedBy, "");
+  assert.equal(orphan.claimUntil, 0);
 });
 
 test("friction des lames au sol et butée au bord de l'arène", () => {

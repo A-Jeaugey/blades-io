@@ -32,6 +32,7 @@ import {
   isInBush,
   GROUND_BLADE_TTL_MS,
   INITIAL_BLADE_COUNT,
+  KILL_LOOT_CLAIM_MS,
   MAP_RADIUS,
   MAX_INPUT_QUEUE,
   MAX_INPUT_RATE,
@@ -1331,7 +1332,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // fraction RECENT_LOSS_DROP_RATIO (1.0 = 100 %) des lames cassées en
     // clash dans les 10 dernières secondes. C'est ce qui donne au tueur
     // un butin cohérent avec le combat même si la victime meurt à 0 lame
-    // en orbite. Plafonné à RECENT_LOSS_BUFFER_CAP entrées (12).
+    // en orbite.
     const cutoff = now - RECENT_LOSS_WINDOW_MS;
     const fresh = victim.recentLosses.filter((l) => l.ts >= cutoff);
     const recentDropCount = Math.floor(fresh.length * RECENT_LOSS_DROP_RATIO);
@@ -1343,6 +1344,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       droppedRarities.push(fresh[idx].rarity as BladeRarity);
     }
     victim.recentLosses = [];
+    // Butin réservé au tueur et aspiré vers lui (KILL_LOOT_CLAIM_MS).
+    const claimer = killer && killer.alive && killer.id !== victim.id ? killer.id : "";
     for (const rarity of droppedRarities) {
       const a = Math.random() * Math.PI * 2;
       const d = DEATH_DROP_MIN_DIST + Math.random() * (DEATH_DROP_MAX_DIST - DEATH_DROP_MIN_DIST);
@@ -1358,6 +1361,10 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       nb.vx = Math.cos(a) * speed; nb.vy = Math.sin(a) * speed;
       nb.pickupLockUntil = now + 400;
       nb.expiresAt = now + GROUND_BLADE_TTL_MS;
+      if (claimer) {
+        nb.claimedBy = claimer;
+        nb.claimUntil = now + KILL_LOOT_CLAIM_MS;
+      }
       this.state.blades.set(nb.id, nb);
     }
     if (killer) {

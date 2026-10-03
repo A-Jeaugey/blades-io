@@ -633,6 +633,15 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   poursuivre (perçant) jusqu'aux suivantes ou au corps. La portée d'un
   joueur pour les buissons (`reachOf`) suit la plus longue lame de son
   palier. `?debug=hitbox` trace les deux formes (cercle, axe de la lame).
+- **Butin d'un kill (tâche 4.11)** : la victime lâche 70 % de son orbite
+  (tout si elle menait) et toutes les lames perdues dans les 10 dernières
+  secondes (`recentLosses`, plafonné à 12 avant : le butin d'un combat ne
+  dépassait jamais 12 lames). Ce butin est réservé à son tueur pendant
+  `KILL_LOOT_CLAIM_MS` (`Blade.claimedBy`, `claimUntil`, champs serveur) :
+  aspiré vers lui d'où qu'il soit (`updateBladePositions`), ramassé par lui
+  seul (`PickupSystem`), ignoré des bots qui récoltent. Tueur mort, parti
+  ou au plafond de lames : butin ordinaire. Mort sans tueur (mur) : butin
+  ordinaire.
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en

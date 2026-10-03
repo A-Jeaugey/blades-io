@@ -6,6 +6,7 @@ import {
   BladeRarity,
   CLOSE_CODE_INPUT_FLOOD,
   GROUND_BLADE_TTL_MS,
+  KILL_LOOT_CLAIM_MS,
   MAP_RADIUS,
   PLAYER_SPEED,
   SPAWN_PROTECTION_MS,
@@ -87,6 +88,44 @@ test("mort : les lames perdues dans les 10 dernières secondes tombent aussi", (
   clock.advance(11_000);
   r2.room.killPlayer(old, null, "wall");
   assert.equal(groundBlades(r2.state).length, 4);
+});
+
+// Le butin d'un combat comprend toutes les lames perdues dans les 10
+// dernières secondes : plafonné à 12 avant, tuer une grosse orbite ne
+// rapportait guère plus qu'une petite.
+test("mort : toutes les lames perdues au combat tombent, pas seulement 12", () => {
+  const r = new TestRoom(clock);
+  const victim = armed(r, "victim", 40);
+  for (const b of ownedBlades(r.state, victim).slice(0, 30)) r.room.handleBladeDestroyed(b);
+  r.room.killPlayer(victim, null, "wall");
+  // floor(10 × 0,7) = 7 lames en orbite + 30 pertes récentes.
+  assert.equal(groundBlades(r.state).length, 37);
+});
+
+// Butin d'un kill : réservé au tueur et aspiré jusque dans son orbite, même
+// tué de loin, même avec un autre joueur collé à la victime.
+test("mort : le butin rejoint l'orbite du tueur, même de loin", () => {
+  const r = new TestRoom(clock);
+  const victim = armed(r, "victim", 20);
+  const killer = armed(r, "killer", 5);
+  const bystander = r.join("bystander");
+  victim.x = 0; victim.y = 30;
+  killer.x = 0; killer.y = 15;
+  bystander.x = 1.5; bystander.y = 30;
+  killer.spawnProtectionUntil = 0;
+  bystander.spawnProtectionUntil = 0;
+  r.room.killPlayer(victim, killer, "blades");
+  const drops = groundBlades(r.state).filter((b) => b.claimedBy === killer.id);
+  assert.equal(drops.length, 14);
+  for (const b of drops) assert.equal(b.claimUntil, clock.now + KILL_LOOT_CLAIM_MS);
+  r.tick(90);
+  assert.equal(killer.bladeCount, 5 + 14);
+  assert.equal(bystander.bladeCount, 3);
+  // Mort contre le mur : butin ordinaire.
+  const r2 = new TestRoom(clock);
+  const fallen = armed(r2, "fallen", 10);
+  r2.room.killPlayer(fallen, null, "wall");
+  assert.ok(groundBlades(r2.state).every((b) => b.claimedBy === "" && b.claimUntil === 0));
 });
 
 test("drops : clignotent puis disparaissent, les lames ambiantes restent", () => {

@@ -52,9 +52,11 @@ export function attachBladeToPlayer(
   blade.ownerId = player.id;
   blade.vx = 0;
   blade.vy = 0;
-  // En orbite, plus d'échéance de drop.
+  // En orbite, plus d'échéance de drop ni de réservation.
   blade.expiresAt = 0;
   blade.expiring = false;
+  blade.claimedBy = "";
+  blade.claimUntil = 0;
   // Au pickup la lame regen ses HP : sinon une lame Common ramassée avec
   // 1 PV restera fragile à vie même sans avoir combattu.
   blade.hp = RARITY_HP[blade.rarity as BladeRarity];
@@ -93,6 +95,8 @@ export class PickupSystem {
       for (const item of near) {
         const b = state.blades.get(item.id);
         if (!b || b.ownerId) continue;
+        // Butin d'un kill : à son tueur seul tant qu'il lui est réservé.
+        if (b.claimUntil > now && b.claimedBy !== p.id) continue;
         const dx = b.x - p.x;
         const dy = b.y - p.y;
         if (dx * dx + dy * dy <= PICKUP_RADIUS * PICKUP_RADIUS) {

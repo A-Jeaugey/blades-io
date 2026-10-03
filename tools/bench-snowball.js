@@ -8,7 +8,9 @@
 //    qu'on cherche à raccourcir, manqueraient) ;
 //  - la part des éliminations « underdog » : le tueur avait au plus la
 //    moitié des lames de sa victime au début de l'échange ;
-//  - les éliminations du leader, et par qui.
+//  - les éliminations du leader, et par qui ;
+//  - la taille des orbites : record de lames de chaque vie, et la plus
+//    grosse orbite de la room à chaque relevé (tâches 4.11 et 4.12).
 //
 // Comme bench-survival.js, les tirages dépendent de tout le code simulé :
 // comparer deux versions aux mêmes graines, et à l'aune de l'écart entre
@@ -44,6 +46,10 @@ let underdogKills = 0;
 let leaderKills = 0;
 let leaderKillsByUnderdog = 0;
 let bountyTotal = 0;
+// Record de lames de chaque vie finie (ou en cours à la fin d'une graine),
+// et plus grosse orbite vivante à chaque relevé.
+const peaks = [];
+const tops = [];
 
 for (const seed of SEEDS) {
   const clock = new FakeClock();
@@ -51,6 +57,7 @@ for (const seed of SEEDS) {
   const r = new TestRoom(clock, { bots: true });
   let leader = null;
   let since = 0;
+  const livePeak = new Map();
   const total = (WARMUP_S + MINUTES * 60) / DT;
   for (let i = 0; i < total; i++) {
     r.tick();
@@ -68,13 +75,24 @@ for (const seed of SEEDS) {
         }
         if (m.bounty) bountyTotal += m.bounty;
       }
+      for (const e of r.events) {
+        if (e.type !== "playerKilled") continue;
+        const peak = livePeak.get(e.message.victimId);
+        if (peak !== undefined) peaks.push(peak);
+        livePeak.delete(e.message.victimId);
+      }
     }
     r.events.length = 0;
     if (i % SAMPLE_EVERY !== 0) continue;
     let top = null;
+    let biggest = 0;
     r.state.players.forEach((p) => {
       if (p.alive && (!top || p.score > top.score)) top = p;
+      if (!measuring || !p.alive) return;
+      livePeak.set(p.id, Math.max(livePeak.get(p.id) ?? 0, p.bladeCount));
+      if (p.bladeCount > biggest) biggest = p.bladeCount;
     });
+    if (measuring) tops.push(biggest);
     const topId = top ? top.id : null;
     if (topId !== leader) {
       if (measuring) {
@@ -86,15 +104,20 @@ for (const seed of SEEDS) {
     }
   }
   if (leader !== null) reigns.push(total * DT - Math.max(since, WARMUP_S));
+  for (const peak of livePeak.values()) peaks.push(peak);
   measuredS += MINUTES * 60;
   restoreRandom();
   clock.restore();
 }
 
 reigns.sort((a, b) => a - b);
+peaks.sort((a, b) => a - b);
+tops.sort((a, b) => a - b);
 const pct = (n, d) => (d ? ((100 * n) / d).toFixed(1) : "—");
 console.log(`Graines ${SEEDS.join(",")}, ${MINUTES} min chacune après ${WARMUP_S / 60} min de chauffe`);
 console.log(`  changements de leader   : ${changes}, soit ${((changes * 3600) / measuredS).toFixed(1)} par heure`);
 console.log(`  règnes du leader        : ${reigns.length}, médiane ${quantile(reigns, 0.5).toFixed(1)} s, quartiles ${quantile(reigns, 0.25).toFixed(1)} / ${quantile(reigns, 0.75).toFixed(1)} s, max ${reigns.length ? reigns[reigns.length - 1].toFixed(0) : "—"} s`);
 console.log(`  éliminations            : ${kills}, dont underdog ${underdogKills} (${pct(underdogKills, kills)} %)`);
 console.log(`  leader éliminé          : ${leaderKills} fois, dont ${leaderKillsByUnderdog} par un underdog${bountyTotal ? `, primes versées ${bountyTotal}` : ""}`);
+console.log(`  record de lames par vie : ${peaks.length} vies, médiane ${quantile(peaks, 0.5).toFixed(0)}, p90 ${quantile(peaks, 0.9).toFixed(0)}, p99 ${quantile(peaks, 0.99).toFixed(0)}, max ${peaks.length ? peaks[peaks.length - 1] : "—"}`);
+console.log(`  plus grosse orbite      : médiane ${quantile(tops, 0.5).toFixed(0)}, p90 ${quantile(tops, 0.9).toFixed(0)}, max ${tops.length ? tops[tops.length - 1] : "—"} lames (relevés à 2 Hz)`);

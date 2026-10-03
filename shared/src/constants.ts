@@ -379,12 +379,23 @@ export const DEATH_DROP_SPEED_MAX = 3;
 // (ms). Évite que tuer un ennemi qui finit forcément à 0 lames donne 0 loot,
 // sans pour autant resservir l'historique entier de la partie.
 export const RECENT_LOSS_WINDOW_MS = 10000;
-export const RECENT_LOSS_BUFFER_CAP = 12;
+// Garde-fou de mémoire, pas un réglage : à 12, le butin d'un combat
+// s'arrêtait à 12 lames, si grosse que soit l'orbite que le tueur venait de
+// détruire, et tuer coûtait souvent plus de lames qu'il n'en rapportait.
+export const RECENT_LOSS_BUFFER_CAP = 400;
 // Fraction des pertes récentes effectivement dropées à la mort (en plus du
 // DEATH_DROP_RATIO classique appliqué aux lames encore en orbite). 1.0 =
 // le tueur récupère 100 % de ce que la victime a cramé dans les 10 dernières
 // secondes — encourage l'aggro.
 export const RECENT_LOSS_DROP_RATIO = 1.0;
+// Butin d'un kill réservé au tueur pendant KILL_LOOT_CLAIM_MS et aspiré
+// vers lui à KILL_LOOT_PULL_SPEED (u/s, plus vite qu'un joueur au boost),
+// d'où qu'il ait tué (bord d'une grosse orbite, lancer). Avant, il tombait
+// sous la victime, hors de l'aimant du tueur (5,5 u de son centre) dès que
+// son orbite était grande : il fallait aller le chercher, et d'autres le
+// ramassaient avant lui. Au-delà, butin ordinaire.
+export const KILL_LOOT_CLAIM_MS = 3000;
+export const KILL_LOOT_PULL_SPEED = 40;
 
 // --- Raretés ---
 export enum BladeRarity {
