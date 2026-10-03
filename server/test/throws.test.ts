@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   BladeRarity,
   CRATE_HP,
+  PLAYER_BODY_RADIUS,
+  THROW_PROJECTILE_HITBOX,
+  bladeTipReach,
   GROUND_BLADE_TTL_MS,
   THROW_COOLDOWN_MS,
   THROW_LANDED_PICKUP_LOCK_MS,
@@ -68,12 +71,16 @@ function thrower(x = 0, y = 0): Player {
   return p;
 }
 
-function projectile(opts: { x: number; y: number; rarity: BladeRarity; pierce: number; by: Player }): Blade {
+function projectile(opts: {
+  x: number; y: number; rarity: BladeRarity; pierce: number; by: Player; vx?: number; vy?: number;
+}): Blade {
   const b = new Blade();
   b.id = uid("proj");
   b.rarity = opts.rarity;
   b.x = opts.x;
   b.y = opts.y;
+  b.vx = opts.vx ?? 0;
+  b.vy = opts.vy ?? 0;
   b.isProjectile = true;
   b.thrownBy = opts.by.id;
   b.pierceLeft = opts.pierce;
@@ -93,7 +100,7 @@ test("lancer : la lame extérieure part en projectile dans la direction du joueu
   assert.equal(outer.pierceLeft, 2); // Epic
   assert.equal(outer.vx, THROW_PROJECTILE_SPEED);
   assert.equal(outer.vy, 0);
-  // Départ au bord extérieur : orbite (1,8) + hitbox projectile (0,85) + 0,1.
+  // Départ au bord extérieur : orbite (1,8) + THROW_START_MARGIN (0,95).
   assert.ok(Math.abs(outer.x - 2.75) < 1e-9);
   assert.equal(p.bladeCount, 2);
   assert.equal(p.bladeIds.includes(outer.id), false);
@@ -305,4 +312,103 @@ test("un projectile Legendary traverse une caisse", () => {
   assert.equal(proj.pierceLeft, 2);
   assert.deepEqual(r.impacts.map((i) => [i.kind, i.destroyed]), [[2, false]]);
   assert.equal(r.crateHits.length, 1);
+});
+
+// Contact testé sur tout le trajet du tick : un projectile qui frôle un
+// corps entre deux positions le touche (ici un pas de 3,8 u, à-coup de
+// 100 ms), même si aucune des deux n'est à portée.
+test("projectile : contact sur tout le trajet du tick", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  const b = addPlayer(state, { x: 10, y: 0 });
+  const side = THROW_PROJECTILE_HITBOX + PLAYER_BODY_RADIUS - 0.1;
+  const dt = 0.1;
+  const v = 38;
+  // Positions précédente (8,1 ; side) et courante (11,9 ; side).
+  const proj = projectile({ x: 10 + (v * dt) / 2, y: side, vx: v, rarity: BladeRarity.Common, pierce: 1, by: a });
+  proj.originX = 0;
+  proj.originY = side;
+  const ends = [10 - (v * dt) / 2, 10 + (v * dt) / 2].map((x) => Math.hypot(x - b.x, side));
+  assert.ok(ends.every((d) => d > THROW_PROJECTILE_HITBOX + PLAYER_BODY_RADIUS), "aucune extrémité à portée");
+  const r = recorder();
+  resolveProjectileCollisions(state, r, new OrbitPositionCache(), dt);
+  assert.deepEqual(r.kills.map((k) => k.victim.id), [b.id]);
+});
+
+// Le trajet ne remonte pas avant le point de départ : un lancer de ce tick
+// ne touche pas ce qui est derrière le lanceur.
+test("projectile : pas de contact en deçà de son point de départ", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  addPlayer(state, { x: -1.5, y: 3 });
+  const proj = projectile({ x: 3.6, y: 3, vx: 38, rarity: BladeRarity.Common, pierce: 1, by: a });
+  proj.originX = 3;
+  proj.originY = 3;
+  const r = recorder();
+  resolveProjectileCollisions(state, r, new OrbitPositionCache(), 0.1);
+  assert.equal(r.kills.length, 0);
+});
+
+// Une lame perforante qui brise une lame en orbite poursuit sa course et
+// peut toucher le corps ; avant, toute la cible devenait intangible et la
+// lame lancée traversait le corps sans effet.
+test("projectile perforant : brise une lame en orbite, puis touche le corps", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  const b = addPlayer(state, { x: 10, y: 0, blades: 1 });
+  const shield = ownedBlades(state, b)[0];
+  const cache = new OrbitPositionCache();
+  cache.set(shield.id, 8.2, 0);
+  const proj = projectile({ x: 6.5, y: 0, vx: 38, rarity: BladeRarity.Epic, pierce: 2, by: a });
+  proj.originX = 0;
+  const r = recorder();
+  resolveProjectileCollisions(state, r, cache);
+  assert.equal(r.breakers.get(shield.id), a.id, "lame en orbite brisée");
+  assert.equal(proj.pierceLeft, 1);
+  assert.equal(b.alive, true);
+  // Ticks suivants : le corps.
+  for (let i = 0; i < 10 && b.alive && state.blades.has(proj.id); i++) {
+    proj.x += 38 / 60;
+    resolveProjectileCollisions(state, r, cache);
+  }
+  assert.deepEqual(r.kills.map((k) => [k.victim.id, k.killer?.id]), [[b.id, a.id]]);
+  assert.deepEqual(r.impacts.map((i) => [i.kind, i.destroyed]), [[0, false], [1, true]]);
+});
+
+test("projectile perforant : une lame en orbite qui tient l'arrête", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  const b = addPlayer(state, { x: 10, y: 0, rarity: BladeRarity.Legendary, blades: 1 });
+  const shield = ownedBlades(state, b)[0];
+  const cache = new OrbitPositionCache();
+  cache.set(shield.id, 8.2, 0);
+  const proj = projectile({ x: 6.5, y: 0, vx: 38, rarity: BladeRarity.Epic, pierce: 2, by: a });
+  proj.originX = 0;
+  const r = recorder();
+  resolveProjectileCollisions(state, r, cache);
+  // Légendaire (8 PV) contre Epic (4 dégâts) : entamée, pas brisée.
+  assert.equal(shield.hp, 4);
+  assert.equal(proj.pierceLeft, 0);
+  assert.equal(state.blades.has(proj.id), false);
+  assert.deepEqual(r.impacts.map((i) => [i.kind, i.destroyed]), [[0, true]]);
+  assert.equal(b.alive, true);
+});
+
+// Une lame en orbite se teste telle qu'elle est dessinée : la pointe d'une
+// grosse lame accroche un projectile qui passe loin de son point d'anneau.
+test("projectile vs lame dessinée : la pointe d'une grosse lame l'accroche", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  const b = addPlayer(state, { x: 0, y: 30, rarity: BladeRarity.Legendary, blades: 1 });
+  b.tier = 5;
+  const shield = ownedBlades(state, b)[0];
+  const cache = new OrbitPositionCache();
+  // Lame à droite du corps, pointe vers +x.
+  cache.set(shield.id, 1.8, 30);
+  const tip = bladeTipReach(5, BladeRarity.Legendary);
+  // Trajet vertical à 1,8 + pointe - 0,2 du centre : loin du point
+  // d'anneau (et du corps), au contact de la pointe.
+  const px = 1.8 + tip - 0.2;
+  assert.ok(px - 1.8 > THROW_PROJECTILE_HITBOX + 0.5, "hors de l'ancienne hitbox de l'orbite");
+  projectile({ x: px, y: 30, vy: 38, rarity: BladeRarity.Common, pierce: 1, by: a });
+  const r = recorder();
+  resolveProjectileCollisions(state, r, cache);
+  assert.deepEqual(r.impacts.map((i) => i.kind), [0]);
+  assert.equal(shield.hp, 8 - 1);
+  assert.equal(b.alive, true);
 });

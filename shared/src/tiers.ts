@@ -1,11 +1,15 @@
 import {
+  BLADE_EDGE_HALF_WIDTH,
   BLADE_HITBOX,
   BLADE_ROT_DIVISOR,
   BLADE_ROT_MAX_BONUS,
+  BLADE_TIP_REACH,
+  BladeRarity,
   CLASH_SHAKE_INTENSITY,
   HITLAG_DURATION_MS,
   KNOCKBACK_BASE,
   KNOCKBACK_TIER_MULT,
+  RARITY_SCALE,
   TIER_COUNT,
   TIER_HITBOX_MULT,
   TIER_ROT_MULT,
@@ -47,6 +51,28 @@ export function tierRotationMult(tier: number): number {
 
 export function tierVisualScale(tier: number): number {
   return TIER_VISUAL_SCALE[clampTier(tier)];
+}
+
+// Échelle d'une lame en orbite à l'écran : palier × rareté (BladeView).
+export function bladeVisualScale(tier: number, rarity: BladeRarity): number {
+  return TIER_VISUAL_SCALE[clampTier(tier)] * (RARITY_SCALE[rarity] ?? 1);
+}
+
+// Lame en orbite telle que dessinée (cf. BLADE_TIP_REACH) : pointe à cette
+// distance de son point d'anneau, vers l'extérieur.
+export function bladeTipReach(tier: number, rarity: BladeRarity): number {
+  return BLADE_TIP_REACH[clampTier(tier)] * bladeVisualScale(tier, rarity);
+}
+
+// Demi-largeur de la lame dessinée.
+export function bladeEdgeRadius(tier: number, rarity: BladeRarity): number {
+  return BLADE_EDGE_HALF_WIDTH * bladeVisualScale(tier, rarity);
+}
+
+// Portée d'une lame au-delà de son point d'anneau, pour toucher un corps :
+// hitbox ronde ou lame dessinée, la plus longue des deux.
+export function bladeBodyReach(tier: number, rarity: BladeRarity): number {
+  return Math.max(tierBladeHitbox(tier), bladeTipReach(tier, rarity) + bladeEdgeRadius(tier, rarity));
 }
 
 export function tierKnockback(tier: number): number {

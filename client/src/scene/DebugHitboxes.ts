@@ -7,8 +7,9 @@ import { DEBUG_HITBOX_COLOR } from "../themes/Theme";
 export interface DebugOrbitFrame {
   tick: number;
   owners: Record<string, [number, number]>;
-  // [id, ownerId, x, y, hitbox, anneau, slot, lames dans l'anneau]
-  blades: Array<[string, string, number, number, number, number, number, number]>;
+  // [id, ownerId, x, y, hitbox, anneau, slot, lames dans l'anneau, portée
+  // de la lame dessinée au-delà de son point d'anneau (touche de corps)]
+  blades: Array<[string, string, number, number, number, number, number, number, number]>;
 }
 
 // Écart angulaire (rad) entre l'angle que ce client calcule pour une lame
@@ -43,6 +44,10 @@ export class DebugHitboxes {
   private measuredTick = -1;
   private errors: number[] = [];
   private rings: THREE.LineLoop[] = [];
+  // Axe de chaque lame dessinée, du point d'anneau jusqu'où elle touche un
+  // corps (pointe et demi-largeur), en un seul tracé.
+  private tips: THREE.LineSegments;
+  private tipPositions = new Float32Array(MAX_RINGS * 6);
   private group = new THREE.Group();
   private label: HTMLDivElement;
 
@@ -63,6 +68,12 @@ export class DebugHitboxes {
       this.rings.push(ring);
       this.group.add(ring);
     }
+    const tipGeometry = new THREE.BufferGeometry();
+    tipGeometry.setAttribute("position", new THREE.BufferAttribute(this.tipPositions, 3).setUsage(THREE.DynamicDrawUsage));
+    this.tips = new THREE.LineSegments(tipGeometry, material);
+    this.tips.frustumCulled = false;
+    this.tips.renderOrder = 999;
+    this.group.add(this.tips);
     scene.add(this.group);
     this.label = document.createElement("div");
     this.label.className = "debug-hitbox-label";
@@ -169,6 +180,24 @@ export class DebugHitboxes {
       ring.position.set(b[2], 0.95, b[3]);
       ring.scale.setScalar(b[4]);
     }
+    const pos = this.tipPositions;
+    let segments = 0;
+    for (let i = 0; i < blades.length && i < MAX_RINGS; i++) {
+      const b = blades[i];
+      const owner = best?.owners[b[1]];
+      if (!owner || !(b[8] > 0)) continue;
+      const dx = b[2] - owner[0];
+      const dy = b[3] - owner[1];
+      const d = Math.hypot(dx, dy);
+      if (d < 1e-6) continue;
+      const k = b[8] / d;
+      const o = segments * 6;
+      pos[o] = b[2]; pos[o + 1] = 0.95; pos[o + 2] = b[3];
+      pos[o + 3] = b[2] + dx * k; pos[o + 4] = 0.95; pos[o + 5] = b[3] + dy * k;
+      segments++;
+    }
+    this.tips.geometry.setDrawRange(0, segments * 2);
+    (this.tips.geometry.getAttribute("position") as THREE.BufferAttribute).needsUpdate = true;
 
     this.label.textContent =
       `hitbox debug · tick ${renderTick.toFixed(1)} · écart orbites distantes : ` +

@@ -3,11 +3,17 @@ import {
   BladeRarity,
   CRATE_HITBOX,
   HITLAG_COOLDOWN_MS,
+  KILL_LAG_ALLOWANCE_MS,
+  KILL_LAG_REACH_MAX,
   KNOCKBACK_MAX_SPEED,
   PLAYER_BODY_COLLISION,
   PLAYER_BODY_RADIUS,
   POWERUP_SHIELD_DMG_REDUC,
   RARITY_DAMAGE,
+  TIER_COUNT,
+  bladeBodyReach,
+  bladeEdgeRadius,
+  bladeTipReach,
   outerOrbitRadius,
   tierBladeHitbox,
   tierHitlagMs,
@@ -57,6 +63,29 @@ const HITLAG_COOLDOWN = HITLAG_COOLDOWN_MS;
 const KNOCKBACK_MAX = KNOCKBACK_MAX_SPEED;
 const SHIELD_REDUC = POWERUP_SHIELD_DMG_REDUC;
 const DAMAGE = RARITY_DAMAGE;
+// Lame dessinée par palier et rareté (pointe, demi-largeur, portée sur un
+// corps), calculée une fois : lue pour chaque lame à chaque tick.
+const RARITIES = 4;
+const TIP = new Float64Array(TIER_COUNT * RARITIES);
+const EDGE = new Float64Array(TIER_COUNT * RARITIES);
+const BODY_REACH = new Float64Array(TIER_COUNT * RARITIES);
+for (let t = 0; t < TIER_COUNT; t++) {
+  for (let r = 0; r < RARITIES; r++) {
+    TIP[t * RARITIES + r] = bladeTipReach(t, r);
+    EDGE[t * RARITIES + r] = bladeEdgeRadius(t, r);
+    BODY_REACH[t * RARITIES + r] = bladeBodyReach(t, r);
+  }
+}
+function drawnIndex(tier: number, rarity: number): number {
+  const t = tier < 0 ? 0 : tier >= TIER_COUNT ? TIER_COUNT - 1 : tier;
+  const r = rarity < 0 ? 0 : rarity >= RARITIES ? RARITIES - 1 : rarity;
+  return t * RARITIES + r;
+}
+const LAG_S = KILL_LAG_ALLOWANCE_MS / 1000;
+const LAG_REACH_MAX = KILL_LAG_REACH_MAX;
+// Au-delà, le dernier pas d'un humain est trop ancien pour dire où il va
+// (inputs interrompus) : pas de portée de latence.
+const MOVE_STALE_MS = 100;
 
 // Un seul gel à la fois, puis HITLAG_COOLDOWN_MS de liberté : un clash
 // pendant le gel ne le prolonge pas. Avant, chaque contact le repoussait et
@@ -88,6 +117,12 @@ interface OrbitingEntry {
   y: number;
   // hitbox effective de la lame (= BLADE_HITBOX × tier multiplier du proprio)
   hitbox: number;
+  // Lame dessinée, pour toucher un corps : axe radial (ux, uy), pointe à
+  // `tip` du point d'anneau, demi-largeur `edge` (cf. BLADE_TIP_REACH).
+  ux: number;
+  uy: number;
+  tip: number;
+  edge: number;
   // Brisée pendant ce tick (doublon du Set `destroyed`, lu sans hachage
   // dans les boucles de paires).
   dead: boolean;
@@ -109,6 +144,15 @@ interface OwnerBucket {
   // broad-phase joueur-vs-joueur (pas besoin d'itérer les paires de lames
   // si les deux centres sont trop éloignés).
   reach: number;
+  // Hitbox ronde de ses lames (tierBladeHitbox).
+  hitbox: number;
+  // Même chose pour toucher un corps : lames dessinées comprises
+  // (bladeBodyReach), portée de latence non comprise.
+  bodyReach: number;
+  // Humain qui se déplace : vitesse de son dernier pas (portée de latence,
+  // KILL_LAG_ALLOWANCE_MS). Nulle pour un bot ou un humain à l'arrêt.
+  vx: number;
+  vy: number;
   spawnProtected: boolean;
   shielded: boolean;
   // Équipe (modes équipe) : deux alliés ne se touchent pas.
@@ -148,13 +192,20 @@ export function resolveCollisions(
   state.players.forEach((p) => {
     if (!p.alive) return;
     const tier = p.tier;
+    const moving = !p.isBot && nowMs - p.movedAt <= MOVE_STALE_MS;
+    const outer = outerOrbitRadius(p.bladeCount);
+    const hitbox = tierBladeHitbox(tier);
     const bucket: OwnerBucket = {
       player: p,
       id: p.id,
       x: p.x,
       y: p.y,
       tier,
-      reach: outerOrbitRadius(p.bladeCount) + tierBladeHitbox(tier),
+      reach: outer + hitbox,
+      hitbox,
+      bodyReach: outer + hitbox,
+      vx: moving ? p.moveVx : 0,
+      vy: moving ? p.moveVy : 0,
       spawnProtected: p.spawnProtectionUntil > nowMs,
       shielded: p.shieldUntil > nowMs,
       team: p.team,
@@ -172,13 +223,26 @@ export function resolveCollisions(
     const id = b.id;
     const pos = orbitCache.get(id);
     if (!pos) return;
+    const rarity = b.rarity as BladeRarity;
+    const k = drawnIndex(bucket.tier, rarity);
+    // Axe de la lame : du centre de son propriétaire vers elle (le rayon de
+    // son anneau, mesuré sur la position du tick).
+    const ox = pos.x - bucket.x;
+    const oy = pos.y - bucket.y;
+    const r = Math.sqrt(ox * ox + oy * oy);
+    const bodyReach = r + BODY_REACH[k];
+    if (bodyReach > bucket.bodyReach) bucket.bodyReach = bodyReach;
     bucket.blades.push({
       blade: b,
       id,
-      damage: DAMAGE[b.rarity as BladeRarity],
+      damage: DAMAGE[rarity],
       x: pos.x,
       y: pos.y,
-      hitbox: tierBladeHitbox(bucket.tier),
+      hitbox: bucket.hitbox,
+      ux: r > 1e-6 ? ox / r : 0,
+      uy: r > 1e-6 ? oy / r : 0,
+      tip: TIP[k],
+      edge: EDGE[k],
       dead: false,
     });
   });
@@ -261,9 +325,10 @@ export function resolveCollisions(
   });
 
   // -------- Phase 3 : blade-vs-body (instant kill) -------------------------
-  // Hitbox élargie : avec un joueur tier 2 (hitbox x3), un autre joueur
-  // qui rentre dans son cylindre meurt à 2 unités du centre, pas à 1.3.
-  // Ça résout le "syndrome de la passoire" sur les attaques au corps.
+  // Une lame tue un corps qu'elle touche : sa hitbox ronde (élargie avec le
+  // palier, contre le "syndrome de la passoire") ou la lame telle qu'elle
+  // est dessinée, du point d'anneau à la pointe (aux hauts paliers et aux
+  // hautes raretés, elle porte bien plus loin que la hitbox ronde).
   // Les cibles sont les joueurs vivants de la phase 0 ; `alive` est relu à
   // chaque cible car un kill de cette phase peut en retirer une.
   for (const target of owners) {
@@ -278,17 +343,39 @@ export function resolveCollisions(
       if (owner.spawnProtected) continue;
       if (spared && owner.player.isBot) continue;
       // Broad phase : la cible peut-elle être à portée d'une lame ?
-      const cdx = owner.x - target.x;
-      const cdy = owner.y - target.y;
-      const cReach = owner.reach + BODY_RADIUS;
-      if (cdx * cdx + cdy * cdy > cReach * cReach) continue;
+      const tx = target.x - owner.x;
+      const ty = target.y - owner.y;
+      const d2 = tx * tx + ty * ty;
+      const cReach = owner.bodyReach + BODY_RADIUS + (owner.vx !== 0 || owner.vy !== 0 ? LAG_REACH_MAX : 0);
+      if (d2 > cReach * cReach) continue;
+      // Portée de latence : ce que l'attaquant parcourt vers la cible pendant
+      // KILL_LAG_ALLOWANCE_MS, ajouté au rayon du corps.
+      let body = BODY_RADIUS;
+      if (d2 > 1e-6 && (owner.vx !== 0 || owner.vy !== 0)) {
+        const closing = (owner.vx * tx + owner.vy * ty) / Math.sqrt(d2);
+        if (closing > 0) body += Math.min(LAG_REACH_MAX, closing * LAG_S);
+      }
 
       for (const e of owner.blades) {
         if (destroyed.has(e.id)) continue;
-        const minDist = BODY_RADIUS + e.hitbox;
-        const dx = e.x - target.x;
-        const dy = e.y - target.y;
-        if (dx * dx + dy * dy > minDist * minDist) continue;
+        const dx = target.x - e.x;
+        const dy = target.y - e.y;
+        const minDist = body + e.hitbox;
+        let hit = dx * dx + dy * dy <= minDist * minDist;
+        if (!hit) {
+          // Lame dessinée : point de son axe (du point d'anneau à la pointe)
+          // le plus proche du corps. En deçà du point d'anneau, la hitbox
+          // ronde (plus large que la lame) a déjà répondu.
+          const t = dx * e.ux + dy * e.uy;
+          if (t > 0) {
+            const along = t < e.tip ? t : e.tip;
+            const ex = dx - e.ux * along;
+            const ey = dy - e.uy * along;
+            const r = body + e.edge;
+            hit = ex * ex + ey * ey <= r * r;
+          }
+        }
+        if (!hit) continue;
         cb.onPlayerKilled(target.player, owner.player);
         killed = true;
         break;

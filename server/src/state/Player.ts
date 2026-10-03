@@ -111,6 +111,12 @@ export class Player extends Schema {
   // ignorés) et crédit de pas (cf. MAX_STEP_CREDIT).
   lastQueuedSeq: number = 0;
   stepCredit: number = 0;
+  // Vitesse du dernier pas (u/s, recul non compris) et son heure (ms
+  // epoch) : portée de ses lames quand il fonce sur une cible
+  // (KILL_LAG_ALLOWANCE_MS, collisions.ts).
+  moveVx: number = 0;
+  moveVy: number = 0;
+  movedAt: number = 0;
   // Edge-trigger consommé chaque tick par processThrows. Le client envoie
   // true ponctuellement à chaque appui, le serveur le remet à false après
   // traitement (ou après le tick si cooldown actif).

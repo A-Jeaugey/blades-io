@@ -40,11 +40,13 @@ export interface MoveResult {
   // Direction appliquée (normalisée si l'input dépasse 1).
   dx: number;
   dy: number;
+  // Vitesse appliquée à cette direction (u/s), recul non compris.
+  speed: number;
   moving: boolean;
   boosting: boolean;
 }
 
-const FROZEN: MoveResult = { dx: 0, dy: 0, moving: false, boosting: false };
+const FROZEN: MoveResult = { dx: 0, dy: 0, speed: 0, moving: false, boosting: false };
 
 export function stepMovement(body: MoveBody, input: MoveInput, ctx: MoveContext, dt: number): MoveResult {
   if (ctx.frozen) {
@@ -86,5 +88,5 @@ export function stepMovement(body: MoveBody, input: MoveInput, ctx: MoveContext,
   const pushed = resolveDecorCollision(body.x, body.y, PLAYER_BODY_RADIUS);
   body.x = pushed.x;
   body.y = pushed.y;
-  return { dx, dy, moving, boosting };
+  return { dx, dy, speed, moving, boosting };
 }

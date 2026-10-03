@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { THROW_PROJECTILE_HITBOX, THROW_PROJECTILE_MAX_RANGE, outerOrbitRadius } from "@bladeio/shared";
+import { THROW_PROJECTILE_MAX_RANGE, throwStartRadius } from "@bladeio/shared";
 import { getActiveTheme } from "../themes";
 
 const VERT = /* glsl */ `
@@ -96,7 +96,7 @@ export class AimIndicator {
     this.object.visible = this.opacity > 0;
     if (!this.object.visible) return;
     // Même départ que le projectile côté serveur (processThrows).
-    const startR = outerOrbitRadius(bladeCount) + THROW_PROJECTILE_HITBOX + 0.1;
+    const startR = throwStartRadius(bladeCount);
     this.object.position.set(x + dirX * startR, 0.05, y + dirY * startR);
     this.object.rotation.y = -Math.atan2(dirY, dirX);
     this.uniforms.uOpacity.value = this.opacity;

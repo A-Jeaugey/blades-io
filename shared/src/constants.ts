@@ -39,6 +39,14 @@ export const PLAYER_BODY_RADIUS = 0.6;
 // Distance centre-à-centre minimale pour qu'un kill corps-à-corps déclenche
 // (uniquement quand au moins un des deux joueurs n'a plus de lames).
 export const PLAYER_BODY_COLLISION = 1.0;
+// Latence de l'attaquant humain : il se voit au présent (prédiction) et voit
+// sa cible ~80 ms dans le passé (interpolation), et l'élimination s'affiche
+// au tick de rendu. Quand il fonce sur elle, elle semblait donc entrer dans
+// ses lames d'autant (1,5 à 2,5 u au boost) avant de mourir. Ses lames
+// portent plus loin de ce qu'il parcourt vers elle en KILL_LAG_ALLOWANCE_MS,
+// au plus KILL_LAG_REACH_MAX. Pas les bots, qui jouent au présent.
+export const KILL_LAG_ALLOWANCE_MS = 100;
+export const KILL_LAG_REACH_MAX = 1.5;
 // Marge ajoutée au rayon de l'orbite pour le push-out joueur-joueur (les
 // orbites se touchent juste, sans se chevaucher).
 export const PLAYER_ORBIT_PUSH_MARGIN = 0.05;
@@ -139,6 +147,18 @@ export const TIER_ROT_MULT: readonly number[] = [1.0, 1.15, 1.3, 1.3, 1.3, 1.3];
 // utilisent TIER_HITBOX_MULT.
 export const TIER_VISUAL_SCALE: readonly number[] = [1.0, 1.25, 1.55, 1.65, 1.75, 1.85];
 
+// Lame en orbite telle que dessinée, pour les touches de corps : de son
+// point d'anneau vers l'extérieur jusqu'à la pointe, sur une demi-largeur.
+// La hitbox ronde (TIER_HITBOX_MULT) s'arrêtait à 2,1 u du point d'anneau,
+// alors qu'une lame légendaire de palier 5 se dessine jusqu'à 3,65 u : un
+// joueur traversait des lames qu'on voyait le toucher. Pointe de chaque
+// forme de palier (client/src/entities/bladeGeometries.ts : dague, épée,
+// faux, scie, lame runique, lame à aura), en unités de la géométrie, avant
+// TIER_VISUAL_SCALE et RARITY_SCALE : toute retouche d'une forme met cette
+// table à jour. Les clashs entre lames gardent la hitbox ronde.
+export const BLADE_TIP_REACH: readonly number[] = [0.55, 0.95, 1.0, 1.04, 1.08, 1.16];
+export const BLADE_EDGE_HALF_WIDTH = 0.2;
+
 // Intensité du knockback (force initiale en u/s) appliquée à chaque clash,
 // multipliée par le tier de la lame qui frappe.
 export const KNOCKBACK_BASE = 8.0;
@@ -232,9 +252,15 @@ export const THROW_PIERCE: Record<number /* BladeRarity */, number> = {
   2: 2, // Epic
   3: 3, // Legendary
 };
-// Hitbox d'un projectile (légèrement plus généreuse qu'une lame en orbite
-// pour que ça "accroche" même quand il parcourt ~0,6 u par tick).
-export const THROW_PROJECTILE_HITBOX = 0.85;
+// Hitbox d'un projectile. 0,85 u avant : moins que la lame qui tournoie à
+// l'écran (jusqu'à 2 u de rayon pour une légendaire), et le lanceur vise un
+// adversaire affiché ~80 ms dans le passé (1 à 2 u plus loin au serveur) :
+// la lame semblait traverser la cible. Le contact se teste sur tout le
+// trajet du tick (throws.ts), sans trou entre deux positions.
+export const THROW_PROJECTILE_HITBOX = 1.4;
+// Départ d'un lancer : à cette distance au-delà de l'orbite extérieure du
+// lanceur (inchangé quand la hitbox a grossi : même portée qu'avant).
+export const THROW_START_MARGIN = 0.95;
 
 // --- Spawn protection ---
 // Délai d'invulnérabilité au spawn / respawn. Le serveur met à load

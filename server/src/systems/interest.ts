@@ -6,9 +6,10 @@ import {
   VIEW_RADIUS_DEFAULT,
   VIEW_RADIUS_MARGIN,
   VIEW_RADIUS_MIN,
+  BladeRarity,
+  bladeBodyReach,
   isInBush,
   outerOrbitRadius,
-  tierBladeHitbox,
   sameTeam,
   viewRadiusLimit,
 } from "@bladeio/shared";
@@ -25,9 +26,11 @@ import { OWNER_VIEW_TAG, Player } from "../state/Player";
 // Les vues sont recalculées à chaque tick, après la simulation : diff entre
 // ce que le client voyait et ce qu'il doit voir, puis view.add / remove.
 
-// Portée d'un joueur : orbite extérieure + hitbox d'une lame.
+// Portée d'un joueur : orbite extérieure + la plus longue lame possible à
+// son palier, telle qu'elle touche un corps (bladeBodyReach). La portée de
+// latence d'un humain (KILL_LAG_REACH_MAX) tient dans BUSH_REVEAL_MARGIN.
 export function reachOf(p: Player): number {
-  return outerOrbitRadius(p.bladeCount) + tierBladeHitbox(p.tier);
+  return outerOrbitRadius(p.bladeCount) + bladeBodyReach(p.tier, BladeRarity.Legendary);
 }
 
 // Évènement positionnel : à qui l'envoyer. Un client le reçoit s'il est

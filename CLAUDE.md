@@ -616,6 +616,23 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   série comptent les anneaux une fois (`ownerRingCounts`). Avant, deux
   orbites de 2000 lames au contact prenaient ~55 ms par tick, et toutes les
   rooms du process gelaient avec. Banc : `node tools/bench-giants.js`.
+- **Hitbox (tâche 4.10)** : une lame en orbite a deux formes. Les clashs
+  (lame contre lame) gardent la hitbox ronde (`tierBladeHitbox`) ; un corps
+  meurt au contact de la hitbox ronde ou de la lame telle qu'elle est
+  dessinée, du point d'anneau à la pointe (`bladeTipReach`,
+  `bladeEdgeRadius` : `BLADE_TIP_REACH` × échelle du palier × échelle de la
+  rareté, comme dans `BladeView`). Toute retouche d'une forme de
+  `client/src/entities/bladeGeometries.ts` met `BLADE_TIP_REACH` à jour.
+  Un humain qui fonce sur sa cible la touche d'autant plus loin qu'il
+  avance vite (`KILL_LAG_ALLOWANCE_MS`, `KILL_LAG_REACH_MAX`, d'après la
+  vitesse de son dernier pas, `Player.moveVx/moveVy`) : il la voit 80 ms
+  dans le passé. Pas les bots, qui jouent au présent. Projectiles
+  (`throws.ts`) : contact testé sur tout le trajet du tick
+  (`server/src/systems/geometry.ts`), lames en orbite dessinées ; une lame
+  en orbite qui tient arrête le projectile, brisée elle le laisse
+  poursuivre (perçant) jusqu'aux suivantes ou au corps. La portée d'un
+  joueur pour les buissons (`reachOf`) suit la plus longue lame de son
+  palier. `?debug=hitbox` trace les deux formes (cercle, axe de la lame).
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en

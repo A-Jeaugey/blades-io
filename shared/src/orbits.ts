@@ -6,6 +6,7 @@ import {
   RING_RADIUS_STEP,
   RING_ROT_FALLOFF,
   SERVER_DT,
+  THROW_START_MARGIN,
 } from "./constants";
 
 // Capacité (nombre max de slots) de l'anneau d'index ringIndex (0-based).
@@ -74,4 +75,10 @@ export function outerOrbitRadius(bladeCount: number): number {
   const ring = outerRingIndex(bladeCount);
   if (ring < 0) return 0;
   return ringRadius(ring);
+}
+
+// Point de départ d'un lancer : distance au centre du lanceur (serveur, et
+// trajectoire affichée par le client).
+export function throwStartRadius(bladeCount: number): number {
+  return outerOrbitRadius(bladeCount) + THROW_START_MARGIN;
 }

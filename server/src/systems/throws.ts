@@ -6,6 +6,7 @@ import {
   PLAYER_BODY_RADIUS,
   RARITY_DAMAGE,
   RARITY_HP,
+  SERVER_DT,
   THROW_COOLDOWN_MS,
   THROW_LANDED_PICKUP_LOCK_MS,
   THROW_PIERCE,
@@ -15,15 +16,23 @@ import {
   THROW_PROJECTILE_TTL_MS,
   WALL_KILL_THICKNESS,
   CRATE_HITBOX,
+  bladeEdgeRadius,
+  bladeTipReach,
   outerOrbitRadius,
   sameTeam,
+  throwStartRadius,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
 import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
 import { sparedByBots } from "./collisions";
+import { closestOnSegment, pointSegmentDist2, segmentSegmentDist2 } from "./geometry";
 import { OrbitPositionCache, recompactOwnerRing } from "./orbitPositions";
+
+// Demi-largeur minimale d'une lame en orbite face à un projectile (petites
+// lames : la valeur d'avant, quel que soit le palier).
+const ORBIT_BLADE_RADIUS = 0.5;
 
 export interface ThrowCallbacks {
   onBladeThrown: (ev: BladeThrownEvent) => void;
@@ -84,9 +93,9 @@ export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
     if (!target) return;
 
     // Détache la lame du joueur. Position de départ = bord extérieur du
-    // joueur dans la direction du throw, pour que le projectile ne se
-    // détruise pas immédiatement contre ses propres lames d'orbite.
-    const startR = outerOrbitRadius(p.bladeCount) + THROW_PROJECTILE_HITBOX + 0.1;
+    // joueur dans la direction du throw (trajectoire affichée par le client
+    // au même endroit, cf. AimIndicator).
+    const startR = throwStartRadius(p.bladeCount);
     const startX = p.x + ndx * startR;
     const startY = p.y + ndy * startR;
 
@@ -212,21 +221,45 @@ function landProjectile(b: Blade, now: number, cb: ThrowCallbacks): void {
 // Appelée APRÈS resolveCollisions classique pour que la position des
 // orbites soit fraîche dans le state (vx,vy projectile sont en world
 // directement, pas besoin du orbitCache).
+//
+// Le contact se teste sur tout le trajet du tick (de la position précédente
+// à la position courante), pas seulement à son bout : en frôlant un corps,
+// le projectile pouvait passer entre deux positions sans toucher. Une lame
+// en orbite se teste telle qu'elle est dessinée (du point d'anneau à la
+// pointe, cf. BLADE_TIP_REACH). Un contact par cible et par tick, le
+// premier sur le trajet : une lame en orbite qui tient arrête le
+// projectile ; brisée, il poursuit s'il lui reste du perçant, jusqu'aux
+// lames suivantes ou au corps. Avant, le premier contact avec l'orbite
+// rendait toute la cible intangible : une lame Epic ou Legendary traversait
+// le corps sans effet.
 export function resolveProjectileCollisions(
   state: ArenaState,
   cb: ThrowCallbacks,
   orbitCache: OrbitPositionCache,
+  dt: number = SERVER_DT,
 ): void {
   // Collecte des projectiles (un seul forEach pour pas re-scanner).
   const projectiles: Blade[] = [];
   state.blades.forEach((b) => { if (b.isProjectile) projectiles.push(b); });
   if (projectiles.length === 0) return;
+  const now = Date.now();
+  const ph = THROW_PROJECTILE_HITBOX;
 
   for (const proj of projectiles) {
     if (proj.pierceLeft <= 0) continue;
-    const px = proj.x;
-    const py = proj.y;
-    const ph = THROW_PROJECTILE_HITBOX;
+    // Trajet du tick, à vitesse constante, sans remonter avant le point de
+    // départ (lancer de ce tick).
+    const x1 = proj.x;
+    const y1 = proj.y;
+    let x0 = x1 - proj.vx * dt;
+    let y0 = y1 - proj.vy * dt;
+    const fromOriginX = x1 - proj.originX;
+    const fromOriginY = y1 - proj.originY;
+    if (fromOriginX * fromOriginX + fromOriginY * fromOriginY < (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) {
+      x0 = proj.originX;
+      y0 = proj.originY;
+    }
+    const attacker = state.players.get(proj.thrownBy) ?? null;
 
     // 1) vs caisses
     state.crates.forEach((crate) => {
@@ -234,20 +267,18 @@ export function resolveProjectileCollisions(
       if (crate.hp <= 0) return;
       if (proj.hitIds.has(crate.id)) return;
       const minD = ph + CRATE_HITBOX;
-      const dx = px - crate.x;
-      const dy = py - crate.y;
-      if (dx * dx + dy * dy > minD * minD) return;
+      if (pointSegmentDist2(crate.x, crate.y, x0, y0, x1, y1) > minD * minD) return;
       proj.hitIds.add(crate.id);
       const dmg = RARITY_DAMAGE[proj.rarity as BladeRarity];
       crate.hp = Math.max(0, crate.hp - dmg);
-      const attacker = state.players.get(proj.thrownBy) ?? null;
       proj.pierceLeft = Math.max(0, proj.pierceLeft - 1);
       const consumed = proj.pierceLeft <= 0;
+      const t = closestOnSegment(crate.x, crate.y, x0, y0, x1, y1);
       cb.onProjectileImpact({
         bladeId: proj.id,
         rarity: proj.rarity as BladeRarity,
-        x: px,
-        y: py,
+        x: x0 + (x1 - x0) * t,
+        y: y0 + (y1 - y0) * t,
         kind: 2, // crate
         destroyed: consumed,
       });
@@ -265,65 +296,80 @@ export function resolveProjectileCollisions(
       if (sameTeam(proj.thrownTeam, target.team)) return;
       if (proj.hitIds.has(target.id)) return;
       // Spawn protection : intangible.
-      if (target.spawnProtectionUntil > Date.now()) return;
+      if (target.spawnProtectionUntil > now) return;
       // Débutant en grâce : intangible aux lancers des bots.
-      if (sparedByBots(target, Date.now()) && state.players.get(proj.thrownBy)?.isBot) return;
+      if (sparedByBots(target, now) && attacker?.isBot) return;
 
-      // Broad phase : distance centre joueur (large pour absorber le rayon
-      // d'orbite).
-      const reach = outerOrbitRadius(target.bladeCount) + ph + PLAYER_BODY_RADIUS;
-      const cdx = px - target.x;
-      const cdy = py - target.y;
-      if (cdx * cdx + cdy * cdy > reach * reach) return;
+      // Broad phase : le trajet passe-t-il à portée de ses lames (les plus
+      // longues possibles à son palier) ou de son corps ?
+      const tier = target.tier;
+      const orbitReach = target.bladeCount > 0
+        ? outerOrbitRadius(target.bladeCount) + bladeTipReach(tier, BladeRarity.Legendary)
+          + Math.max(ORBIT_BLADE_RADIUS, bladeEdgeRadius(tier, BladeRarity.Legendary))
+        : 0;
+      const reach = Math.max(orbitReach, PLAYER_BODY_RADIUS) + ph;
+      if (pointSegmentDist2(target.x, target.y, x0, y0, x1, y1) > reach * reach) return;
 
-      // 2a) test contre les lames orbitantes du joueur (priorité au shield).
+      // 2a) Première lame en orbite touchée sur le trajet.
       let hitOrbit: Blade | null = null;
+      let orbitT = 2;
       let hitOx = 0;
       let hitOy = 0;
-      state.blades.forEach((ob) => {
-        if (hitOrbit) return;
-        if (ob.ownerId !== target.id) return;
-        if (ob.isProjectile) return;
-        const pos = orbitCache.get(ob.id);
-        if (!pos) return;
-        const dx = px - pos.x;
-        const dy = py - pos.y;
-        // hitbox orbite ≈ celle d'un tier 0 (compromis simple, le but
-        // est juste de "bouffer" le projectile au contact des lames).
-        const minD = ph + 0.5;
-        if (dx * dx + dy * dy <= minD * minD) {
+      for (const id of target.bladeIds) {
+        if (proj.hitIds.has(id)) continue;
+        const ob = state.blades.get(id);
+        if (!ob || ob.isProjectile || ob.ownerId !== target.id) continue;
+        const pos = orbitCache.get(id);
+        if (!pos) continue;
+        const rarity = ob.rarity as BladeRarity;
+        const ox = pos.x - target.x;
+        const oy = pos.y - target.y;
+        const r = Math.sqrt(ox * ox + oy * oy);
+        const tip = r > 1e-6 ? bladeTipReach(tier, rarity) / r : 0;
+        const tipX = pos.x + ox * tip;
+        const tipY = pos.y + oy * tip;
+        const minD = ph + Math.max(ORBIT_BLADE_RADIUS, bladeEdgeRadius(tier, rarity));
+        if (segmentSegmentDist2(x0, y0, x1, y1, pos.x, pos.y, tipX, tipY) > minD * minD) continue;
+        // Ordre sur le trajet : point le plus proche du milieu de la lame.
+        const t = closestOnSegment((pos.x + tipX) * 0.5, (pos.y + tipY) * 0.5, x0, y0, x1, y1);
+        if (t < orbitT) {
+          orbitT = t;
           hitOrbit = ob;
           hitOx = pos.x;
           hitOy = pos.y;
         }
-      });
+      }
 
-      if (hitOrbit) {
+      // 2b) Corps.
+      const minBody = ph + PLAYER_BODY_RADIUS;
+      const bodyHit = pointSegmentDist2(target.x, target.y, x0, y0, x1, y1) <= minBody * minBody;
+      const bodyT = bodyHit ? closestOnSegment(target.x, target.y, x0, y0, x1, y1) : 2;
+
+      if (hitOrbit && orbitT <= bodyT) {
         const orbBlade = hitOrbit as Blade;
-        proj.hitIds.add(target.id); // un projectile compte 1 hit/joueur max
+        proj.hitIds.add(orbBlade.id);
         // Le projectile inflige son damage à la lame orbitante. Si elle
-        // casse, c'est le butin classique. Le projectile, lui, perd 1 pierce.
+        // casse, c'est le butin classique et il perd un perçant ; si elle
+        // tient, elle l'arrête.
         const dmg = RARITY_DAMAGE[proj.rarity as BladeRarity];
         orbBlade.hp = Math.max(0, orbBlade.hp - dmg);
-        proj.pierceLeft = Math.max(0, proj.pierceLeft - 1);
-        const consumed = proj.pierceLeft <= 0;
+        const broken = orbBlade.hp <= 0;
+        proj.pierceLeft = broken ? Math.max(0, proj.pierceLeft - 1) : 0;
         cb.onProjectileImpact({
           bladeId: proj.id,
           rarity: proj.rarity as BladeRarity,
           x: hitOx,
           y: hitOy,
           kind: 0, // orbit blade
-          destroyed: consumed,
+          destroyed: proj.pierceLeft <= 0,
         });
-        if (orbBlade.hp <= 0) cb.onBladeDestroyed(orbBlade, state.players.get(proj.thrownBy) ?? null);
+        if (broken) cb.onBladeDestroyed(orbBlade, attacker);
         return;
       }
 
-      // 2b) sinon, test corps. Si corps touché → kill.
-      const minBody = ph + PLAYER_BODY_RADIUS;
-      if (cdx * cdx + cdy * cdy <= minBody * minBody) {
+      // Corps touché → kill.
+      if (bodyHit) {
         proj.hitIds.add(target.id);
-        const killer = state.players.get(proj.thrownBy) ?? null;
         proj.pierceLeft = Math.max(0, proj.pierceLeft - 1);
         const consumed = proj.pierceLeft <= 0;
         cb.onProjectileImpact({
@@ -334,7 +380,7 @@ export function resolveProjectileCollisions(
           kind: 1, // body
           destroyed: consumed,
         });
-        cb.onPlayerKilled(target, killer);
+        cb.onPlayerKilled(target, attacker);
       }
     });
   }

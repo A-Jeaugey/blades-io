@@ -4,7 +4,12 @@ import {
   BladeRarity,
   CRATE_HP,
   HITLAG_COOLDOWN_MS,
+  KILL_LAG_ALLOWANCE_MS,
+  KILL_LAG_REACH_MAX,
   KNOCKBACK_MAX_SPEED,
+  PLAYER_BODY_RADIUS,
+  bladeEdgeRadius,
+  bladeTipReach,
   outerOrbitRadius,
   tierBladeHitbox,
   tierHitlagMs,
@@ -250,6 +255,81 @@ test("débutant en grâce : les bots ne le tuent pas, un humain si ; après, si"
   r = recorder();
   resolveCollisions(state, cache, r, cooldowns);
   assert.deepEqual(r.kills.map((k) => k.victim.id), [newbie.id]);
+});
+
+// Une lame en orbite tue ce que sa forme dessinée touche : au palier 5, une
+// légendaire se dessine jusqu'à 3,65 u de son point d'anneau, bien au-delà
+// de sa hitbox ronde (2,1 u).
+test("lame dessinée : la pointe d'une grosse lame tue, pas à côté d'elle", () => {
+  const a = addPlayer(state, { x: 0, y: 0, rarity: BladeRarity.Legendary, blades: 1 });
+  a.tier = 5;
+  const blade = ownedBlades(state, a)[0];
+  cache.set(blade.id, 1.8, 0);
+  const tip = bladeTipReach(5, BladeRarity.Legendary);
+  const edge = bladeEdgeRadius(5, BladeRarity.Legendary);
+  assert.ok(tip + edge > tierBladeHitbox(5) + 1, "lame dessinée plus longue que la hitbox ronde");
+  // Dans l'axe, au-delà de la hitbox ronde mais au contact de la pointe.
+  const target = addPlayer(state, { x: 1.8 + tip + edge + PLAYER_BODY_RADIUS - 0.05, y: 0 });
+  let r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.deepEqual(r.kills.map((k) => [k.victim.id, k.killer?.id]), [[target.id, a.id]]);
+  // Juste au-delà de la pointe : rien.
+  target.alive = true;
+  target.x = 1.8 + tip + edge + PLAYER_BODY_RADIUS + 0.05;
+  r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(r.kills.length, 0);
+  // À côté de la lame, à la hauteur de la pointe : la lame est fine.
+  target.x = 1.8 + tip;
+  target.y = edge + PLAYER_BODY_RADIUS + 0.05;
+  r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(r.kills.length, 0);
+});
+
+test("lame dessinée : une Common de palier 0 garde sa hitbox ronde", () => {
+  const a = addPlayer(state, { x: 0, y: 0, blades: 1 });
+  const blade = ownedBlades(state, a)[0];
+  cache.set(blade.id, 1.8, 0);
+  // La dague est plus courte que la hitbox ronde : portée inchangée.
+  assert.ok(bladeTipReach(0, BladeRarity.Common) + bladeEdgeRadius(0, BladeRarity.Common) < tierBladeHitbox(0));
+  const target = addPlayer(state, { x: 1.8 + tierBladeHitbox(0) + PLAYER_BODY_RADIUS + 0.05, y: 0 });
+  const r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(r.kills.length, 0);
+  assert.equal(target.alive, true);
+});
+
+// Un humain se voit au présent et voit sa cible ~80 ms dans le passé :
+// quand il fonce sur elle, ses lames portent plus loin de ce qu'il parcourt
+// en KILL_LAG_ALLOWANCE_MS (au plus KILL_LAG_REACH_MAX). Pas un bot, ni un
+// joueur qui s'éloigne ou dont le dernier pas est ancien.
+test("portée de latence : un humain qui fonce sur sa cible la touche plus tôt", () => {
+  const a = addPlayer(state, { x: 0, y: 0, blades: 1 });
+  const blade = ownedBlades(state, a)[0];
+  cache.set(blade.id, 1.8, 0);
+  const speed = 18.7;
+  const extra = Math.min(KILL_LAG_REACH_MAX, speed * KILL_LAG_ALLOWANCE_MS / 1000);
+  const reach = 1.8 + tierBladeHitbox(0) + PLAYER_BODY_RADIUS;
+  const target = addPlayer(state, { x: reach + extra - 0.05, y: 0 });
+  const attempt = (vx: number, isBot: boolean, movedAgoMs: number): boolean => {
+    target.alive = true;
+    a.isBot = isBot;
+    a.moveVx = vx;
+    a.moveVy = 0;
+    a.movedAt = clock.now - movedAgoMs;
+    const r = recorder();
+    resolveCollisions(state, cache, r, cooldowns);
+    return r.kills.length > 0;
+  };
+  assert.equal(attempt(0, false, 0), false, "immobile : portée normale");
+  assert.equal(attempt(speed, false, 0), true, "fonce sur la cible");
+  assert.equal(attempt(-speed, false, 0), false, "s'éloigne");
+  assert.equal(attempt(speed, true, 0), false, "un bot joue au présent");
+  assert.equal(attempt(speed, false, 500), false, "dernier pas trop ancien");
+  // Plafond : même très rapide, pas au-delà de KILL_LAG_REACH_MAX.
+  target.x = reach + KILL_LAG_REACH_MAX + 0.05;
+  assert.equal(attempt(100, false, 0), false);
 });
 
 test("caisse : dégâts de la rareté, destruction à 0 PV", () => {

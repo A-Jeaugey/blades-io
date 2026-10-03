@@ -136,6 +136,9 @@ function applyStep(
     canBoost: p.bladeCount > 0,
   }, dt);
   p.boost = r.boosting;
+  p.moveVx = r.dx * r.speed;
+  p.moveVy = r.dy * r.speed;
+  p.movedAt = now;
   if (r.boosting) {
     p.lifeBoostMs += dt * 1000;
     p.boostAccum += dt;

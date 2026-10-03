@@ -69,6 +69,8 @@ import {
   nameProblem,
   validateLoadout,
   tierBladeHitbox,
+  bladeEdgeRadius,
+  bladeTipReach,
   tierFromBladeCount,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -961,7 +963,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // lames orbitantes restent référence (orbitCache à jour, position des
     // joueurs aussi). Les projectiles consomment leur "pierce" sur chaque
     // contact et se détruisent quand il atteint 0.
-    resolveProjectileCollisions(this.state, throwCb, this.orbitCache);
+    resolveProjectileCollisions(this.state, throwCb, this.orbitCache, dt);
     this.spawning.update(dt, this.state, this.isPrivate);
     this.crates.update(dt, this.state, this.isPrivate);
     this.powerups.update(dt, this.state, this.isPrivate, (player, pu) => this.handlePowerUpPickup(player, pu));
@@ -1121,15 +1123,18 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       });
       // Anneau et slot tels que le serveur les a utilisés : la mesure côté
       // client isole la phase d'orbite des changements de composition.
-      const rows: Array<[string, string, number, number, number, number, number, number]> = [];
+      const rows: Array<[string, string, number, number, number, number, number, number, number]> = [];
       this.state.blades.forEach((b) => {
         if (!b.ownerId || !owners[b.ownerId]) return;
         const pos = this.orbitCache.get(b.id);
         if (!pos) return;
         const owner = this.state.players.get(b.ownerId)!;
+        const rarity = b.rarity as BladeRarity;
         rows.push([
           b.id, b.ownerId, pos.x, pos.y, tierBladeHitbox(owner.tier),
           b.ringIndex, b.slotIndex, inRing.get(`${b.ownerId}|${b.ringIndex}`) ?? 1,
+          // Lame dessinée, pour toucher un corps : pointe et demi-largeur.
+          bladeTipReach(owner.tier, rarity) + bladeEdgeRadius(owner.tier, rarity),
         ]);
       });
       client.send("debugOrbits", { tick: this.state.tick, owners, blades: rows });
