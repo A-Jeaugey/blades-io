@@ -109,6 +109,10 @@ const observer = {
 // chacun suivant un bot différent, pour le coût serveur des zones
 // d'intérêt et de l'encodage par client.
 const VIEWERS = Math.max(1, parseInt(process.env.BENCH_VIEWERS || "1", 10));
+// Sans champion (tâche 4.12) : les spectateurs sont des humains aguerris, et
+// le banc mesure le coût du serveur à 60 bots, comparable d'une version à
+// l'autre.
+room.bots.nextChampionAt = Infinity;
 const watchers = [];
 for (let i = 0; i < VIEWERS; i++) {
   const client = i === 0 ? observer : {

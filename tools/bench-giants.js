@@ -30,6 +30,10 @@ for (const n of SIZES) {
   const clock = new FakeClock();
   const restore = seedRandom(SEED);
   const r = new TestRoom(clock, { bots: true });
+  // Sans champion (tâche 4.12) : deux humains aguerris en feraient
+  // apparaître deux à 300 lames au milieu du combat, et le banc mesure le
+  // contact de deux orbites, pas leur arrivée.
+  r.room.bots.nextChampionAt = Infinity;
   const a = r.join("a");
   const b = r.join("b");
   r.room.giveBlades(a, n - a.bladeCount);
