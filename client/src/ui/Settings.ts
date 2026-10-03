@@ -114,11 +114,7 @@ export class SettingsPanel {
       qSel.value = this.state.qualityChoice;
       qSel.addEventListener("change", () => {
         this.state.qualityChoice = qSel.value as SettingsState["qualityChoice"];
-        if (this.state.qualityChoice === "auto") {
-          localStorage.removeItem("blade.quality");
-        } else {
-          savePresetChoice(this.state.qualityChoice);
-        }
+        savePresetChoice(this.state.qualityChoice);
         this.persist();
         this.emit();
         // Les matériaux et shaders sont construits au démarrage selon le

@@ -138,7 +138,9 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     maxParticles: 800,
     particleScale: 1.0,
     dynamicResolution: true,
-    dynResMin: 0.75,
+    // La résolution absorbe d'abord ce qui manque (même rendu, un peu plus
+    // doux) : la baisse de preset, elle, retire des effets.
+    dynResMin: 0.6,
     autoDowngrade: true,
     fx: { detail: "rich", shockwaves: 24, ringSegments: 64, shards: 96, shardsPerBlade: 6, columns: 6, trails: 40, trailSamples: 14, speedLines: 48, dissolveEmbers: 36 },
   },
@@ -169,7 +171,7 @@ const PRESETS: Record<QualityPreset, QualityConfig> = {
     maxParticles: 500,
     particleScale: 0.8,
     dynamicResolution: true,
-    dynResMin: 0.65,
+    dynResMin: 0.55,
     autoDowngrade: true,
     fx: { detail: "rich", shockwaves: 16, ringSegments: 48, shards: 64, shardsPerBlade: 5, columns: 4, trails: 28, trailSamples: 11, speedLines: 32, dissolveEmbers: 24 },
   },
@@ -260,13 +262,67 @@ function readGpuRenderer(): string {
   }
 }
 
-// Détection plus stricte : on part du principe que sans GPU dédié OU sans
-// info GPU disponible, on doit défaut sur low/medium (jamais high). High
-// est réservé aux GPU dédiés (NVIDIA/AMD desktop, Apple Silicon).
-export function detectPreset(): QualityPreset {
-  const saved = localStorage.getItem("blade.quality") as QualityPreset | null;
-  if (saved && saved in PRESETS) return saved;
+declare const __BUILD_ID__: string;
 
+// Qualité retenue au démarrage, dans l'ordre :
+//  1. le choix du joueur dans les réglages (autre que « Auto ») ;
+//  2. la baisse automatique décidée pendant une partie de cette version
+//     (saveAutoDowngrade) ;
+//  3. la détection du matériel.
+// Avant, une baisse automatique s'enregistrait comme un choix du joueur, et
+// pour toujours : un ralentissement passager (les compilations de shaders
+// d'avant la tâche 2.9) laissait une machine en qualité moyenne ou basse,
+// sans retour. Ces anciennes valeurs (« blade.quality » sans choix dans les
+// réglages) sont ignorées et effacées.
+export function detectPreset(): QualityPreset {
+  const chosen = chosenPreset();
+  if (chosen) return chosen;
+  if (localStorage.getItem(LEGACY_KEY) !== null) localStorage.removeItem(LEGACY_KEY);
+  return autoDowngraded() ?? detectHardwarePreset();
+}
+
+const LEGACY_KEY = "blade.quality";
+const AUTO_KEY = "blade.quality.auto";
+
+function isPreset(v: unknown): v is QualityPreset {
+  return typeof v === "string" && v in PRESETS;
+}
+
+// Choix explicite des réglages (Settings.ts : qualityChoice).
+function chosenPreset(): QualityPreset | null {
+  try {
+    const settings = JSON.parse(localStorage.getItem("blade.settings") ?? "null") as { qualityChoice?: unknown } | null;
+    const choice = settings?.qualityChoice;
+    return isPreset(choice) ? choice : null;
+  } catch {
+    return null;
+  }
+}
+
+function autoDowngraded(): QualityPreset | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUTO_KEY) ?? "null") as { preset?: unknown; build?: unknown } | null;
+    if (!saved || saved.build !== __BUILD_ID__ || !isPreset(saved.preset)) return null;
+    return saved.preset;
+  } catch {
+    return null;
+  }
+}
+
+// Baisse automatique (moniteur de fluidité de main.ts) : gardée jusqu'à la
+// prochaine version du jeu, qui retente la qualité détectée (chaque version
+// peut alléger le rendu), et jamais au-dessus d'un choix du joueur.
+export function saveAutoDowngrade(preset: QualityPreset): void {
+  localStorage.setItem(AUTO_KEY, JSON.stringify({ preset, build: __BUILD_ID__ }));
+}
+
+// Détection heuristique d'après le GPU. Toute carte dédiée démarre en
+// qualité haute, même d'entrée de gamme : sous la haute qualité, le néon
+// perd son bloom et le jeu paraît terne, et la résolution dynamique adapte
+// la charge sans toucher au rendu (cf. adaptiveQuality, main.ts). Les
+// presets plus bas restent pour les GPU intégrés anciens, le rendu
+// logiciel et les téléphones.
+function detectHardwarePreset(): QualityPreset {
   const gpu = readGpuRenderer();
   const ua = navigator.userAgent.toLowerCase();
   const cores = navigator.hardwareConcurrency ?? 4;
@@ -288,15 +344,17 @@ export function detectPreset(): QualityPreset {
   ) {
     return "ultra";
   }
-  // Intel intégrés récents (Iris, Iris Xe, Arc) → low (postfx off, suffisant
-  // pour rester à 60 fps).
+  // Intel : Arc (carte dédiée, ou intégrée des Core Ultra, du niveau d'une
+  // GTX 1650) → haute ; Iris Xe → moyenne (bloom gardé) ; le reste → ultra.
+  // ANGLE écrit « Iris(R) Xe » : le motif « iris xe » d'avant ne le
+  // reconnaissait pas, et ces portables démarraient en potato.
   if (gpu.includes("intel")) {
-    if (/iris xe|arc/.test(gpu)) return "low";
+    if (/\barc\b/.test(gpu)) return "high";
+    if (/iris(\(r\))?\s*xe/.test(gpu)) return "medium";
     return "ultra";
   }
-  // Apple Silicon : très bon GPU, mais on reste prudent → medium par défaut,
-  // l'utilisateur peut monter à high.
-  if (gpu.includes("apple")) return "medium";
+  // Apple Silicon : GPU du niveau d'une carte dédiée.
+  if (gpu.includes("apple")) return "high";
 
   // Mobile : medium par défaut, écran petit, GPU peu puissant.
   if (isMobile) {
@@ -305,29 +363,15 @@ export function detectPreset(): QualityPreset {
   }
 
   // GPU AMD : on distingue iGPU (intégré aux APU Ryzen) et dGPU (cartes
-  // Radeon RX). Avant : tout "radeon" finissait en high — faux pour les
-  // Radeon 780M/880M/890M des Ryzen AI 7000/8000/9000+ qui sont de bons
-  // iGPU mais pas un niveau dGPU. Identifie le dGPU au pattern "RX <nb>".
+  // Radeon RX), au motif « RX <nb> ».
   const isAmdDiscrete = /\brx\s*\d/.test(gpu);
   const isAmdIntegrated = !isAmdDiscrete && /\bamd\b|\bradeon\b|\bvega\b/.test(gpu);
-  // GPU NVIDIA : pas d'iGPU NVIDIA en pratique (tous dédiés). Traités en
-  // bloc côté dédié.
+  // GPU NVIDIA : pas d'iGPU NVIDIA en pratique (tous dédiés).
   const hasNvidia = /nvidia|geforce|gtx|rtx|quadro/.test(gpu);
-  // Cartes dédiées d'entrée de gamme (GeForce MX des portables, GT 7xx à
-  // 1030, Radeon RX 4x0 et 5x0 en deçà de 570, RX 6400/6500) : la qualité
-  // haute (MSAA, pixel ratio 1,5) les faisait démarrer en sous-régime, le
-  // temps que la résolution dynamique et la baisse de preset s'en aperçoivent.
-  const entryLevel = /\bmx\s?\d{2,3}\b|\bgt\s?\d{3,4}\b|\brx\s?(4[0-6]0|5[0-6]0|6[45]00)\b/.test(gpu);
-  if (hasNvidia || isAmdDiscrete) {
-    if (entryLevel) return "medium";
-    if (mem !== undefined && mem <= 3) return "medium";
-    if (cores >= 6) return "high";
-    return "medium";
-  }
-  // iGPU AMD moderne (Radeon Graphics, Vega Mobile, Radeon 7xxM/8xxM/9xxM) :
-  // bon pour medium mais pas pour high. Le high (avec MSAA + bloom + pixel
-  // ratio 2x) tank une iGPU même quand le CPU autour est un Ryzen 9.
-  if (isAmdIntegrated) return "medium";
+  if (hasNvidia || isAmdDiscrete) return "high";
+  // iGPU AMD : les RDNA 2 et 3 des Ryzen 6000 et suivants (660M à 890M) sont
+  // du niveau d'une petite carte dédiée → haute ; les Vega d'avant → moyenne.
+  if (isAmdIntegrated) return /\b(6[6-8]0|7[4-8]0|8[4-9]0)m\b/.test(gpu) ? "high" : "medium";
 
   // Sans info GPU et CPU faible → low. Sans info GPU mais CPU costaud →
   // medium (pari raisonnable).
@@ -339,8 +383,12 @@ export function getPresetConfig(preset: QualityPreset): QualityConfig {
   return { ...PRESETS[preset] };
 }
 
-export function savePresetChoice(preset: QualityPreset): void {
-  localStorage.setItem("blade.quality", preset);
+// Choix du joueur dans les réglages (il prime sur toute baisse
+// automatique) ; « Auto » efface les deux.
+export function savePresetChoice(preset: QualityPreset | "auto"): void {
+  localStorage.removeItem(AUTO_KEY);
+  if (preset === "auto") localStorage.removeItem(LEGACY_KEY);
+  else localStorage.setItem(LEGACY_KEY, preset);
 }
 
 // Renvoie l'ordre de downgrade : high → medium → low → ultra. Utilisé par

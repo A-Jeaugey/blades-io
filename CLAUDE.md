@@ -163,14 +163,25 @@ client/src/
 
 ### Quality presets — important
 
-`getPresetConfig()` détecte le GPU via `WEBGL_debug_renderer_info` et choisit
-parmi `ultra | low | medium | high` (`ultra` est le mode le plus **léger**,
-« potato mode », pas le plus beau). Chaque module de rendu prend `q: QualityConfig`
+`detectPreset()` choisit parmi `ultra | low | medium | high` (`ultra` est le
+mode le plus **léger**, « potato mode », pas le plus beau) : le choix des
+réglages (`blade.settings`, `qualityChoice` autre que « Auto »), sinon la
+baisse automatique de cette version du jeu (`blade.quality.auto`, avec
+`__BUILD_ID__` : la version suivante retente la détection), sinon le GPU
+(`WEBGL_debug_renderer_info`) : toute carte dédiée, Apple Silicon, Intel Arc
+et les iGPU AMD récents en `high` (tâche 2.10 : sous `high`, le néon perd
+son éclat ; le rendu passe avant, la résolution dynamique absorbe la
+charge). Une baisse automatique ne s'écrit jamais comme un choix du joueur.
+Chaque module de rendu prend `q: QualityConfig`
 en constructeur et adapte son détail (segments, post-FX, instances). Un moniteur
-FPS adaptatif baisse la résolution de rendu puis downgrade le preset si
-nécessaire (en pleine partie : `PostFX.setLite`, bloom, effets et MSAA coupés
+FPS adaptatif baisse d'abord la résolution de rendu (jusqu'à 0,6 en `high`),
+puis, seulement après 6 s sous 30 FPS à ce plancher, le preset (en pleine
+partie : `PostFX.setLite`, bloom, effets et MSAA coupés
 sans recompiler un shader, preset appliqué au retour menu — jamais de
-rechargement pendant un match). Avec post-FX, la résolution dynamique rend la
+rechargement pendant un match). Si deux baisses de résolution de suite ne
+font rien gagner (écran ou navigateur bridé à 30 images par seconde,
+économiseur de batterie), il rend la pleine résolution et s'arrête pour la
+session (`notFillBound`). Avec post-FX, la résolution dynamique rend la
 scène dans une partie de sa cible (`PostFX.setRenderScale`) : rien n'est
 réalloué ; sans post-FX, c'est le canvas qui change de taille (un à-coup),
 d'où des paliers plus grands et 20 s avant de remonter après une baisse. Il se

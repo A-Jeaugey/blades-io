@@ -101,7 +101,7 @@ import { SettingsPanel, shakeIntensity } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
-import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, savePresetChoice } from "./quality";
+import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, saveAutoDowngrade } from "./quality";
 import { getActiveTheme } from "./themes";
 import { I18nKey, formatNumber, t } from "./i18n";
 import { showAlert } from "./ui/Dialog";
@@ -265,7 +265,19 @@ export class Game {
   private dynResMonitorAccum = 0;
   private lowFpsAccum = 0;
   private highFpsAccum = 0;
+  // Temps passé sous 30 FPS (décroît au-dessus) : seul motif d'une baisse
+  // de preset, qui retire des effets.
+  private veryLowFpsAccum = 0;
   private lastDowngradeAt = 0;
+  // Effet des baisses de résolution : FPS avant la dernière (0 si elle est
+  // déjà jugée), baisses de suite sans gain. Si baisser la résolution ne
+  // fait rien gagner, la limite n'est pas le nombre de pixels (écran ou
+  // navigateur bridé à 30 images par seconde, économiseur de batterie,
+  // processeur) : pleine résolution rendue, et plus aucune baisse pendant
+  // la session (elle n'enlèverait que du rendu).
+  private fpsBeforeLower = 0;
+  private uselessLowers = 0;
+  private notFillBound = false;
   // Dernière baisse de résolution (performance.now()) : on ne remonte pas
   // avant RES_RAISE_COOLDOWN_MS (pas de va-et-vient d'un palier à l'autre).
   private lastResLowerAt = -Infinity;
@@ -2306,17 +2318,22 @@ export class Game {
     this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events, this.shownArenaTarget);
   }
 
-  // Pilote la résolution dynamique et le downgrade auto de preset.
+  // Pilote la résolution dynamique et le downgrade auto de preset. Le rendu
+  // passe d'abord : on baisse la résolution (même image, un peu plus douce)
+  // bien avant de retirer des effets.
   //
   // Logique :
-  //  - Si fps < 50 pendant 2 s, on baisse le resScale de 0.1 (jusqu'au
-  //    minimum du preset).
+  //  - Si fps < 50 pendant 2 s, on baisse le resScale de 0.1 (0.2 sous
+  //    35 FPS), jusqu'au minimum du preset.
   //  - Si fps > 58 ET resScale < 1.0 pendant 5 s, on remonte de 0.05.
-  //  - Si fps < 35 pendant 4 s ET resScale est déjà au minimum ET
-  //    autoDowngrade est activé, on bascule au preset inférieur. Hors
-  //    partie : reload immédiat (materials/shaders construits au boot).
-  //    En partie : post-FX coupés à chaud et reload différé au retour
-  //    menu — le reload immédiat éjectait le joueur de son match.
+  //  - Deux baisses de suite sans 8 % de FPS gagnés : la résolution n'y
+  //    peut rien, elle revient à 1 et l'adaptation s'arrête (notFillBound).
+  //  - Si fps < 30 pendant 6 s ET resScale est déjà au minimum ET
+  //    autoDowngrade est activé, on bascule au preset inférieur, gardé
+  //    jusqu'à la prochaine version (saveAutoDowngrade). Hors partie :
+  //    reload immédiat (materials/shaders construits au boot). En partie :
+  //    post-FX coupés à chaud et reload différé au retour menu — le reload
+  //    immédiat éjectait le joueur de son match.
   //
   // Appelé une fois par fenêtre de mesure FPS (~0.5 s).
   private adaptiveQuality(_dt: number): void {
@@ -2333,6 +2350,7 @@ export class Game {
     const tick = 0.5;
     // Hystérésis : on accumule du "bas" / "haut" pour décider, pour ne pas
     // osciller à chaque pic.
+    if (this.notFillBound) return;
     if (fps < 50) {
       this.lowFpsAccum += tick;
       this.highFpsAccum = 0;
@@ -2344,29 +2362,48 @@ export class Game {
       this.lowFpsAccum = Math.max(0, this.lowFpsAccum - tick * 0.5);
       this.highFpsAccum = Math.max(0, this.highFpsAccum - tick * 0.5);
     }
+    // Sorti de la zone basse : la dernière baisse a suffi.
+    if (fps >= 50) {
+      this.fpsBeforeLower = 0;
+      this.uselessLowers = 0;
+    }
+    this.veryLowFpsAccum = fps < 30 ? this.veryLowFpsAccum + tick : Math.max(0, this.veryLowFpsAccum - tick);
 
     const cur = this.getRenderScale();
     const minScale = this.quality.dynResMin;
     if (this.lowFpsAccum >= 2.0) {
+      // Gain de la baisse précédente, mesuré une fois la fenêtre suivante
+      // écoulée sous le seuil.
+      if (this.fpsBeforeLower > 0) {
+        this.uselessLowers = fps < this.fpsBeforeLower * 1.08 ? this.uselessLowers + 1 : 0;
+        this.fpsBeforeLower = 0;
+        if (this.uselessLowers >= 2) {
+          this.notFillBound = true;
+          this.setRenderScale(1.0);
+          console.log(`[blade.io] dynRes: sans effet sur le FPS (${fps.toFixed(0)}), pleine résolution gardée`);
+          return;
+        }
+      }
       // Très bas : un grand pas, pour converger en quelques secondes plutôt
       // qu'une dizaine de mauvaises secondes en début de partie.
       const next = Math.max(minScale, cur - (fps < 35 ? 0.2 : 0.1));
       if (next < cur) {
         this.setRenderScale(next);
         this.lowFpsAccum = 0;
+        this.fpsBeforeLower = fps;
         this.lastResLowerAt = performance.now();
         console.log(`[blade.io] dynRes: ${cur.toFixed(2)} → ${next.toFixed(2)} (fps=${fps.toFixed(0)})`);
       } else if (
         this.quality.autoDowngrade &&
         !isReloadPending() &&
-        fps < 35 &&
+        this.veryLowFpsAccum >= 6 &&
         Date.now() - this.lastDowngradeAt > 30000
       ) {
         // Resolution déjà au minimum mais ça rame encore : downgrade preset.
         const lower = nextLowerPreset(this.quality.preset);
         if (lower) {
           console.log(`[blade.io] auto-downgrade preset: ${this.quality.preset} → ${lower} (fps=${fps.toFixed(0)})`);
-          savePresetChoice(lower);
+          saveAutoDowngrade(lower);
           this.lastDowngradeAt = Date.now();
           if (this.room) {
             // En partie : le bloom, les effets plein écran et le MSAA sont
