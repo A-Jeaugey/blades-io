@@ -171,7 +171,9 @@ baisse automatique de cette version du jeu (`blade.quality.auto`, avec
 (`WEBGL_debug_renderer_info`) : toute carte dédiée, Apple Silicon, Intel Arc
 et les iGPU AMD récents en `high` (tâche 2.10 : sous `high`, le néon perd
 son éclat ; le rendu passe avant, la résolution dynamique absorbe la
-charge). Une baisse automatique ne s'écrit jamais comme un choix du joueur.
+charge). Une baisse automatique ne s'écrit jamais comme un choix du joueur,
+et une qualité choisie dans les réglages n'est jamais baissée (seule la
+résolution s'adapte).
 Chaque module de rendu prend `q: QualityConfig`
 en constructeur et adapte son détail (segments, post-FX, instances). Un moniteur
 FPS adaptatif baisse d'abord la résolution de rendu (jusqu'à 0,6 en `high`),

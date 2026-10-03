@@ -101,7 +101,7 @@ import { SettingsPanel, shakeIntensity } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
 import { SoundManager } from "./audio/SoundManager";
-import { detectPreset, getPresetConfig, nextLowerPreset, QualityConfig, saveAutoDowngrade } from "./quality";
+import { detectPreset, getPresetConfig, hasChosenPreset, nextLowerPreset, QualityConfig, saveAutoDowngrade } from "./quality";
 import { getActiveTheme } from "./themes";
 import { I18nKey, formatNumber, t } from "./i18n";
 import { showAlert } from "./ui/Dialog";
@@ -2395,6 +2395,8 @@ export class Game {
         console.log(`[blade.io] dynRes: ${cur.toFixed(2)} → ${next.toFixed(2)} (fps=${fps.toFixed(0)})`);
       } else if (
         this.quality.autoDowngrade &&
+        // Qualité choisie dans les réglages : on ne la baisse jamais.
+        !hasChosenPreset() &&
         !isReloadPending() &&
         this.veryLowFpsAccum >= 6 &&
         Date.now() - this.lastDowngradeAt > 30000

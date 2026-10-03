@@ -288,6 +288,12 @@ function isPreset(v: unknown): v is QualityPreset {
   return typeof v === "string" && v in PRESETS;
 }
 
+// Le joueur a-t-il choisi sa qualité dans les réglages ? Le moniteur de
+// fluidité ne baisse alors jamais le preset (seulement la résolution).
+export function hasChosenPreset(): boolean {
+  return chosenPreset() !== null;
+}
+
 // Choix explicite des réglages (Settings.ts : qualityChoice).
 function chosenPreset(): QualityPreset | null {
   try {
