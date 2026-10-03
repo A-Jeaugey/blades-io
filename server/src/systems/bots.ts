@@ -1,8 +1,17 @@
 import {
+  BOT_CHAMPIONS_MAX,
   BOT_MAX_TOTAL,
   BOT_MIN_PLAYERS,
   BOT_NAMES,
   BOT_THINK_INTERVAL,
+  CHAMPION_FLEE_RATIO,
+  CHAMPION_MAX_BLADES,
+  CHAMPION_MIN_BLADES,
+  CHAMPION_NAME_MARK,
+  CHAMPION_PREY_RATIO,
+  CHAMPION_RESPAWN_MS,
+  CHAMPION_SECOND_AT,
+  CHAMPION_SIZE_RATIO,
   MAP_RADIUS,
   PLAYER_SPEED,
   SPAWN_GRACE_CHASE_RADIUS,
@@ -85,9 +94,21 @@ const SKILLS: Record<BotSkill, SkillProfile> = {
   [BotSkill.Hard]: { chaseRadius: 95, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 0.6, throwPauseMs: 0 },
 };
 
+// Champion (tâche 4.12) : un difficile qui lâche une poursuite au bout de
+// 12 s. Sans limite, il pourchassait un joueur aussi rapide que lui en
+// boostant (deux lames par seconde) et fondait de 190 lames à 3 avant
+// qu'un petit bot l'achève.
+const CHAMPION_PROFILE: SkillProfile = { ...SKILLS[BotSkill.Hard], giveUpMs: 12000 };
+// Il ne booste qu'à l'approche finale, entre ces distances (u), et ne fuit
+// en boostant qu'une menace plus proche que CHAMPION_FLEE_BOOST_RANGE.
+const CHAMPION_BOOST_MIN = 6;
+const CHAMPION_BOOST_MAX = 18;
+const CHAMPION_FLEE_BOOST_RANGE = 12;
+
 // Profil d'un bot face à ce joueur : son niveau contre un humain, normal
-// contre un autre bot.
-function profileAgainst(st: { skill: BotSkill }, other: Player): SkillProfile {
+// contre un autre bot ; celui d'un champion contre tous.
+function profileAgainst(st: { skill: BotSkill; champion: boolean }, other: Player): SkillProfile {
+  if (st.champion) return CHAMPION_PROFILE;
   return other.isBot ? SKILLS[BotSkill.Normal] : SKILLS[st.skill];
 }
 
@@ -173,6 +194,8 @@ interface BotState {
   nextThrowAt: number;
   // La poursuite en cours vient d'un objectif urgent (cf. BotGoal.urgent).
   urgent: boolean;
+  // Champion (tâche 4.12), relevé à la création de l'état.
+  champion: boolean;
 }
 
 // Cache vélocité par joueur — une seule entrée par playerID, mise à jour
@@ -241,6 +264,10 @@ export class BotController {
   // vont pas récolter à leur contact (un clash, même accidentel, mettrait
   // fin à leur grâce).
   private graced: Array<{ x: number; y: number; reach: number }> = [];
+  // Nouveaux venus (débutants, joueurs dans leur grâce ou leur rampe) : un
+  // champion, dont l'orbite tue tout ce qu'elle touche, ne va pas récolter
+  // ni errer à leur contact (tâche 4.12).
+  private fresh: Array<{ x: number; y: number; reach: number }> = [];
   // Leader et sa prime, fixés par la room à chaque tick (cf. setLeader).
   private leaderId: string | null = null;
   private leaderBounty = 0;
@@ -256,9 +283,47 @@ export class BotController {
     this.goalFor = fn;
   }
 
+  // Prochain champion possible (ms epoch) : CHAMPION_RESPAWN_MS après la
+  // chute du précédent.
+  private nextChampionAt = 0;
+
+  // Plus gros humain aguerri (ni débutant, ni bot) de la room : -1 s'il n'y
+  // en a aucun, sinon ses lames (0 s'il est mort).
+  private topVeteranBlades(arena: ArenaState): number {
+    let top = -1;
+    arena.players.forEach((p) => {
+      if (p.isBot || p.newcomer) return;
+      top = Math.max(top, p.alive ? p.bladeCount : 0);
+    });
+    return top;
+  }
+
+  // Un champion doit-il apparaître à la place du prochain bot (tâche
+  // 4.12) ? Un s'il y a un humain aguerri, deux s'il a grossi.
+  championDue(arena: ArenaState, nowMs: number): boolean {
+    if (nowMs < this.nextChampionAt) return false;
+    const top = this.topVeteranBlades(arena);
+    if (top < 0) return false;
+    const wanted = Math.min(BOT_CHAMPIONS_MAX, top >= CHAMPION_SECOND_AT ? 2 : 1);
+    let alive = 0;
+    arena.players.forEach((p) => { if (p.isBot && p.alive && p.champion) alive++; });
+    return alive < wanted;
+  }
+
+  // Lames d'un champion à son apparition : à la taille du plus gros humain
+  // aguerri.
+  championBlades(arena: ArenaState): number {
+    const top = Math.max(0, this.topVeteranBlades(arena));
+    return Math.round(Math.max(CHAMPION_MIN_BLADES, Math.min(CHAMPION_MAX_BLADES, top * CHAMPION_SIZE_RATIO)));
+  }
+
   // place : le point d'apparition, ou la règle du mode qui le choisit
   // (cf. modes/), appelée avant l'entrée du bot dans l'arène.
-  spawnBot(arena: ArenaState, place: { x: number; y: number } | ((bot: Player) => { x: number; y: number })): Player {
+  spawnBot(
+    arena: ArenaState,
+    place: { x: number; y: number } | ((bot: Player) => { x: number; y: number }),
+    champion = false,
+  ): Player {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
     const p = new Player();
     p.id = id;
@@ -275,6 +340,10 @@ export class BotController {
       p.name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + " II";
     }
     p.isBot = true;
+    if (champion) {
+      p.champion = true;
+      p.name = CHAMPION_NAME_MARK + p.name;
+    }
     const spawn = typeof place === "function" ? place(p) : place;
     p.x = spawn.x;
     p.y = spawn.y;
@@ -286,12 +355,11 @@ export class BotController {
     return p;
   }
 
+  // Bots ordinaires voulus ; les champions viennent en plus (championDue).
   desiredBotCount(arena: ArenaState): number {
     let humans = 0;
-    let bots = 0;
     arena.players.forEach((p) => {
-      if (p.isBot) bots++;
-      else humans++;
+      if (!p.isBot) humans++;
     });
     const target = Math.max(0, BOT_MIN_PLAYERS - humans);
     return Math.min(BOT_MAX_TOTAL, target);
@@ -315,12 +383,16 @@ export class BotController {
     this.updateVelocityCache(arena, now);
     const nowMs = Date.now();
     this.graced.length = 0;
+    this.fresh.length = 0;
     this.chasers.clear();
     let beginners = false;
     arena.players.forEach((p) => {
       if (isBeginner(p)) beginners = true;
       if (p.alive && p.graceUntil > nowMs) {
         this.graced.push({ x: p.x, y: p.y, reach: outerOrbitRadius(p.bladeCount) });
+      }
+      if (p.alive && this.isNewcomer(p, nowMs)) {
+        this.fresh.push({ x: p.x, y: p.y, reach: outerOrbitRadius(p.bladeCount) });
       }
       if (!p.isBot || !p.alive) return;
       const st = this.state.get(p.id);
@@ -332,7 +404,9 @@ export class BotController {
       if (!p.isBot || !p.alive) return;
       let st = this.state.get(p.id);
       if (!st) {
-        const personality = Math.floor(Math.random() * 4) as BotPersonality;
+        // Champion : chasseur, difficile (il laisse les débutants et les
+        // joueurs en rampe de grâce tranquilles, cf. leavesAlone).
+        const personality = p.champion ? BotPersonality.Hunter : Math.floor(Math.random() * 4) as BotPersonality;
         st = {
           targetX: p.x,
           targetY: p.y,
@@ -345,13 +419,14 @@ export class BotController {
           curveSign: Math.random() < 0.5 ? 1 : -1,
           curvePhaseOffset: Math.random() * Math.PI * 2,
           threatLevel: 0,
-          skill: drawSkill(beginners ? SKILL_MIX_BEGINNERS : SKILL_MIX_USUAL),
+          skill: p.champion ? BotSkill.Hard : drawSkill(beginners ? SKILL_MIX_BEGINNERS : SKILL_MIX_USUAL),
           chaseSince: 0,
           chaseSpeed: 1,
           ignoreId: null,
           ignoreUntil: 0,
           nextThrowAt: 0,
           urgent: false,
+          champion: p.champion,
         };
         this.state.set(p.id, st);
       }
@@ -425,9 +500,10 @@ export class BotController {
   // Point où ce bot ne doit pas aller : son orbite y toucherait celle d'un
   // joueur en période de grâce.
   private nearGraced(bot: Player, x: number, y: number): boolean {
-    if (this.graced.length === 0) return false;
-    const botReach = outerOrbitRadius(bot.bladeCount);
-    for (const g of this.graced) {
+    const list = bot.champion ? this.fresh : this.graced;
+    if (list.length === 0) return false;
+    const botReach = reachOf(bot);
+    for (const g of list) {
       const keep = g.reach + botReach + GRACE_KEEPOUT_MARGIN;
       const dx = x - g.x;
       const dy = y - g.y;
@@ -555,9 +631,12 @@ export class BotController {
     let threatDy = 0;
     let maxDanger = 0;
 
+    // Un champion ne fuit que nettement plus gros que lui.
+    const fearOf = bot.champion ? bot.bladeCount * CHAMPION_FLEE_RATIO : bot.bladeCount;
+    let nearest = Infinity;
     arena.players.forEach((other) => {
       if (other.id === bot.id || !other.alive || sameTeam(bot.team, other.team)) return;
-      if (other.bladeCount <= bot.bladeCount) return;
+      if (other.bladeCount <= fearOf) return;
       if (this.hiddenFrom(bot, other)) return;
 
       const dx = bot.x - other.x;
@@ -568,6 +647,7 @@ export class BotController {
       if (d < threatRadius && d > 0.001) {
         const danger = (threatRadius - d) + (other.bladeCount - bot.bladeCount);
         maxDanger = Math.max(maxDanger, danger);
+        if (d < nearest) nearest = d;
         threatDx += dx / d;
         threatDy += dy / d;
       }
@@ -582,7 +662,7 @@ export class BotController {
       arena.players.forEach((other) => {
         if (perpDx !== 0 || perpDy !== 0) return;
         if (other.id === bot.id || !other.alive || sameTeam(bot.team, other.team)) return;
-        if (other.bladeCount <= bot.bladeCount) return;
+        if (other.bladeCount <= fearOf) return;
         if (this.hiddenFrom(bot, other)) return;
         const dx = bot.x - other.x;
         const dy = bot.y - other.y;
@@ -607,8 +687,13 @@ export class BotController {
       score: 1000 + maxDanger * 10 + threatBoost,
       x: bot.x + (threatDx / m) * 30,
       y: bot.y + (threatDy / m) * 30,
-      // Plus enclin à boost en flee si déjà blessé.
-      boost: bot.bladeCount > 2 && (maxDanger > 10 || st.threatLevel >= 4),
+      // Plus enclin à boost en flee si déjà blessé. Un champion seulement
+      // si la menace est sur lui : l'écart de lames suffisait à le faire
+      // booster dès 25 u, et il fondait à fuir un joueur qui ne le
+      // poursuivait pas.
+      boost: bot.champion
+        ? nearest < CHAMPION_FLEE_BOOST_RANGE
+        : bot.bladeCount > 2 && (maxDanger > 10 || st.threatLevel >= 4),
     };
   }
 
@@ -659,7 +744,11 @@ export class BotController {
         if (chaser !== undefined && chaser !== bot.id) return;
       }
       const bounty = other.id === this.leaderId ? this.leaderBounty : 0;
-      if (bounty > 0) {
+      if (bot.champion) {
+        // Champion : des proies à sa mesure, jusqu'à ce qu'il fuirait.
+        if (other.bladeCount < bot.bladeCount * CHAMPION_PREY_RATIO) return;
+        if (other.bladeCount > bot.bladeCount * CHAMPION_FLEE_RATIO) return;
+      } else if (bounty > 0) {
         if (bot.bladeCount < other.bladeCount * BOUNTY_HUNT_RATIO) return;
       } else if (other.bladeCount + aggroAdvantage > bot.bladeCount) return;
       const profile = profileAgainst(st, other);
@@ -673,7 +762,11 @@ export class BotController {
 
       if (d > radius) return;
 
-      let score = 80 + (bot.bladeCount - other.bladeCount) * 5 - d;
+      // Un champion préfère les proies les plus dignes de lui ; l'écart de
+      // lames, compté tel quel, rendait négative toute proie plus grosse.
+      let score = bot.champion
+        ? 80 + 30 * (other.bladeCount / Math.max(1, bot.bladeCount)) - d * 0.5
+        : 80 + (bot.bladeCount - other.bladeCount) * 5 - d;
 
       if (st.personality === BotPersonality.Hunter) score += 20;
       if (st.personality === BotPersonality.Aggressive) score += 40;
@@ -705,7 +798,9 @@ export class BotController {
         const leadT = d / Math.max(0.1, PLAYER_SPEED);
         targetX = other.x + v.vx * leadT;
         targetY = other.y + v.vy * leadT;
-        shouldBoost = profile.chaseBoost && bot.bladeCount > 5 && d > 15 && d < 40 && st.personality !== BotPersonality.Camper;
+        shouldBoost = bot.champion
+          ? d > CHAMPION_BOOST_MIN && d < CHAMPION_BOOST_MAX
+          : profile.chaseBoost && bot.bladeCount > 5 && d > 15 && d < 40 && st.personality !== BotPersonality.Camper;
         speed = profile.chaseSpeed;
       }
     });
@@ -1047,7 +1142,9 @@ export class BotController {
   cleanupDead(arena: ArenaState): void {
     const toRemove: string[] = [];
     arena.players.forEach((p) => {
-      if (p.isBot && !p.alive) toRemove.push(p.id);
+      if (!p.isBot || p.alive) return;
+      toRemove.push(p.id);
+      if (p.champion) this.nextChampionAt = Date.now() + CHAMPION_RESPAWN_MS;
     });
     for (const id of toRemove) {
       const bladeIds: string[] = [];

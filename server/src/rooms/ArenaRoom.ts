@@ -73,6 +73,8 @@ import {
   bladeEdgeRadius,
   bladeTipReach,
   tierFromBladeCount,
+  CHAMPION_RARITY_WEIGHTS,
+  isTeamMode,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -1201,15 +1203,35 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private maintainBots(): void {
     if (this.mode.botsMayJoin?.() === false) return;
     let bots = 0;
-    this.state.players.forEach((p) => { if (p.isBot) bots++; });
+    this.state.players.forEach((p) => { if (p.isBot && !p.champion) bots++; });
     const want = this.bots.desiredBotCount(this.state);
+    const place = (bot: Player) => {
+      this.mode.onJoin(bot);
+      return this.mode.spawnPoint(bot);
+    };
     while (bots < want) {
-      const p = this.bots.spawnBot(this.state, (bot) => {
-        this.mode.onJoin(bot);
-        return this.mode.spawnPoint(bot);
-      });
+      const p = this.bots.spawnBot(this.state, place);
       this.giveBlades(p, INITIAL_BLADE_COUNT);
       bots++;
+    }
+    // Champions (tâche 4.12), en plus des bots ordinaires : sinon le premier
+    // n'arrivait qu'à la mort d'un bot, la room s'étant remplie avant
+    // l'entrée du joueur. Hors modes équipe, où ils feraient pencher la
+    // balance d'un camp.
+    if (isTeamMode(this.mode.id)) return;
+    while (this.bots.championDue(this.state, Date.now())) {
+      const p = this.bots.spawnBot(this.state, place, true);
+      this.giveChampionBlades(p, this.bots.championBlades(this.state));
+    }
+  }
+
+  // Orbite d'un champion à son apparition : ses raretés suivent
+  // CHAMPION_RARITY_WEIGHTS.
+  private giveChampionBlades(p: Player, count: number): void {
+    const perRarity = [0, 0, 0, 0];
+    for (let i = 0; i < count; i++) perRarity[pickRarity(CHAMPION_RARITY_WEIGHTS)]++;
+    for (let r = 0; r < perRarity.length; r++) {
+      if (perRarity[r] > 0) this.giveBlades(p, perRarity[r], r as BladeRarity);
     }
   }
 

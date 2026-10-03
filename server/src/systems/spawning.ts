@@ -17,10 +17,13 @@ import { LOOT_WALL_MARGIN, areaShare, zoneInner } from "./spawnPoint";
 import { Blade } from "../state/Blade";
 import { randomId } from "../utils/ids";
 
-export function pickRarity(): BladeRarity {
+// Rareté tirée selon des poids (ceux des lames ambiantes par défaut).
+export function pickRarity(
+  weights: ReadonlyArray<{ rarity: BladeRarity; weight: number }> = RARITY_SPAWN_WEIGHTS,
+): BladeRarity {
   const r = Math.random();
   let acc = 0;
-  for (const entry of RARITY_SPAWN_WEIGHTS) {
+  for (const entry of weights) {
     acc += entry.weight;
     if (r <= acc) return entry.rarity;
   }

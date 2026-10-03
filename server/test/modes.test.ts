@@ -3,6 +3,8 @@
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CHAMPION_MIN_BLADES,
+  CHAMPION_NAME_MARK,
   GAME_MODES,
   INITIAL_BLADE_COUNT,
   KillCause,
@@ -209,4 +211,31 @@ test("fin de partie : classement, vies enregistrées, entracte immobile, puis pa
   r.room.killPlayer(loser, winner, "blades");
   r.tick();
   assert.equal(r.eventsOf("matchEnd").length, 2);
+});
+
+// Champions (tâche 4.12) : en arène, un bot apparaît avec une grosse orbite
+// dès qu'un humain aguerri est là ; jamais en mode équipe.
+test("champions : en arène avec un humain aguerri, pas en mode équipe", () => {
+  const champions = (r: TestRoom) => {
+    const out: Player[] = [];
+    r.state.players.forEach((p) => { if (p.isBot && p.champion) out.push(p); });
+    return out;
+  };
+  const ffa = new TestRoom(clock, { bots: true });
+  ffa.join("vet");
+  ffa.tick(2);
+  const [champ] = champions(ffa);
+  assert.ok(champ, "un champion");
+  assert.equal(champions(ffa).length, 1);
+  assert.ok(champ.bladeCount >= CHAMPION_MIN_BLADES);
+  assert.ok(champ.name.startsWith(CHAMPION_NAME_MARK));
+  // Un débutant seul : pas de champion.
+  const fresh = new TestRoom(clock, { bots: true });
+  fresh.join("newbie", {}, { newcomer: true });
+  fresh.tick(2);
+  assert.equal(champions(fresh).length, 0);
+  const tdm = new TestRoom(clock, { bots: true, mode: "tdm" });
+  tdm.join("vet");
+  tdm.tick(2);
+  assert.equal(champions(tdm).length, 0);
 });

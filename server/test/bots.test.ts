@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   BUSHES,
   BladeThrownEvent,
+  CHAMPION_NAME_MARK,
+  CHAMPION_RESPAWN_MS,
+  CHAMPION_SECOND_AT,
   MAP_RADIUS,
   SPAWN_GRACE_CHASE_RADIUS,
   SPAWN_GRACE_MS,
@@ -16,7 +19,7 @@ import { PowerUp } from "../src/state/PowerUp";
 import { BotController, BotPersonality, BotSkill } from "../src/systems/bots";
 import { updateMovement } from "../src/systems/movement";
 import { processThrows } from "../src/systems/throws";
-import { DT, FakeClock, addGroundBlade, addPlayer, seedRandom } from "./helpers";
+import { DT, FakeClock, addGroundBlade, addPlayer, giveBlade, seedRandom } from "./helpers";
 
 let clock: FakeClock;
 let state: ArenaState;
@@ -432,4 +435,68 @@ test("niveaux : entre bots, un bot facile se bat comme un normal", () => {
   clock.advance(6500);
   rethink(bot);
   assert.equal(decision(bot), "chase"); // pas d'abandon
+});
+
+// Champions (tâche 4.12) : des bots qui apparaissent à la taille du plus gros
+// humain aguerri, pour qu'un joueur qui a grossi trouve encore à qui parler.
+test("champions : un avec un humain aguerri, deux s'il a grossi, aucun sans lui", () => {
+  assert.equal(bots.championDue(state, clock.now), false, "room vide");
+  const newbie = addPlayer(state, { blades: 30 });
+  newbie.newcomer = true;
+  assert.equal(bots.championDue(state, clock.now), false, "débutant seul");
+  const vet = addPlayer(state, { blades: 60 });
+  assert.equal(bots.championDue(state, clock.now), true);
+  assert.equal(bots.championBlades(state), 48);
+  const champ = bots.spawnBot(state, { x: 0, y: -100 }, true);
+  assert.equal(champ.champion, true);
+  assert.ok(champ.name.startsWith(CHAMPION_NAME_MARK));
+  assert.equal(bots.championDue(state, clock.now), false, "un seul à 60 lames");
+  while (vet.bladeCount < CHAMPION_SECOND_AT) giveBlade(state, vet);
+  assert.equal(bots.championDue(state, clock.now), true, "un second à 100 lames");
+  assert.equal(bots.championBlades(state), 80);
+  vet.bladeCount = 1000;
+  assert.equal(bots.championBlades(state), 300);
+  vet.bladeCount = 10;
+  assert.equal(bots.championBlades(state), 40);
+});
+
+test("champions : le suivant n'apparaît que 45 s après la chute du précédent", () => {
+  addPlayer(state, { blades: 20 });
+  const champ = bots.spawnBot(state, { x: 0, y: -100 }, true);
+  champ.alive = false;
+  bots.cleanupDead(state);
+  assert.equal(bots.championDue(state, clock.now), false);
+  clock.advance(CHAMPION_RESPAWN_MS);
+  assert.equal(bots.championDue(state, clock.now), true);
+});
+
+test("champions : des proies à leur mesure, pas de fuite devant un peu plus gros", () => {
+  const champ = addPlayer(state, { x: 0, y: -100, blades: 100, isBot: true });
+  champ.champion = true;
+  setPersonality(champ, BotPersonality.Hunter, BotSkill.Hard);
+  const small = addPlayer(state, { x: 15, y: -100, blades: 30 });
+  rethink(champ);
+  assert.notEqual(decision(champ), "chase", "moins de 40 % de ses lames : ignoré");
+  const worthy = addPlayer(state, { x: -15, y: -100, blades: 60 });
+  rethink(champ);
+  assert.equal(bots.isChasing(champ.id, worthy.id), true);
+  state.players.delete(small.id);
+  state.players.delete(worthy.id);
+  const bigger = addPlayer(state, { x: 15, y: -100, blades: 120 });
+  rethink(champ);
+  assert.equal(bots.isChasing(champ.id, bigger.id), true, "un peu plus gros : il l'affronte");
+  while (bigger.bladeCount < 140) giveBlade(state, bigger);
+  rethink(champ);
+  assert.equal(decision(champ), "flee", "nettement plus gros : il fuit");
+});
+
+test("champions : jamais après un débutant", () => {
+  const champ = addPlayer(state, { x: 0, y: -100, blades: 60, isBot: true });
+  champ.champion = true;
+  const newbie = addPlayer(state, { x: 15, y: -100, blades: 40 });
+  newbie.newcomer = true;
+  bots.update(DT, state);
+  rethink(champ);
+  assert.notEqual(decision(champ), "chase");
+  assert.equal(champ.inputThrow, false);
 });

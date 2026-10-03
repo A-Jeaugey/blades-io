@@ -2,7 +2,7 @@
 
 Guide pour Claude (et autres assistants IA) qui travaillent sur ce repo.
 
-> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js` (`BENCH_SEED=<n>` : même partie avant et après, l'écart ne vient que du code mesuré). Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`), et `node tools/bench-survival.js first` pour le temps avant sa première mort (débutant par défaut, que les bots ménagent ; `BENCH_RETURNING=1` pour un joueur qui revient) ; équilibre entre gros et petits joueurs (prime, loot, paliers) : `node tools/bench-snowball.js` (durée des règnes du leader, kills « underdog ») ; contact de deux grosses orbites (collisions, destructions de lames) : `node tools/bench-giants.js` (après `npm test`). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
+> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js` (`BENCH_SEED=<n>` : même partie avant et après, l'écart ne vient que du code mesuré). Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`), et `node tools/bench-survival.js first` pour le temps avant sa première mort (débutant par défaut, que les bots ménagent ; `BENCH_RETURNING=1` pour un joueur qui revient) ; équilibre entre gros et petits joueurs (prime, loot, paliers) : `node tools/bench-snowball.js` (durée des règnes du leader, kills « underdog ») ; contact de deux grosses orbites (collisions, destructions de lames) : `node tools/bench-giants.js` (après `npm test`) ; champions face à un joueur aguerri à grosse orbite : `node tools/bench-champions.js` (après `npm test`). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
 
 ---
 
@@ -655,6 +655,24 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   seul (`PickupSystem`), ignoré des bots qui récoltent. Tueur mort, parti
   ou au plafond de lames : butin ordinaire. Mort sans tueur (mur) : butin
   ordinaire.
+- **Champions (tâche 4.12)** : jusqu'à `BOT_CHAMPIONS_MAX` bots (un, deux
+  dès que le plus gros humain aguerri a `CHAMPION_SECOND_AT` lames)
+  apparaissent avec une grosse orbite, à `CHAMPION_SIZE_RATIO` de ce
+  joueur (de 40 à 300 lames, raretés `CHAMPION_RARITY_WEIGHTS`), marqués
+  `CHAMPION_NAME_MARK` devant leur nom (`Player.champion`, champ serveur).
+  `BotController.championDue` décide (au moins un humain qui n'est pas un
+  débutant, `CHAMPION_RESPAWN_MS` après la chute du précédent), la room
+  les fait apparaître en plus des bots ordinaires (`maintainBots`), hors
+  modes équipe. Difficiles et chasseurs : ne fuient qu'un joueur
+  `CHAMPION_FLEE_RATIO` fois plus gros, ne poursuivent que des proies d'au
+  moins `CHAMPION_PREY_RATIO` de leurs lames (jamais un débutant ni un
+  joueur en grâce ou en rampe), et ne vont ni récolter ni errer au contact
+  d'un nouveau venu (`fresh`, `nearGraced`). Ils ne boostent qu'à
+  l'approche finale et lâchent une poursuite au bout de 12 s : sinon ils
+  fondaient en boostant après un joueur aussi rapide qu'eux (deux lames par
+  seconde). Une room de bots seuls (bancs du snowball et du débutant) n'en
+  a pas : `BENCH_RETURNING=1` pour les bancs de survie, et
+  `node tools/bench-champions.js`.
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en

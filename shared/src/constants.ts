@@ -541,6 +541,36 @@ export const CRATE_LOOT_WEIGHTS: Array<{ rarity: BladeRarity; weight: number }> 
 export const BOT_MIN_PLAYERS = 15;
 export const BOT_MAX_TOTAL = 10;
 export const BOT_THINK_INTERVAL = 0.4;
+// Champions (tâche 4.12) : jusqu'à BOT_CHAMPIONS_MAX bots qui apparaissent
+// avec une grosse orbite, à la taille du plus gros humain aguerri
+// (CHAMPION_SIZE_RATIO de ses lames, entre CHAMPION_MIN_BLADES et
+// CHAMPION_MAX_BLADES). Sans eux, aucun bot ne dépassait quelques dizaines
+// de lames : un joueur à 150 n'avait plus d'adversaire. Ils jouent en
+// difficile, ne fuient qu'un joueur CHAMPION_FLEE_RATIO fois plus gros et
+// ne poursuivent que des proies à leur mesure (au moins CHAMPION_PREY_RATIO
+// de leurs lames) ; un débutant, ou un joueur dans sa grâce et sa rampe,
+// n'est jamais leur cible. Seulement en arène et en manches, avec au moins
+// un humain aguerri ; le suivant apparaît CHAMPION_RESPAWN_MS après la
+// chute du précédent. Leur butin (70 %, tout s'ils mènent) va à leur tueur.
+export const BOT_CHAMPIONS_MAX = 2;
+export const CHAMPION_MIN_BLADES = 40;
+export const CHAMPION_MAX_BLADES = 300;
+export const CHAMPION_SIZE_RATIO = 0.8;
+// Un second champion quand le plus gros humain en a au moins autant.
+export const CHAMPION_SECOND_AT = 100;
+export const CHAMPION_PREY_RATIO = 0.4;
+export const CHAMPION_FLEE_RATIO = 1.3;
+export const CHAMPION_RESPAWN_MS = 45000;
+// Raretés de l'orbite d'un champion à l'apparition (celles d'un joueur qui
+// a grossi en ouvrant des caisses).
+export const CHAMPION_RARITY_WEIGHTS: Array<{ rarity: BladeRarity; weight: number }> = [
+  { rarity: BladeRarity.Common, weight: 0.5 },
+  { rarity: BladeRarity.Rare, weight: 0.3 },
+  { rarity: BladeRarity.Epic, weight: 0.15 },
+  { rarity: BladeRarity.Legendary, weight: 0.05 },
+];
+// Marque devant le nom d'un champion (nametag, classement, fil des kills).
+export const CHAMPION_NAME_MARK = "★ ";
 export const BOT_NAMES = [
   "Courgette", "Ananas", "Poulet", "Saucisson", "Baguette", "Fromage",
   "Tomate", "Brocoli", "Fraise", "Steak", "Raclette", "Croissant"

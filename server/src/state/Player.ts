@@ -117,6 +117,9 @@ export class Player extends Schema {
   moveVx: number = 0;
   moveVy: number = 0;
   movedAt: number = 0;
+  // Bot champion (tâche 4.12) : apparu avec une grosse orbite, il ne s'en
+  // prend qu'à des proies à sa mesure.
+  champion: boolean = false;
   // Edge-trigger consommé chaque tick par processThrows. Le client envoie
   // true ponctuellement à chaque appui, le serveur le remet à false après
   // traitement (ou après le tick si cooldown actif).
