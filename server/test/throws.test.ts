@@ -231,12 +231,15 @@ test("projectile vs corps : tue, consomme un pierce, une seule fois par cible", 
 
 test("un projectile Common est consommé au premier impact", () => {
   const a = addPlayer(state, { x: 0, y: 0 });
-  addPlayer(state, { x: 10, y: 0 });
+  const b = addPlayer(state, { x: 10, y: 0 });
   const proj = projectile({ x: 10.5, y: 0, rarity: BladeRarity.Common, pierce: 1, by: a });
   const r = recorder();
   resolveProjectileCollisions(state, r, new OrbitPositionCache());
   assert.equal(state.blades.has(proj.id), false);
   assert.equal(r.impacts[0].destroyed, true);
+  // Perdue contre sa cible : son lanceur la récupère s'il l'a tuée.
+  // Marquée lancée : pas un dégât subi pour la fuite des bots.
+  assert.deepEqual(a.recentLosses.map((l) => [l.rarity, l.by, l.thrown]), [[BladeRarity.Common, b.id, true]]);
 });
 
 test("le lanceur et les joueurs protégés ne sont pas touchés", () => {
@@ -388,6 +391,7 @@ test("projectile perforant : une lame en orbite qui tient l'arrête", () => {
   assert.equal(state.blades.has(proj.id), false);
   assert.deepEqual(r.impacts.map((i) => [i.kind, i.destroyed]), [[0, true]]);
   assert.equal(b.alive, true);
+  assert.deepEqual(a.recentLosses.map((l) => [l.rarity, l.by, l.thrown]), [[BladeRarity.Epic, b.id, true]]);
 });
 
 // Une lame en orbite se teste telle qu'elle est dessinée : la pointe d'une

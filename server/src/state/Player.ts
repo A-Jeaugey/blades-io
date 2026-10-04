@@ -145,13 +145,16 @@ export class Player extends Schema {
   lastKiller: string | null = null;
   // Liste ordonnée des IDs de lames possédées (ordre = ordre de récupération)
   bladeIds: string[] = [];
-  // Buffer circulaire des lames perdues en clash (rareté + ts ms). Sert au
-  // drop de mort : on restitue les lames cassées dans les N dernières
-  // secondes (RECENT_LOSS_DROP_RATIO, 100 % aujourd'hui) pour que le
-  // tueur loote un butin cohérent avec le combat
-  // qu'il vient de gagner. Capé à RECENT_LOSS_BUFFER_CAP pour éviter
-  // l'accumulation sur les longs combats.
-  recentLosses: Array<{ rarity: number; ts: number }> = [];
+  // Lames perdues récemment (rareté, ts ms, joueur responsable ou "") :
+  // cassées en clash ou par un projectile, ou lancées et consommées sur un
+  // adversaire. Au drop de mort, elles donnent les raretés du butin ; au
+  // kill, le tueur récupère celles qu'il a perdues contre sa victime
+  // (DEATH_LOOT_WINDOW_MS). Capé à RECENT_LOSS_BUFFER_CAP.
+  recentLosses: Array<{ rarity: number; ts: number; by: string; thrown?: boolean }> = [];
+  // Plus haut nombre de lames sur DEATH_LOOT_WINDOW_MS, en file monotone
+  // (cf. systems/bladePeak.ts) : le butin de sa mort.
+  peakTs: number[] = [];
+  peakCount: number[] = [];
   // Timestamps (ms) des messages chat récents, sliding window pour le
   // rate limit. La logique : à chaque chat reçu on prune les entries
   // < (now - CHAT_RATE_LIMIT_WINDOW_MS), si le tableau a déjà

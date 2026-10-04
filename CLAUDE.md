@@ -646,13 +646,28 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   poursuivre (perçant) jusqu'aux suivantes ou au corps. La portée d'un
   joueur pour les buissons (`reachOf`) suit la plus longue lame de son
   palier. `?debug=hitbox` trace les deux formes (cercle, axe de la lame).
-- **Butin d'un kill (tâche 4.11)** : la victime lâche 70 % de son orbite
-  (tout si elle menait) et toutes les lames perdues dans les 10 dernières
-  secondes (`recentLosses`, plafonné à 12 avant : le butin d'un combat ne
-  dépassait jamais 12 lames). Ce butin est ordinaire, éparpillé autour de
-  la victime : il était réservé au tueur et aspiré vers lui d'où qu'il
-  soit, retiré le 2026-10-04 à la demande du owner (ça cassait des
-  mécaniques : butin à disputer, lancers de loin).
+- **Butin d'un kill (tâches 4.11 et 4.14)** : la victime lâche exactement
+  son plus haut nombre de lames des `DEATH_LOOT_WINDOW_MS` (15 s)
+  précédentes (`systems/bladePeak.ts`, relevé à chaque tick) : son orbite,
+  puis ses pertes de la fenêtre (`recentLosses`), les plus récentes
+  d'abord, complétées en Common (lames dépensées au boost, lancées à côté).
+  Son tueur récupère dans son orbite les lames qu'il a perdues contre elle
+  sur la même fenêtre (`refundKiller`, gain « +N 🗡️ » au client) : chaque
+  perte garde son responsable (`by`), et une lame lancée consommée sur un
+  adversaire compte comme perdue contre lui (`thrown` : pas un dégât subi,
+  la fuite des bots l'ignore). Toute nouvelle façon de perdre une lame à
+  cause d'un joueur passe par `recordLoss`. Le butin est ordinaire,
+  éparpillé autour de la victime : il était réservé au tueur et aspiré vers
+  lui d'où qu'il soit, retiré le 2026-10-04 à la demande du owner (ça
+  cassait des mécaniques : butin à disputer, lancers de loin).
+- **Visée des bots (tâche 4.14)** : un lancer vise le point d'interception
+  de la cible (`leadAim`, `predictIntercept`), calculé avec sa vitesse
+  d'il y a `aimReaction` secondes (0,35 facile, 0,25 normal, 0,2 difficile
+  et champion ; historique d'une seconde dans `VelocityCache.hist`) : un
+  virage juste avant le lancer l'esquive, une ligne droite ne change rien.
+  Ne pas la remplacer par la vitesse du moment : la visée suivait chaque
+  virage en 50 à 100 ms (« ils visent trop bien »). Banc de travail :
+  touchés 82 → 80 % en ligne droite, 71 → 60 % en zigzag.
 - **Champions (tâche 4.12)** : jusqu'à `BOT_CHAMPIONS_MAX` bots (un, deux
   dès que le plus gros humain aguerri a `CHAMPION_SECOND_AT` lames)
   apparaissent avec une grosse orbite, à `CHAMPION_SIZE_RATIO` de ce

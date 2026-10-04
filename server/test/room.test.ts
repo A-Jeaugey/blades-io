@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { CloseCode } from "@colyseus/core";
 import {
   BOOST_DROP_BACK,
+  DEATH_LOOT_WINDOW_MS,
   BladeRarity,
   CLOSE_CODE_INPUT_FLOOD,
   GROUND_BLADE_TTL_MS,
@@ -53,13 +54,13 @@ function armed(r: TestRoom, id: string, total: number): Player {
   return p;
 }
 
-test("mort : 70 % des lames en orbite tombent au sol, avec échéance et verrou", () => {
+test("mort : toute l'orbite tombe au sol, avec échéance et verrou", () => {
   const r = new TestRoom(clock);
   const victim = armed(r, "victim", 20);
   const killer = r.join("killer");
   r.room.killPlayer(victim, killer, "blades");
   const drops = groundBlades(r.state);
-  assert.equal(drops.length, 14);
+  assert.equal(drops.length, 20);
   for (const b of drops) {
     assert.equal(b.expiresAt, clock.now + GROUND_BLADE_TTL_MS);
     assert.equal(b.pickupLockUntil, clock.now + 400);
@@ -73,33 +74,67 @@ test("mort : 70 % des lames en orbite tombent au sol, avec échéance et verrou"
   assert.equal(r.eventsOf("playerKilled")[0].killerId, killer.id);
 });
 
-test("mort : les lames perdues dans les 10 dernières secondes tombent aussi", () => {
+// Butin d'une mort : le plus haut nombre de lames de la victime sur les 15
+// dernières secondes, pas ce qui lui restait au coup fatal.
+test("mort : le butin est le plus haut nombre de lames des 15 dernières secondes", () => {
   const r = new TestRoom(clock);
   const victim = armed(r, "victim", 10);
+  r.tick();
   for (const b of ownedBlades(r.state, victim).slice(0, 4)) r.room.handleBladeDestroyed(b);
+  r.tick();
   assert.equal(victim.bladeCount, 6);
   r.room.killPlayer(victim, null, "wall");
-  // floor(6 × 0,7) = 4 lames en orbite + 4 pertes récentes.
-  assert.equal(groundBlades(r.state).length, 8);
+  assert.equal(groundBlades(r.state).filter((b) => b.expiresAt > 0).length, 10);
 
+  // Pic plus vieux que la fenêtre : le butin retombe à ce qui reste.
   const r2 = new TestRoom(clock);
   const old = armed(r2, "old", 10);
+  r2.tick();
   for (const b of ownedBlades(r2.state, old).slice(0, 4)) r2.room.handleBladeDestroyed(b);
-  clock.advance(11_000);
+  r2.tick(((DEATH_LOOT_WINDOW_MS + 1000) / 1000) * 60);
+  assert.equal(old.bladeCount, 6);
   r2.room.killPlayer(old, null, "wall");
-  assert.equal(groundBlades(r2.state).length, 4);
+  assert.equal(groundBlades(r2.state).filter((b) => b.expiresAt > 0).length, 6);
 });
 
-// Le butin d'un combat comprend toutes les lames perdues dans les 10
-// dernières secondes : plafonné à 12 avant, tuer une grosse orbite ne
-// rapportait guère plus qu'une petite.
+// Le butin d'un combat comprend toutes les lames perdues : plafonné à 12
+// avant, tuer une grosse orbite ne rapportait guère plus qu'une petite.
 test("mort : toutes les lames perdues au combat tombent, pas seulement 12", () => {
   const r = new TestRoom(clock);
   const victim = armed(r, "victim", 40);
-  for (const b of ownedBlades(r.state, victim).slice(0, 30)) r.room.handleBladeDestroyed(b);
+  for (let i = 0; i < 4; i++) giveBlade(r.state, victim, BladeRarity.Legendary);
+  r.tick();
+  for (const b of ownedBlades(r.state, victim).slice(0, 34)) r.room.handleBladeDestroyed(b);
   r.room.killPlayer(victim, null, "wall");
-  // floor(10 × 0,7) = 7 lames en orbite + 30 pertes récentes.
-  assert.equal(groundBlades(r.state).length, 37);
+  // Pic de 44 : 10 en orbite + 34 pertes récentes, raretés comprises.
+  const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0);
+  assert.equal(drops.length, 44);
+  assert.equal(drops.filter((b) => b.rarity === BladeRarity.Legendary).length, 4);
+});
+
+// Le tueur récupère les lames qu'il a perdues contre sa victime : sinon,
+// 100 lames contre 50, on tombait à 50 et on remontait à 100 en ramassant
+// son butin, sans rien gagner.
+test("kill : le tueur récupère les lames qu'il a perdues contre sa victime", () => {
+  const r = new TestRoom(clock);
+  const killer = armed(r, "killer", 20);
+  const victim = armed(r, "victim", 10);
+  const other = armed(r, "other", 10);
+  const mine = ownedBlades(r.state, killer);
+  for (const b of mine.slice(0, 6)) r.room.handleBladeDestroyed(b, victim);
+  for (const b of mine.slice(6, 8)) r.room.handleBladeDestroyed(b, other);
+  assert.equal(killer.bladeCount, 12);
+  r.room.killPlayer(victim, killer, "blades");
+  assert.equal(killer.bladeCount, 18, "6 lames rendues, pas celles perdues contre un autre");
+  assert.equal(r.eventsOf("playerKilled").at(-1).refund, 6);
+  assert.deepEqual(killer.recentLosses.map((l) => l.by), [other.id, other.id]);
+  // Pertes plus vieilles que la fenêtre : rien à rendre.
+  const late = armed(r, "late", 5);
+  for (const b of ownedBlades(r.state, killer).slice(0, 3)) r.room.handleBladeDestroyed(b, late);
+  clock.advance(DEATH_LOOT_WINDOW_MS + 1000);
+  r.room.killPlayer(late, killer, "blades");
+  assert.equal(killer.bladeCount, 15);
+  assert.equal(r.eventsOf("playerKilled").at(-1).refund, 0);
 });
 
 test("drops : clignotent puis disparaissent, les lames ambiantes restent", () => {
@@ -109,15 +144,12 @@ test("drops : clignotent puis disparaissent, les lames ambiantes restent", () =>
   victim.x = 0; victim.y = -20;
   // Loin, mais dans l'arène à la taille de deux joueurs (tâche 4.5).
   far.x = 100; far.y = 100;
-  // far est le leader : la victime lâche 70 % de ses lames (le leader lâche
-  // tout, tâche 4.2).
-  far.kills = 5;
   r.tick(120);
   const ambient = groundBlades(r.state).map((b) => b.id);
   assert.ok(ambient.length > 0);
   r.room.killPlayer(victim, null, "wall");
   const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0);
-  assert.equal(drops.length, 14);
+  assert.equal(drops.length, 20);
   const killedAt = clock.now;
   while (clock.now - killedAt < 13_100) r.tick();
   for (const b of drops) assert.equal(r.state.blades.get(b.id)?.expiring, true);
@@ -515,7 +547,7 @@ test("évènements : cause de chaque mort, auteur d'une caisse brisée", () => {
   // force (la victime en avait 3 au début de l'échange).
   const fighter = r.join("fighter");
   r.room.removePlayerBlades(fighter, 3);
-  fighter.recentLosses = [1, 2, 3].map(() => ({ rarity: 0, ts: clock.now - 500 }));
+  fighter.recentLosses = [1, 2, 3].map(() => ({ rarity: 0, ts: clock.now - 500, by: "a" }));
   r.room.killPlayer(fighter, a, "blades");
   const last = r.eventsOf("playerKilled").at(-1);
   assert.equal(last.victimBlades, 3);

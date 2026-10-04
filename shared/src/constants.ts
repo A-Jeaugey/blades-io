@@ -370,11 +370,14 @@ export const AMBIENT_MIN_FLOOR = 35; // toujours au moins N lames au sol
 export const PRIVATE_ROOM_DENSITY_MULT = 2.5;
 
 // --- Mort / drop ---
-// Fraction des lames en orbite dropées au sol à la mort. 0.7 → le tueur
-// peut récupérer 70 % du stockpile orbital de la victime (en plus des
-// pertes récentes, cf. plus bas). Avant à 0.5 le kill se sentait peu
-// rentable face à un joueur loaded.
-export const DEATH_DROP_RATIO = 0.7;
+// Butin d'une mort (retour du owner, 2026-10-04) : exactement le plus haut
+// nombre de lames de la victime sur les DEATH_LOOT_WINDOW_MS précédents,
+// pas 70 % de ce qui lui restait en orbite (un combat la laissait souvent à
+// 0) ; et son tueur récupère les lames qu'il a perdues contre elle sur la
+// même fenêtre, cassées en clash ou lancées. Sinon tuer ne rapportait rien :
+// 100 lames contre 50, on tombait à 50 en cassant les siennes et on
+// remontait à 100 en ramassant son butin.
+export const DEATH_LOOT_WINDOW_MS = 15000;
 // Distances de spawn des drops autour de la victime. Volontairement
 // resserrées (1-3.5) pour que les lames atterrissent toutes DANS le
 // PICKUP_MAGNET_RADIUS (5.5) après prise en compte de la trajectoire
@@ -388,19 +391,10 @@ export const DEATH_DROP_MAX_DIST = 3.5;
 // GROUND_BLADE_FRICTION les arrête en ~0.6-1.0 s.
 export const DEATH_DROP_SPEED_MIN = 2;
 export const DEATH_DROP_SPEED_MAX = 3;
-// Bonus de drop : pertes "récentes" cumulées en clash dans cette fenêtre
-// (ms). Évite que tuer un ennemi qui finit forcément à 0 lames donne 0 loot,
-// sans pour autant resservir l'historique entier de la partie.
-export const RECENT_LOSS_WINDOW_MS = 10000;
-// Garde-fou de mémoire, pas un réglage : à 12, le butin d'un combat
-// s'arrêtait à 12 lames, si grosse que soit l'orbite que le tueur venait de
-// détruire, et tuer coûtait souvent plus de lames qu'il n'en rapportait.
+// Garde-fou de mémoire des pertes récentes (Player.recentLosses), pas un
+// réglage : à 12, le butin d'un combat s'arrêtait à 12 lames, si grosse que
+// soit l'orbite que le tueur venait de détruire.
 export const RECENT_LOSS_BUFFER_CAP = 400;
-// Fraction des pertes récentes effectivement dropées à la mort (en plus du
-// DEATH_DROP_RATIO classique appliqué aux lames encore en orbite). 1.0 =
-// le tueur récupère 100 % de ce que la victime a cramé dans les 10 dernières
-// secondes — encourage l'aggro.
-export const RECENT_LOSS_DROP_RATIO = 1.0;
 
 // --- Raretés ---
 export enum BladeRarity {
@@ -556,7 +550,8 @@ export const BOT_THINK_INTERVAL = 0.4;
 // de leurs lames) ; un débutant, ou un joueur dans sa grâce et sa rampe,
 // n'est jamais leur cible. Seulement en arène et en manches, avec au moins
 // un humain aguerri ; le suivant apparaît CHAMPION_RESPAWN_MS après la
-// chute du précédent. Leur butin (70 %, tout s'ils mènent) va à leur tueur.
+// chute du précédent. Leur butin tombe comme celui de tout joueur (cf.
+// DEATH_LOOT_WINDOW_MS).
 export const BOT_CHAMPIONS_MAX = 2;
 export const CHAMPION_MIN_BLADES = 40;
 export const CHAMPION_MAX_BLADES = 300;
@@ -612,13 +607,11 @@ export const MAX_PLAYERS_PER_ROOM = 60;
 // --- Scoring (leaderboard composite) ---
 // Contre-mesures au snowball (tâche 4.2, cf. bounty.ts). Le leader (joueur
 // vivant au meilleur score) porte une prime dès BOUNTY_MIN_SCORE : un quart
-// de son score, entre BOUNTY_MIN et BOUNTY_MAX trophées, pour qui l'élimine,
-// et il lâche toutes ses lames (LEADER_DROP_RATIO) au lieu de 70 %.
+// de son score, entre BOUNTY_MIN et BOUNTY_MAX trophées, pour qui l'élimine.
 export const BOUNTY_MIN_SCORE = 30;
 export const BOUNTY_SHARE = 0.25;
 export const BOUNTY_MIN = 10;
 export const BOUNTY_MAX = 150;
-export const LEADER_DROP_RATIO = 1.0;
 // Éliminer un joueur qui avait au moins deux fois plus de lames double la
 // valeur du kill (SCORE_UNDERDOG en plus de SCORE_KILL).
 export const UNDERDOG_RATIO = 2;

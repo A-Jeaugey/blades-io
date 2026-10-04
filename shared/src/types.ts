@@ -64,6 +64,9 @@ export interface PlayerKilledEvent extends TickStamped {
   // contre un joueur au moins deux fois plus gros (tâche 4.2).
   bounty: number;
   underdog: boolean;
+  // Lames rendues au tueur : celles qu'il avait perdues contre sa victime
+  // dans les DEATH_LOOT_WINDOW_MS d'avant (absent dans les vieux messages).
+  refund?: number;
   // Effet d'élimination du tueur (tâche 6.1), joué sur la victime ; le
   // tueur peut être hors de la vue du client. Absent : effet de base.
   killFx?: string;

@@ -200,6 +200,37 @@ test("visée des bots : en chasse, la visée suit la cible, pas la marche", () =
   assert.ok(err <= 0.18 + 1e-9, `erreur de visée ${err}`);
 });
 
+test("visée des bots : un virage juste avant le lancer l'esquive, pas une ligne droite", () => {
+  const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
+  const prey = addPlayer(state, { x: 15, y: -100, blades: 3 });
+  const internals = bots as unknown as {
+    leadAim(bot: Player, target: Player, now: number, minDist: number, maxDist: number, reaction: number): { x: number; y: number } | null;
+  };
+  const run = (dirY: number, seconds: number) => {
+    for (let i = 0; i < Math.round(seconds / DT); i++) {
+      clock.advance(DT * 1000);
+      prey.y += dirY * 11 * DT;
+      bots.update(DT, state);
+    }
+  };
+  // Côté de la ligne de tir où part la visée : > 0 en avant de la course
+  // vers +y, < 0 vers -y.
+  const side = (reaction: number) => {
+    const aim = internals.leadAim(bot, prey, Date.now(), 0, 40, reaction);
+    assert.ok(aim);
+    return (prey.x - bot.x) * aim.y - (prey.y - bot.y) * aim.x;
+  };
+  // Une seconde en ligne droite, en travers de la ligne de tir : le temps de
+  // réaction ne change rien à l'anticipation.
+  run(1, 1);
+  assert.ok(side(0.25) > 0);
+  assert.ok(Math.abs(side(0.25) - side(0)) < 0.05, `${side(0.25)} / ${side(0)}`);
+  // Demi-tour 0,1 s avant le lancer : le bot vise encore où elle allait.
+  run(-1, 0.1);
+  assert.ok(side(0) < 0, "sans temps de réaction, la visée suit le virage");
+  assert.ok(side(0.25) > 0, "avec, le lancer part du mauvais côté");
+});
+
 test("visée des bots : pas de lancer en errance, même avec un joueur à portée", () => {
   const bot = addPlayer(state, { x: 0, y: -100, blades: 10, isBot: true });
   addPlayer(state, { x: 20, y: -100, blades: 10 });

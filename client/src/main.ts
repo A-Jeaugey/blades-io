@@ -1080,6 +1080,11 @@ export class Game {
         // Le gain affiché inclut la prime et le bonus underdog (tâche 4.2).
         const gain = SCORE_KILL + (msg.bounty ?? 0) + (msg.underdog ? SCORE_UNDERDOG : 0);
         if (victim) this.scorePop(victim.renderX, victim.renderY, gain, "big");
+        // Lames perdues contre la victime, rendues dans l'orbite du tueur.
+        const me = this.players.get(this.myId);
+        if (msg.refund && me) {
+          this.combatFeedback.scorePop(me.renderX, me.renderY, `+${msg.refund} 🗡️`, "small", performance.now());
+        }
       }
       if (msg.victimId === this.myId) this.handleLocalDeath(msg);
     }, false));

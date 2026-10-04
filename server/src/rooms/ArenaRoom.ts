@@ -13,16 +13,12 @@ import {
   PlayerKilledEvent,
   DEATH_DROP_MAX_DIST,
   DEATH_DROP_MIN_DIST,
-  DEATH_DROP_RATIO,
   DEATH_DROP_SPEED_MIN,
   DEATH_DROP_SPEED_MAX,
-  LEADER_DROP_RATIO,
   SCORE_UNDERDOG,
   bountyFor,
   isUnderdogKill,
-  RECENT_LOSS_BUFFER_CAP,
-  RECENT_LOSS_DROP_RATIO,
-  RECENT_LOSS_WINDOW_MS,
+  DEATH_LOOT_WINDOW_MS,
   SPAWN_GRACE_MS,
   SPAWN_GRACE_RAMP_MS,
   SPAWN_PROTECTION_MS,
@@ -89,6 +85,7 @@ import {
   recompactOwnerRings,
 } from "../systems/orbitPositions";
 import { resolveCollisions } from "../systems/collisions";
+import { bladePeak, recordLoss, resetBladePeak, trackBladePeak } from "../systems/bladePeak";
 import { applyWallDamage } from "../systems/wallDamage";
 import { PickupSystem, attachBladeToPlayer, ownerRingCounts } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
@@ -145,7 +142,8 @@ Encoder.BUFFER_SIZE = 1024 * 1024;
 const CHEAT_DEFAULT_BLADES = 50;
 
 // Lames d'un joueur au début d'un échange : en orbite, plus celles perdues
-// en clash dans les FIGHT_WINDOW_MS précédentes.
+// dans les FIGHT_WINDOW_MS précédentes (cassées, ou lancées et consommées
+// sur un adversaire).
 const FIGHT_WINDOW_MS = 3000;
 function bladesBeforeFight(p: Player): number {
   const since = Date.now() - FIGHT_WINDOW_MS;
@@ -821,6 +819,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.knockbackVx = 0;
     p.knockbackVy = 0;
     p.recentLosses = [];
+    resetBladePeak(p);
     p.lifeIndex++;
     p.lifeThrows = 0; p.lifeThrowHits = 0;
     p.lifeBoostMs = 0; p.lifeMaxTier = 0;
@@ -896,8 +895,10 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // (collision lit `tier` pour la hitbox, orbitPositions pour la rotation).
     // Émet un tierUp si on monte d'un palier — la chute (perte de lames)
     // ne broadcast pas pour ne pas spammer.
+    const tickNow = Date.now();
     this.state.players.forEach((p) => {
       if (!p.alive) return;
+      trackBladePeak(p, tickNow);
       const next = tierFromBladeCount(p.bladeCount);
       if (next > p.lifeMaxTier) p.lifeMaxTier = next;
       if (next > p.tier) {
@@ -1254,13 +1255,9 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
         owner.bladeCount = Math.max(0, owner.bladeCount - 1);
         const idx = owner.bladeIds.indexOf(blade.id);
         if (idx >= 0) owner.bladeIds.splice(idx, 1);
-        // Mémoire courte des pertes : la lame casse dans un clash → on
-        // l'enregistre pour qu'elle drop si l'owner se fait tuer dans la
-        // foulée. Cap circulaire : on shift l'entrée la plus vieille.
-        owner.recentLosses.push({ rarity: blade.rarity, ts: Date.now() });
-        if (owner.recentLosses.length > RECENT_LOSS_BUFFER_CAP) {
-          owner.recentLosses.shift();
-        }
+        // Mémoire courte des pertes, avec leur responsable : raretés du
+        // butin si l'owner meurt, remboursement de l'owner s'il tue `by`.
+        recordLoss(owner, blade.rarity, by ? by.id : "", Date.now());
       }
     }
     this.state.blades.delete(blade.id);
@@ -1348,6 +1345,34 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     this.state.blades.set(nb.id, nb);
   }
 
+  // Le tueur récupère les lames qu'il a perdues contre sa victime depuis
+  // `since` (cassées en clash ou par un projectile, lancées et consommées
+  // sur elle) : sinon un kill ne rapportait que de quoi remplacer ce qu'il
+  // avait coûté. Elles reviennent en orbite avec leur rareté, dans la limite
+  // du plafond, et quittent ses pertes : elles ne retomberaient pas une
+  // seconde fois à sa mort.
+  private refundKiller(killer: Player, victimId: string, since: number): number {
+    const kept: Player["recentLosses"] = [];
+    const back: BladeRarity[] = [];
+    for (const l of killer.recentLosses) {
+      if (l.by === victimId && l.ts >= since) back.push(l.rarity as BladeRarity);
+      else kept.push(l);
+    }
+    killer.recentLosses = kept;
+    const n = Math.min(back.length, Math.max(0, MAX_BLADES_PER_PLAYER - killer.bladeCount));
+    if (n === 0) return 0;
+    const rings = ownerRingCounts(this.state, killer.id);
+    for (let i = 0; i < n; i++) {
+      const b = new Blade();
+      b.id = randomId();
+      b.rarity = back[i];
+      b.hp = RARITY_HP[back[i]];
+      this.state.blades.set(b.id, b);
+      attachBladeToPlayer(this.state, killer, b, rings);
+    }
+    return n;
+  }
+
   private killPlayer(victim: Player, killer: Player | null, reason: KillCause): void {
     if (!victim.alive) return;
     victim.alive = false;
@@ -1367,40 +1392,33 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // de la vie). Pas de await : recordMatch gère ses propres erreurs et on
     // ne veut pas bloquer la game loop.
     this.persistMatchIfAuthed(victim);
-    // Les lames rares tombent en premier (tâche 4.2) : avant, les plus
-    // anciennes, souvent les Common de départ, et les plus rares étaient
-    // détruites. Le leader lâche tout.
-    const owned: Blade[] = [];
+    // Butin : exactement le plus haut nombre de lames de la victime sur
+    // DEATH_LOOT_WINDOW_MS (cf. constants.ts). Raretés : son orbite, puis
+    // ses pertes de la fenêtre, les plus récentes d'abord ; ce qui manque
+    // (lames dépensées au boost ou lancées) tombe en Common, les premières
+    // que le boost et les lancers consomment.
+    const now = Date.now();
+    const peak = bladePeak(victim, now);
+    const droppedRarities: BladeRarity[] = [];
     for (const id of victim.bladeIds) {
       const b = this.state.blades.get(id);
-      if (b) owned.push(b);
+      if (!b) continue;
+      droppedRarities.push(b.rarity as BladeRarity);
+      this.state.blades.delete(id);
     }
-    owned.sort((a, b) => b.rarity - a.rarity);
-    const dropCount = Math.floor(owned.length * (wasLeader ? LEADER_DROP_RATIO : DEATH_DROP_RATIO));
-    const droppedRarities: BladeRarity[] = [];
-    for (let i = 0; i < owned.length; i++) {
-      if (i < dropCount) droppedRarities.push(owned[i].rarity as BladeRarity);
-      this.state.blades.delete(owned[i].id);
+    const cutoff = now - DEATH_LOOT_WINDOW_MS;
+    for (let i = victim.recentLosses.length - 1; i >= 0 && droppedRarities.length < peak; i--) {
+      const l = victim.recentLosses[i];
+      if (l.ts < cutoff) break;
+      droppedRarities.push(l.rarity as BladeRarity);
     }
+    while (droppedRarities.length < peak) droppedRarities.push(BladeRarity.Common);
     victim.bladeIds = [];
     victim.bladeCount = 0;
-    const now = Date.now();
-    // Bonus "pertes récentes" : on prune la fenêtre, puis on drop la
-    // fraction RECENT_LOSS_DROP_RATIO (1.0 = 100 %) des lames cassées en
-    // clash dans les 10 dernières secondes. C'est ce qui donne au tueur
-    // un butin cohérent avec le combat même si la victime meurt à 0 lame
-    // en orbite.
-    const cutoff = now - RECENT_LOSS_WINDOW_MS;
-    const fresh = victim.recentLosses.filter((l) => l.ts >= cutoff);
-    const recentDropCount = Math.floor(fresh.length * RECENT_LOSS_DROP_RATIO);
-    // Échantillonnage déterministe : on prend une lame sur deux pour
-    // préserver la distribution des raretés (sinon prendre les N premiers
-    // biaiserait vers les pertes les plus anciennes).
-    for (let i = 0; i < recentDropCount; i++) {
-      const idx = Math.floor((i * fresh.length) / Math.max(1, recentDropCount));
-      droppedRarities.push(fresh[idx].rarity as BladeRarity);
-    }
     victim.recentLosses = [];
+    resetBladePeak(victim);
+    // Le tueur récupère les lames qu'il a perdues contre elle.
+    const refund = killer && killer.alive && killer.id !== victim.id ? this.refundKiller(killer, victim.id, cutoff) : 0;
     for (const rarity of droppedRarities) {
       const a = Math.random() * Math.PI * 2;
       const d = DEATH_DROP_MIN_DIST + Math.random() * (DEATH_DROP_MAX_DIST - DEATH_DROP_MIN_DIST);
@@ -1432,6 +1450,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     const killerLabel =
       killer?.name ?? (reason === "wall" ? "GRID BORDER" : null);
     const ev: PlayerKilledEvent = {
+      refund,
       victimId: victim.id,
       killerId: killer?.id ?? null,
       victimName: victim.name,

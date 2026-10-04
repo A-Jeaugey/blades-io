@@ -86,12 +86,18 @@ interface SkillProfile {
   giveUpMs: number; // poursuite abandonnée au bout de ce temps
   aimSpread: number; // multiplie l'erreur de visée de la personnalité
   throwPauseMs: number; // attente en plus du cooldown entre deux lancers
+  // Temps de réaction de la visée (s) : un lancer anticipe la course de la
+  // cible d'après sa vitesse d'il y a ce temps-là. Un joueur qui change de
+  // direction juste avant le lancer l'esquive ; en ligne droite, rien ne
+  // change. Sans lui, la visée suivait chaque virage en 50 à 100 ms (retour
+  // du owner, 2026-10-04 : « ils visent trop bien »).
+  aimReaction: number;
 }
 
 const SKILLS: Record<BotSkill, SkillProfile> = {
-  [BotSkill.Easy]: { chaseRadius: 45, chaseSpeed: 0.85, chaseBoost: false, giveUpMs: 6000, aimSpread: 1.8, throwPauseMs: 3000 },
-  [BotSkill.Normal]: { chaseRadius: CHASE_RADIUS, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 1, throwPauseMs: 0 },
-  [BotSkill.Hard]: { chaseRadius: 95, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 0.6, throwPauseMs: 0 },
+  [BotSkill.Easy]: { chaseRadius: 45, chaseSpeed: 0.85, chaseBoost: false, giveUpMs: 6000, aimSpread: 1.8, throwPauseMs: 3000, aimReaction: 0.35 },
+  [BotSkill.Normal]: { chaseRadius: CHASE_RADIUS, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 1, throwPauseMs: 0, aimReaction: 0.25 },
+  [BotSkill.Hard]: { chaseRadius: 95, chaseSpeed: 1, chaseBoost: true, giveUpMs: Infinity, aimSpread: 0.6, throwPauseMs: 0, aimReaction: 0.2 },
 };
 
 // Champion (tâche 4.12) : un difficile qui lâche une poursuite au bout de
@@ -205,12 +211,19 @@ interface BotState {
 // à chaque tick du BotController. Permet aux bots de prédire les
 // trajectoires avec la VRAIE vitesse (input + knockback + friction)
 // au lieu de p.inputDx qui n'est qu'une intention sans grandeur.
+// Profondeur de l'historique des vitesses (s), au-delà du plus long temps
+// de réaction de visée.
+const VELOCITY_HISTORY_S = 1;
+
 interface VelocityCache {
   vx: number;
   vy: number;
   prevX: number;
   prevY: number;
   lastT: number; // secondes
+  // Vitesses lissées de la dernière seconde (t en s), pour la visée avec
+  // temps de réaction (cf. SkillProfile.aimReaction).
+  hist: Array<{ t: number; vx: number; vy: number }>;
 }
 
 // Calcule un point d'interception prédit pour un projectile partant de
@@ -472,7 +485,7 @@ export class BotController {
       if (!p.alive) return;
       let v = this.velocity.get(p.id);
       if (!v) {
-        this.velocity.set(p.id, { vx: 0, vy: 0, prevX: p.x, prevY: p.y, lastT: now });
+        this.velocity.set(p.id, { vx: 0, vy: 0, prevX: p.x, prevY: p.y, lastT: now, hist: [{ t: now, vx: 0, vy: 0 }] });
         return;
       }
       const dt = now - v.lastT;
@@ -484,6 +497,8 @@ export class BotController {
       v.prevX = p.x;
       v.prevY = p.y;
       v.lastT = now;
+      v.hist.push({ t: now, vx: v.vx, vy: v.vy });
+      while (v.hist.length > 1 && v.hist[0].t < now - VELOCITY_HISTORY_S) v.hist.shift();
     });
     // GC les entrées orphelines périodiquement.
     if (this.velocity.size > arena.players.size * 1.5 + 4) {
@@ -498,6 +513,20 @@ export class BotController {
   private getVelocity(id: string): { vx: number; vy: number } {
     const v = this.velocity.get(id);
     return v ? { vx: v.vx, vy: v.vy } : { vx: 0, vy: 0 };
+  }
+
+  // Vitesse lissée telle qu'elle était `reaction` secondes plus tôt : le
+  // dernier relevé à cette date, sinon le plus ancien gardé.
+  private reactedVelocity(id: string, now: number, reaction: number): { vx: number; vy: number } {
+    const v = this.velocity.get(id);
+    if (!v) return { vx: 0, vy: 0 };
+    const at = now - reaction;
+    for (let i = v.hist.length - 1; i >= 0; i--) {
+      const h = v.hist[i];
+      if (h.t <= at) return { vx: h.vx, vy: h.vy };
+    }
+    const first = v.hist[0];
+    return first ? { vx: first.vx, vy: first.vy } : { vx: v.vx, vy: v.vy };
   }
 
   // Point où ce bot ne doit pas aller : son orbite y toucherait celle d'un
@@ -551,13 +580,13 @@ export class BotController {
   }
 
   // Compte les lames perdues récemment (3s) — proxy pour "je prends cher".
-  // Lit le buffer recentLosses du bot lui-même (rempli par clashes.ts à
-  // chaque destruction d'une de ses lames).
+  // Lit le buffer recentLosses du bot lui-même : ses lames détruites
+  // (handleBladeDestroyed), pas celles qu'il a lancées et qui ont touché.
   private recentDamageRate(bot: Player, nowMs: number): number {
     const cutoff = nowMs - 3000;
     let count = 0;
     for (const l of bot.recentLosses) {
-      if (l.ts >= cutoff) count++;
+      if (l.ts >= cutoff && !l.thrown) count++;
     }
     return count;
   }
@@ -1078,7 +1107,7 @@ export class BotController {
     if (st.actionType === "chase" && st.currentTargetId) {
       const target = arena.players.get(st.currentTargetId);
       if (target) {
-        aim = this.leadAim(bot, target, now, minDist, maxDist);
+        aim = this.leadAim(bot, target, now, minDist, maxDist, profileAgainst(st, target).aimReaction);
         victim = target;
       }
     } else if (
@@ -1095,7 +1124,7 @@ export class BotController {
         if (d < best) { best = d; pursuer = other; }
       });
       if (pursuer) {
-        aim = this.leadAim(bot, pursuer, now, minDist, maxDist);
+        aim = this.leadAim(bot, pursuer, now, minDist, maxDist, profileAgainst(st, pursuer).aimReaction);
         victim = pursuer;
       }
     } else if (
@@ -1152,6 +1181,7 @@ export class BotController {
     now: number,
     minDist: number,
     maxDist: number,
+    reaction: number,
   ): { x: number; y: number } | null {
     if (!target.alive || target.spawnProtectionUntil > now || target.graceUntil > now) return null;
     // Jamais sur un allié (modes équipe) : le projectile le traverserait.
@@ -1159,7 +1189,7 @@ export class BotController {
     if (this.hiddenFrom(bot, target)) return null;
     const d = Math.hypot(target.x - bot.x, target.y - bot.y);
     if (d < minDist || d > maxDist) return null;
-    const v = this.getVelocity(target.id);
+    const v = this.reactedVelocity(target.id, now / 1000, reaction);
     const intercept = predictIntercept(bot.x, bot.y, target.x, target.y, v.vx, v.vy, THROW_PROJECTILE_SPEED);
     const idx = intercept.x - bot.x;
     const idy = intercept.y - bot.y;

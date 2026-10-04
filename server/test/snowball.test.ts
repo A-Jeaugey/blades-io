@@ -103,15 +103,14 @@ test("underdog : tuer un joueur deux fois plus gros double la valeur du kill", (
   assert.equal(small.bonusScore, SCORE_UNDERDOG);
 });
 
-test("loot de mort : les lames rares tombent en premier", () => {
+test("loot de mort : toute l'orbite tombe, raretés comprises", () => {
   const r = new TestRoom(clock);
   const victim = r.join("victim");
-  // 3 Common de départ, puis 7 Common et 3 Legendary ramassées ensuite :
-  // avant, les 70 % lâchés étaient les plus anciennes.
+  // 3 Common de départ, puis 7 Common et 3 Legendary ramassées ensuite.
   for (let i = 0; i < 7; i++) giveBlade(r.state, victim, BladeRarity.Common);
   for (let i = 0; i < 3; i++) giveBlade(r.state, victim, BladeRarity.Legendary);
   r.room.killPlayer(victim, null, "wall");
   const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0 && b.pickupLockUntil > 0);
-  assert.equal(drops.length, 9); // 70 % de 13
+  assert.equal(drops.length, 13);
   assert.equal(drops.filter((b) => b.rarity === BladeRarity.Legendary).length, 3);
 });

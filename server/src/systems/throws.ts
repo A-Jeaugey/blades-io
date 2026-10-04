@@ -26,6 +26,7 @@ import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
 import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
+import { recordLoss } from "./bladePeak";
 import { sparedByBots } from "./collisions";
 import { closestOnSegment, pointSegmentDist2, segmentSegmentDist2 } from "./geometry";
 import { OrbitPositionCache, recompactOwnerRing } from "./orbitPositions";
@@ -355,6 +356,9 @@ export function resolveProjectileCollisions(
         orbBlade.hp = Math.max(0, orbBlade.hp - dmg);
         const broken = orbBlade.hp <= 0;
         proj.pierceLeft = broken ? Math.max(0, proj.pierceLeft - 1) : 0;
+        // Lame lancée consommée sur la cible : perdue contre elle (son
+        // lanceur la récupère s'il la tue).
+        if (proj.pierceLeft <= 0 && attacker) recordLoss(attacker, proj.rarity, target.id, now, true);
         cb.onProjectileImpact({
           bladeId: proj.id,
           rarity: proj.rarity as BladeRarity,
@@ -372,6 +376,8 @@ export function resolveProjectileCollisions(
         proj.hitIds.add(target.id);
         proj.pierceLeft = Math.max(0, proj.pierceLeft - 1);
         const consumed = proj.pierceLeft <= 0;
+        // Avant le kill : la lame qui l'a tué revient aussi au lanceur.
+        if (consumed && attacker) recordLoss(attacker, proj.rarity, target.id, now, true);
         cb.onProjectileImpact({
           bladeId: proj.id,
           rarity: proj.rarity as BladeRarity,
