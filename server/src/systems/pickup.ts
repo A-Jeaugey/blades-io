@@ -57,6 +57,7 @@ export function attachBladeToPlayer(
   blade.expiring = false;
   blade.claimedBy = "";
   blade.claimUntil = 0;
+  blade.droppedBy = "";
   // Au pickup la lame regen ses HP : sinon une lame Common ramassée avec
   // 1 PV restera fragile à vie même sans avoir combattu.
   blade.hp = RARITY_HP[blade.rarity as BladeRarity];
@@ -97,6 +98,8 @@ export class PickupSystem {
         if (!b || b.ownerId) continue;
         // Butin d'un kill : à son tueur seul tant qu'il lui est réservé.
         if (b.claimUntil > now && b.claimedBy !== p.id) continue;
+        // Lame semée au boost : pas pour celui qui l'a dépensée.
+        if (b.droppedBy === p.id) continue;
         const dx = b.x - p.x;
         const dy = b.y - p.y;
         if (dx * dx + dy * dy <= PICKUP_RADIUS * PICKUP_RADIUS) {

@@ -75,6 +75,10 @@ import {
   tierFromBladeCount,
   CHAMPION_RARITY_WEIGHTS,
   isTeamMode,
+  BOOST_DROP_MARGIN,
+  BOOST_DROP_RATIO,
+  BOOST_DROP_SPEED,
+  outerOrbitRadius,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -1307,10 +1311,44 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       const b = this.state.blades.get(id);
       if (!b) continue;
       const ring = b.ringIndex;
+      const rarity = b.rarity as BladeRarity;
       this.state.blades.delete(id);
       player.bladeCount = Math.max(0, player.bladeCount - 1);
       recompactOwnerRing(this.state, player.id, ring);
+      if (BOOST_DROP_RATIO >= 1 || Math.random() < BOOST_DROP_RATIO) this.dropBoostBlade(player, rarity);
     }
+  }
+
+  // Lame dépensée au boost (tâche 4.13) : elle tombe derrière l'orbite du
+  // joueur, dans l'axe de sa course (un peu de côté au hasard, pour que la
+  // traînée ne s'empile pas), avec un petit élan vers l'arrière. Ramassable
+  // par tous sauf lui (Blade.droppedBy), à échéance comme le butin.
+  private dropBoostBlade(player: Player, rarity: BladeRarity): void {
+    let dx = player.moveVx;
+    let dy = player.moveVy;
+    let d = Math.hypot(dx, dy);
+    if (d < 1e-3) {
+      dx = player.dirX;
+      dy = player.dirY;
+      d = Math.hypot(dx, dy);
+    }
+    const ux = d > 1e-3 ? dx / d : 0;
+    const uy = d > 1e-3 ? dy / d : 0;
+    const back = outerOrbitRadius(player.bladeCount) + BOOST_DROP_MARGIN;
+    const side = (Math.random() - 0.5) * 1.2;
+    const now = Date.now();
+    const nb = new Blade();
+    nb.id = randomId();
+    nb.rarity = rarity;
+    nb.hp = RARITY_HP[rarity];
+    nb.x = player.x - ux * back - uy * side;
+    nb.y = player.y - uy * back + ux * side;
+    nb.vx = -ux * BOOST_DROP_SPEED;
+    nb.vy = -uy * BOOST_DROP_SPEED;
+    nb.pickupLockUntil = now + 300;
+    nb.expiresAt = now + GROUND_BLADE_TTL_MS;
+    nb.droppedBy = player.id;
+    this.state.blades.set(nb.id, nb);
   }
 
   private killPlayer(victim: Player, killer: Player | null, reason: KillCause): void {

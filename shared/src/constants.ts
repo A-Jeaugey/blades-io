@@ -59,6 +59,18 @@ export const PLAYER_ORBIT_PUSH_MARGIN = 0.05;
 export const MAX_BLADES_PER_PLAYER = 2000;
 export const INITIAL_BLADE_COUNT = 3;
 export const BOOST_DRAIN_INTERVAL = 0.5; // une lame toutes les 0.5s de boost
+// Lames dépensées au boost (tâche 4.13) : elles tombent derrière l'orbite
+// du joueur, comme la traînée de slither.io, au lieu de disparaître. Tout
+// le monde peut les ramasser, sauf celui qui les a semées : sinon il
+// boosterait gratuitement en repassant sur sa traînée. Fuir en boostant
+// nourrit son poursuivant ; poursuivre sur la même ligne ne coûte presque
+// plus rien. Le plafond des lames ambiantes compte ces drops : quand il y en
+// a beaucoup au sol, il en apparaît moins ailleurs. BOOST_DROP_RATIO : part
+// des lames dépensées qui tombent (le reste disparaît, comme avant).
+export const BOOST_DROP_RATIO = 1;
+// Distance derrière l'orbite extérieure (u) et élan vers l'arrière (u/s).
+export const BOOST_DROP_MARGIN = 0.8;
+export const BOOST_DROP_SPEED = 1.5;
 export const LOW_BLADE_WARNING = 3;
 
 // --- Orbites ---

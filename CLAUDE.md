@@ -674,6 +674,15 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   seconde). Une room de bots seuls (bancs du snowball et du débutant) n'en
   a pas : `BENCH_RETURNING=1` pour les bancs de survie, et
   `node tools/bench-champions.js`.
+- **Lames de boost (tâche 4.13)** : une lame dépensée au boost
+  (`removePlayerBlades`, les moins rares d'abord) tombe derrière l'orbite,
+  dans l'axe de la course (`dropBoostBlade`, `BOOST_DROP_*`), à échéance
+  comme le butin. `Blade.droppedBy` (champ serveur) : son semeur ne la
+  ramasse ni ne l'attire jamais (`PickupSystem`, aimant de
+  `updateBladePositions`), ses bots ne la visent pas ; sinon il boosterait
+  gratuitement en repassant sur sa traînée. Le plafond des lames ambiantes
+  (`countGroundBlades`) compte ces drops : quand les traînées s'accumulent,
+  il en apparaît moins ailleurs. `BOOST_DROP_RATIO` règle la part qui tombe.
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en

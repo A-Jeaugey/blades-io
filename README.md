@@ -158,7 +158,7 @@ New players get a controls card (matching their device) when they first enter a 
 ### Gameplay tips
 
 - Spawn with 3 Common blades. Ring 0 caps at 16 blades; ring 1 at 24; ring 2 at 32; etc.
-- Boost drains 1 blade every 0.5 s — costly and worth saving for closes/escapes.
+- Boost drains 1 blade every 0.5 s, cheapest first, and drops it behind your orbit, slither.io style: anyone else can grab your trail, you can't. Fleeing on boost feeds whoever chases you; chase a booster along their line and the chase pays for itself. Dropped blades count toward the loose-blade cap, so the map fills less elsewhere when trails pile up.
 - Throwing eats your **outermost** blade, so a Legendary on the outside ring is a 3-pierce missile.
 - Shield power-up halves incoming blade damage; combine with Spin for an oppressive wall.
 - Bushes hide you AND your blades from opponents and bots until they get within orbit range — perfect for ambushes.

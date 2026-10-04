@@ -52,4 +52,7 @@ export class Blade extends Schema {
   // aspiré vers lui (KILL_LOOT_CLAIM_MS).
   claimedBy: string = "";
   claimUntil: number = 0;
+  // Lame semée au boost (tâche 4.13) : jamais ramassée ni aimantée par
+  // celui qui l'a dépensée.
+  droppedBy: string = "";
 }

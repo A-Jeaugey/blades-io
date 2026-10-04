@@ -866,8 +866,9 @@ export class BotController {
 
     const now = Date.now();
     arena.blades.forEach((b) => {
-      // Ni lame en vol, ni butin réservé au tueur d'un autre.
-      if (b.ownerId || b.isProjectile) return;
+      // Ni lame en vol, ni butin réservé au tueur d'un autre, ni ses propres
+      // lames de boost (il ne peut pas les ramasser).
+      if (b.ownerId || b.isProjectile || b.droppedBy === bot.id) return;
       if (b.claimUntil > now && b.claimedBy !== bot.id) return;
       const dx = b.x - bot.x;
       const dy = b.y - bot.y;
