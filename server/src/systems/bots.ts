@@ -864,11 +864,9 @@ export class BotController {
     let targetX = 0, targetY = 0;
     const farmRadius = bot.bladeCount < 6 ? 100 : 50;
 
-    const now = Date.now();
     arena.blades.forEach((b) => {
-      // Ni lame en vol, ni sa propre lame de boost encore verrouillée.
+      // Pas les lames en vol.
       if (b.ownerId || b.isProjectile) return;
-      if (b.dropperLockUntil > now && b.droppedBy === bot.id) return;
       const dx = b.x - bot.x;
       const dy = b.y - bot.y;
       const d = Math.hypot(dx, dy);

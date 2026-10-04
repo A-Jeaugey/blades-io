@@ -52,11 +52,9 @@ export function attachBladeToPlayer(
   blade.ownerId = player.id;
   blade.vx = 0;
   blade.vy = 0;
-  // En orbite, plus d'échéance de drop ni de verrou de semeur.
+  // En orbite, plus d'échéance de drop.
   blade.expiresAt = 0;
   blade.expiring = false;
-  blade.droppedBy = "";
-  blade.dropperLockUntil = 0;
   // Au pickup la lame regen ses HP : sinon une lame Common ramassée avec
   // 1 PV restera fragile à vie même sans avoir combattu.
   blade.hp = RARITY_HP[blade.rarity as BladeRarity];
@@ -95,8 +93,6 @@ export class PickupSystem {
       for (const item of near) {
         const b = state.blades.get(item.id);
         if (!b || b.ownerId) continue;
-        // Lame semée au boost : pas pour son semeur avant la fin du verrou.
-        if (b.dropperLockUntil > now && b.droppedBy === p.id) continue;
         const dx = b.x - p.x;
         const dy = b.y - p.y;
         if (dx * dx + dy * dy <= PICKUP_RADIUS * PICKUP_RADIUS) {

@@ -117,35 +117,6 @@ test("aimant : rayon doublé par le power-up, sans effet sur une lame verrouill�
   assert.equal(locked.x, 3);
 });
 
-// Lame semée au boost (tâche 4.13) : son semeur ne la ramasse ni ne
-// l'attire avant la fin de son verrou ; les autres, tout de suite.
-test("lame de boost : verrouillée pour son semeur, pas pour les autres", () => {
-  const sower = addPlayer(state, { x: 0, y: -20 });
-  const trail = addGroundBlade(state, { x: 1, y: -20, expiresAt: clock.now + 15000 });
-  trail.droppedBy = sower.id;
-  trail.dropperLockUntil = clock.now + 3000;
-  updateBladePositions(DT, 0, state, new OrbitPositionCache());
-  assert.equal(trail.x, 1, "pas d'aimant pour son semeur");
-  const pickup = new PickupSystem();
-  pickup.update(state, () => {});
-  assert.equal(trail.ownerId, "");
-  // Verrou passé : une lame comme les autres, pour lui aussi.
-  clock.advance(3000);
-  updateBladePositions(DT, 1, state, new OrbitPositionCache());
-  assert.ok(trail.x < 1, "aimant du semeur");
-  pickup.update(state, () => {});
-  assert.equal(trail.ownerId, sower.id);
-  assert.equal(trail.droppedBy, "");
-  assert.equal(trail.dropperLockUntil, 0);
-  // Un autre joueur la ramasse pendant le verrou.
-  const other = addPlayer(state, { x: 40, y: -20 });
-  const fresh = addGroundBlade(state, { x: 41, y: -20, expiresAt: clock.now + 15000 });
-  fresh.droppedBy = sower.id;
-  fresh.dropperLockUntil = clock.now + 3000;
-  pickup.update(state, () => {});
-  assert.equal(fresh.ownerId, other.id);
-});
-
 test("friction des lames au sol et butée au bord de l'arène", () => {
   const sliding = addGroundBlade(state, { x: 100, y: 100, vx: 3 });
   const edge = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;

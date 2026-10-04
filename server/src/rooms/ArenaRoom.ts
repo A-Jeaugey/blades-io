@@ -76,7 +76,6 @@ import {
   isTeamMode,
   BOOST_DROP_BACK,
   BOOST_DROP_RATIO,
-  BOOST_DROP_SELF_LOCK_MS,
   BOOST_DROP_SPEED,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -1321,8 +1320,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   // Lame dépensée au boost (tâche 4.13) : elle se pose juste derrière le
   // joueur, dans l'axe de sa course (un peu de côté au hasard, pour que la
   // traînée ne s'empile pas), avec un petit élan vers l'arrière, à échéance
-  // comme le butin. Ramassable par tous ; par lui, seulement après
-  // BOOST_DROP_SELF_LOCK_MS (un pas en arrière la lui rendait aussitôt).
+  // comme le butin, ramassable par tous, lui compris.
   private dropBoostBlade(player: Player, rarity: BladeRarity): void {
     let dx = player.moveVx;
     let dy = player.moveVy;
@@ -1347,8 +1345,6 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     nb.vy = -uy * BOOST_DROP_SPEED;
     nb.pickupLockUntil = now + 300;
     nb.expiresAt = now + GROUND_BLADE_TTL_MS;
-    nb.droppedBy = player.id;
-    nb.dropperLockUntil = now + BOOST_DROP_SELF_LOCK_MS;
     this.state.blades.set(nb.id, nb);
   }
 

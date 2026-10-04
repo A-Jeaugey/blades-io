@@ -675,14 +675,13 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
 - **Lames de boost (tâche 4.13)** : une lame dépensée au boost
   (`removePlayerBlades`, les moins rares d'abord) se pose juste derrière le
   joueur, dans l'axe de la course (`dropBoostBlade`, `BOOST_DROP_BACK`), à
-  échéance comme le butin, ramassable par tous. Son semeur ne la ramasse ni
-  ne l'attire avant `BOOST_DROP_SELF_LOCK_MS` (`Blade.droppedBy`,
-  `dropperLockUntil`, champs serveur ; `PickupSystem`, aimant de
-  `updateBladePositions`, récolte des bots) : sinon un pas en arrière
-  rendait le sprint gratuit (test « un pas en arrière ne rend pas la lame »
-  de `room.test.ts`). Le plafond des lames ambiantes (`countGroundBlades`)
-  compte ces drops : quand les traînées s'accumulent, il en apparaît moins
-  ailleurs. `BOOST_DROP_RATIO` règle la part qui tombe.
+  échéance comme le butin, ramassable par tous, son semeur compris (un
+  verrou de 3 s pour lui a été retiré à la demande du owner : faire
+  demi-tour coûte le temps gagné ; seule la dernière lame revient seule, par
+  l'aimant, à qui s'arrête juste après un sprint). Le plafond des lames
+  ambiantes (`countGroundBlades`) compte ces drops : quand les traînées
+  s'accumulent, il en apparaît moins ailleurs. `BOOST_DROP_RATIO` règle la
+  part qui tombe.
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en

@@ -377,7 +377,7 @@ export const en = {
   "howto.blades3": "Grab loose blades to grow. At 10, 20, 35, 55 and 80 blades you tier up: a new blade shape (dagger, sword, scythe, saw, runic blade, aura) and, up to the scythe, a bigger reach and a harder knockback.",
   "howto.throwBoost": "Throw and boost",
   "howto.throw1": "Throwing launches your outermost blade (0.5 s cooldown). It can hit 1 target, 2 if Epic, 3 if Legendary, and lands after 30 u where anyone can pick it up.",
-  "howto.throw2": "Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first. They drop right behind you: anyone can grab them, you only after 3 s.",
+  "howto.throw2": "Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first. They drop right behind you: anyone can grab them, you included.",
   "howto.arena": "Arena",
   "howto.arena1": "The red edge kills instantly, outer blades first. A red glow and an alarm warn you. The arena grows with the number of players; when it drops, it slowly shrinks, announced 10 s ahead (dashes on the ground and on the minimap).",
   "howto.arena2": "You spawn away from bigger players, near loose blades. For 10 s, bots leave you alone, then for 40 s only the easiest ones go after you, and only up close. This ends as soon as you throw or your blades hit someone. In your first game, bots can't kill you during those first 10 s, and only a throw or an elimination ends your protection.",

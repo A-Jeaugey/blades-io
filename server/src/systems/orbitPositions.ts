@@ -78,7 +78,6 @@ interface OwnerOrbit {
 }
 
 interface MagnetSource {
-  id: string;
   x: number;
   y: number;
   radius: number;
@@ -135,7 +134,7 @@ export function updateBladePositions(
       cell = [];
       magnetGrid.set(key, cell);
     }
-    cell.push({ id: p.id, x, y, radius, radiusSq: radius * radius });
+    cell.push({ x, y, radius, radiusSq: radius * radius });
     magnetCount++;
   });
 
@@ -198,9 +197,6 @@ export function updateBladePositions(
     let y = b.y;
     let moved = false;
     if (magnetCount > 0 && nowMs >= b.pickupLockUntil) {
-      // Lame semée au boost : son semeur ne l'attire pas avant la fin de
-      // son verrou (tâche 4.13).
-      const lockedFor = b.dropperLockUntil > nowMs ? b.droppedBy : "";
       const cx = Math.floor(x / MAGNET_CELL);
       const cy = Math.floor(y / MAGNET_CELL);
       let best: MagnetSource | null = null;
@@ -211,7 +207,6 @@ export function updateBladePositions(
           if (!cell) continue;
           for (let i = 0; i < cell.length; i++) {
             const src = cell[i];
-            if (src.id === lockedFor) continue;
             const dx = src.x - x;
             const dy = src.y - y;
             const d2 = dx * dx + dy * dy;

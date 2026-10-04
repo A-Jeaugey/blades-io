@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { CloseCode } from "@colyseus/core";
 import {
   BOOST_DROP_BACK,
-  BOOST_DROP_SELF_LOCK_MS,
   BladeRarity,
   CLOSE_CODE_INPUT_FLOOD,
   GROUND_BLADE_TTL_MS,
@@ -325,8 +324,7 @@ test("boost : les lames les moins rares sont dépensées en premier", () => {
 });
 
 // Lames de boost (tâche 4.13) : elles se posent juste derrière le joueur,
-// dans l'axe de la course, comme la traînée de slither.io, verrouillées
-// pour lui un moment.
+// dans l'axe de la course, comme la traînée de slither.io.
 test("boost : les lames dépensées se posent juste derrière le joueur", () => {
   const r = new TestRoom(clock);
   const p = armed(r, "p1", 20);
@@ -341,14 +339,12 @@ test("boost : les lames dépensées se posent juste derrière le joueur", () => 
     assert.ok(Math.abs(b.y) <= 0.4 + 1e-9, "dans l'axe de la course");
     assert.ok(b.vx < 0, "élan vers l'arrière");
     assert.equal(b.expiresAt, clock.now + GROUND_BLADE_TTL_MS);
-    assert.equal(b.droppedBy, p.id);
-    assert.equal(b.dropperLockUntil, clock.now + BOOST_DROP_SELF_LOCK_MS);
   }
 });
 
-// Bout à bout : un pas en arrière juste après le sprint ne rend pas la
-// lame ; passé le verrou, elle se reprend comme les autres.
-test("boost : un pas en arrière ne rend pas la lame, le verrou passé si", () => {
+// Bout à bout : sa traînée est une lame au sol comme les autres, pour lui
+// aussi ; la reprendre coûte un demi-tour.
+test("boost : demi-tour sur sa traînée, la lame se reprend", () => {
   const r = new TestRoom(clock);
   const runner = armed(r, "runner", 10);
   runner.x = 0; runner.y = -30;
@@ -358,17 +354,15 @@ test("boost : un pas en arrière ne rend pas la lame, le verrou passé si", () =
     r.tick();
   };
   const drops = () => groundBlades(r.state).filter((b) => b.expiresAt > 0);
-  // Sprint jusqu'à la première lame dépensée (0,5 s de boost).
-  for (let i = 0; i < 60 && drops().length === 0; i++) step(1, true);
-  const [drop] = drops();
-  assert.ok(drop, "une lame semée");
-  assert.equal(runner.bladeCount, 9);
-  // Demi-tour immédiat, en repassant dessus.
-  for (let i = 0; i < 30; i++) step(-1, false);
-  assert.equal(drop.ownerId, "", "pas de remboursement immédiat");
-  // Le verrou passé, l'aimant la lui rend.
-  for (let i = 0; i < (BOOST_DROP_SELF_LOCK_MS / 1000) * 60; i++) step(0, false);
-  assert.equal(drop.ownerId, runner.id, "reprise après le verrou");
+  // Une seconde de boost : deux lames semées derrière lui.
+  for (let i = 0; i < 62; i++) step(1, true);
+  const trail = drops();
+  assert.equal(trail.length, 2, "deux lames semées");
+  assert.equal(runner.bladeCount, 8);
+  // Demi-tour à pied sur toute la traînée.
+  for (let i = 0; i < 120; i++) step(-1, false);
+  assert.deepEqual(trail.map((b) => b.ownerId), [runner.id, runner.id]);
+  assert.equal(runner.bladeCount, 10);
 });
 
 // Le poursuivant la ramasse en passant (le coureur parti ailleurs).
