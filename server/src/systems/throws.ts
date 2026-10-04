@@ -26,7 +26,7 @@ import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
 import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
-import { recordLoss } from "./bladePeak";
+import { recordLoss, recordRelease } from "./bladePeak";
 import { sparedByBots } from "./collisions";
 import { closestOnSegment, pointSegmentDist2, segmentSegmentDist2 } from "./geometry";
 import { OrbitPositionCache, recompactOwnerRing } from "./orbitPositions";
@@ -123,6 +123,7 @@ export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
     p.bladeCount = Math.max(0, p.bladeCount - 1);
     p.throwCooldownUntil = now + THROW_COOLDOWN_MS;
     recompactOwnerRing(state, p.id, ringIdx);
+    recordRelease(p, target.id, now);
 
     cb.onBladeThrown({
       bladeId: target.id,

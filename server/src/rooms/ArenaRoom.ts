@@ -85,7 +85,7 @@ import {
   recompactOwnerRings,
 } from "../systems/orbitPositions";
 import { resolveCollisions } from "../systems/collisions";
-import { bladePeak, recordLoss, resetBladePeak, trackBladePeak } from "../systems/bladePeak";
+import { deathLootCount, recordLoss, recordRelease, resetBladePeak, trackBladePeak } from "../systems/bladePeak";
 import { applyWallDamage } from "../systems/wallDamage";
 import { PickupSystem, attachBladeToPlayer, ownerRingCounts } from "../systems/pickup";
 import { SpawnSystem, pickRarity } from "../systems/spawning";
@@ -1343,6 +1343,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     nb.pickupLockUntil = now + 300;
     nb.expiresAt = now + GROUND_BLADE_TTL_MS;
     this.state.blades.set(nb.id, nb);
+    recordRelease(player, nb.id, now);
   }
 
   // Le tueur récupère les lames qu'il a perdues contre sa victime depuis
@@ -1392,13 +1393,13 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // de la vie). Pas de await : recordMatch gère ses propres erreurs et on
     // ne veut pas bloquer la game loop.
     this.persistMatchIfAuthed(victim);
-    // Butin : exactement le plus haut nombre de lames de la victime sur
-    // DEATH_LOOT_WINDOW_MS (cf. constants.ts). Raretés : son orbite, puis
-    // ses pertes de la fenêtre, les plus récentes d'abord ; ce qui manque
-    // (lames dépensées au boost ou lancées) tombe en Common, les premières
-    // que le boost et les lancers consomment.
+    // Butin : le plus haut nombre de lames de la victime sur
+    // DEATH_LOOT_WINDOW_MS (cf. constants.ts), moins ce qu'elle a laissé
+    // dans le monde depuis (deathLootCount). Raretés : son orbite, puis ses
+    // pertes de la fenêtre, les plus récentes d'abord ; le reste (lancers
+    // consommés sur une caisse...) tombe en Common.
     const now = Date.now();
-    const peak = bladePeak(victim, now);
+    const peak = deathLootCount(victim, this.state.blades, now);
     const droppedRarities: BladeRarity[] = [];
     for (const id of victim.bladeIds) {
       const b = this.state.blades.get(id);

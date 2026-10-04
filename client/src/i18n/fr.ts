@@ -385,7 +385,7 @@ export const fr: Record<keyof typeof en, string> = {
   "howto.arena2": "Tu apparais loin des joueurs plus gros, près de lames au sol. Pendant 10 s, les bots te laissent tranquille, puis pendant 40 s seuls les plus faciles s'en prennent à toi, et seulement de près. Ça s'arrête dès que tu lances ou que tes lames touchent quelqu'un. Pendant ta première partie, les bots ne peuvent pas te tuer ces 10 premières secondes, et seuls un lancer ou une élimination arrêtent ta protection.",
   "howto.arena3": "Les buissons te cachent, toi et tes lames, des autres joueurs.",
   "howto.arena4": "Casse des caisses pour du butin. Bonus : Vitesse, Rotation, Aimant, Bouclier, Lames.",
-  "howto.arena5": "À ta mort, tu lâches autant de lames que ton record des 15 dernières secondes. Quand tu élimines quelqu'un, les lames que tu as perdues contre lui pendant ces 15 s te reviennent.",
+  "howto.arena5": "À ta mort, ton record de lames des 15 dernières secondes retombe au sol, traînée de boost et lancers compris. Quand tu élimines quelqu'un, les lames que tu as perdues contre lui pendant ces 15 s te reviennent.",
   "howto.arena6": "Le leader porte une couronne et une prime : élimine-le pour des trophées en plus. Éliminer un joueur qui a au moins deux fois plus de lames que toi rapporte double.",
   "howto.arena7": "Les bots sont marqués BOT au classement. Certains sont faciles, d'autres difficiles ; pendant ta première partie, ils y vont doucement.",
   "howto.trophies": "Trophées",

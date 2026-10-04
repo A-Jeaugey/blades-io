@@ -155,6 +155,10 @@ export class Player extends Schema {
   // (cf. systems/bladePeak.ts) : le butin de sa mort.
   peakTs: number[] = [];
   peakCount: number[] = [];
+  // Lames sorties de son orbite en restant dans le monde (posées au boost,
+  // lancées) sur la même fenêtre : celles encore au sol, en vol ou chez un
+  // autre à sa mort ne retombent pas une seconde fois.
+  released: Array<{ id: string; ts: number }> = [];
   // Timestamps (ms) des messages chat récents, sliding window pour le
   // rate limit. La logique : à chaque chat reçu on prune les entries
   // < (now - CHAT_RATE_LIMIT_WINDOW_MS), si le tableau a déjà

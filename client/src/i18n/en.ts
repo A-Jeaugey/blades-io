@@ -383,7 +383,7 @@ export const en = {
   "howto.arena2": "You spawn away from bigger players, near loose blades. For 10 s, bots leave you alone, then for 40 s only the easiest ones go after you, and only up close. This ends as soon as you throw or your blades hit someone. In your first game, bots can't kill you during those first 10 s, and only a throw or an elimination ends your protection.",
   "howto.arena3": "Bushes hide you and your blades from other players.",
   "howto.arena4": "Break crates for loot. Power-ups: Speed, Spin, Magnet, Shield, Blades.",
-  "howto.arena5": "When you die, you drop as many blades as your peak over the last 15 s. Take someone down and the blades you lost against them in those 15 s come back to you.",
+  "howto.arena5": "When you die, your peak blade count of the last 15 s goes back to the ground, boost trail and throws included. Take someone down and the blades you lost against them in those 15 s come back to you.",
   "howto.arena6": "The leader wears a crown with a bounty: take them down for bonus trophies. Killing a player with at least twice your blades pays double.",
   "howto.arena7": "Bots are marked BOT in the leaderboard. Some are easy, some hard; in your first game, they go easy on you.",
   "howto.trophies": "Trophies",

@@ -646,11 +646,16 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   poursuivre (perçant) jusqu'aux suivantes ou au corps. La portée d'un
   joueur pour les buissons (`reachOf`) suit la plus longue lame de son
   palier. `?debug=hitbox` trace les deux formes (cercle, axe de la lame).
-- **Butin d'un kill (tâches 4.11 et 4.14)** : la victime lâche exactement
-  son plus haut nombre de lames des `DEATH_LOOT_WINDOW_MS` (15 s)
-  précédentes (`systems/bladePeak.ts`, relevé à chaque tick) : son orbite,
-  puis ses pertes de la fenêtre (`recentLosses`), les plus récentes
-  d'abord, complétées en Common (lames dépensées au boost, lancées à côté).
+- **Butin d'un kill (tâches 4.11 et 4.14)** : le plus haut nombre de lames
+  de la victime des `DEATH_LOOT_WINDOW_MS` (15 s) précédentes retourne au
+  sol (`deathLootCount`, `systems/bladePeak.ts`, relevé à chaque tick) : son
+  orbite, puis ses pertes de la fenêtre (`recentLosses`), les plus récentes
+  d'abord, complétées en Common. Les lames sorties de son orbite depuis ce
+  pic qui sont encore dans le monde (traînée de boost, lancers en vol ou
+  retombés, même ramassés par un autre : `recordRelease`) n'en font pas
+  partie : sans ça, un tiers du butin de mort était un doublon au banc.
+  Toute nouvelle façon de poser une lame au sol depuis son orbite passe par
+  `recordRelease`.
   Son tueur récupère dans son orbite les lames qu'il a perdues contre elle
   sur la même fenêtre (`refundKiller`, gain « +N 🗡️ » au client) : chaque
   perte garde son responsable (`by`), et une lame lancée consommée sur un

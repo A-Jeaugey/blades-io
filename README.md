@@ -9,7 +9,7 @@
 
 ## Concept
 
-You are a glider in a circular arena. Around you orbit rings of blades that grow denser and faster the more you collect. Push your blades into another player's blades to break theirs; touch their body and they die. When you die, you drop exactly as many blades as you held at your peak over the last 15 seconds: your whole orbit, plus what you lost or spent in that time. Your killer also gets back, straight into their orbit, every blade they lost against you in those 15 seconds (broken in clashes or thrown at you), so a kill always pays. Dropped blades blink, then vanish after 15 s.
+You are a glider in a circular arena. Around you orbit rings of blades that grow denser and faster the more you collect. Push your blades into another player's blades to break theirs; touch their body and they die. When you die, your peak blade count over the last 15 seconds goes back to the ground: your whole orbit, plus what you lost in that time (your boost trail and your throws count towards it, without dropping twice). Your killer also gets back, straight into their orbit, every blade they lost against you in those 15 seconds (broken in clashes or thrown at you), so a kill always pays. Dropped blades blink, then vanish after 15 s.
 
 It plays like the kind of arena clash you see on TikTok feeds — short matches, instant replay, satisfying snowball — but rendered in real-time WebGL with a neon cyberpunk skin.
 

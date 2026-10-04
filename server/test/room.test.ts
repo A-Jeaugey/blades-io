@@ -20,6 +20,7 @@ import * as wallet from "../src/auth/wallet";
 import { Blade } from "../src/state/Blade";
 import { Crate } from "../src/state/Crate";
 import { Player } from "../src/state/Player";
+import { attachBladeToPlayer } from "../src/systems/pickup";
 import { DT, FakeClock, giveBlade, groundBlades, ownedBlades, seedRandom } from "./helpers";
 import { TestRoom } from "./testRoom";
 
@@ -110,6 +111,31 @@ test("mort : toutes les lames perdues au combat tombent, pas seulement 12", () =
   const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0);
   assert.equal(drops.length, 44);
   assert.equal(drops.filter((b) => b.rarity === BladeRarity.Legendary).length, 4);
+});
+
+// Ce que la victime a laissé dans le monde depuis son pic (traînée de boost,
+// lancer) y est déjà : il ne retombe pas une seconde fois à sa mort, même
+// ramassé par un autre. Au banc, ce doublon faisait un tiers du butin.
+test("mort : la traînée de boost et les lancers ne retombent pas une seconde fois", () => {
+  const r = new TestRoom(clock);
+  const victim = armed(r, "victim", 20);
+  const other = r.join("other");
+  victim.x = 0; victim.y = -30;
+  r.tick();
+  r.room.removePlayerBlades(victim, 5);
+  const trail = groundBlades(r.state).filter((b) => b.expiresAt > 0);
+  assert.equal(trail.length, 5);
+  // Une lame de la traînée chez un autre, une reprise par la victime.
+  attachBladeToPlayer(r.state, other, trail[0]);
+  attachBladeToPlayer(r.state, victim, trail[1]);
+  r.room.handleInput(fakeClient("victim"), { dx: 1, dy: 0, throw: true, aimX: 1, aimY: 0 });
+  r.tick();
+  assert.equal(r.eventsOf("bladeThrown").length, 1);
+  assert.equal(victim.bladeCount, 15);
+  const before = new Set(r.state.blades.keys());
+  r.room.killPlayer(victim, null, "wall");
+  // Pic de 20 : 15 en orbite (lame reprise comprise), 5 encore dans le monde.
+  assert.equal(groundBlades(r.state).filter((b) => !before.has(b.id)).length, 15);
 });
 
 // Le tueur récupère les lames qu'il a perdues contre sa victime : sinon,
