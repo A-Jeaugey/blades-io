@@ -851,6 +851,15 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
 
 - Pousser sur `main` direct est OK pour le owner du repo (pas de PR
   obligatoire pour ce projet).
+- **Fusion automatique** (demande du owner, 2026-10-04) : une tâche finie
+  (tests, bancs, docs, commit poussé sur la branche de la session) se
+  fusionne dans `main` sans lui demander, en avance rapide, dès que la CI
+  de la branche est verte ; on vérifie ensuite la CI de `main`, puis on
+  lui donne les commandes de mise à jour de la seedbox (procédure du
+  README, en deux blocs : build et tests, puis relance ; avec
+  `export GIT_PAGER=cat`, sinon `git log` ouvre un pager qui avale la
+  suite d'un copier-coller). Jamais de fusion avec une CI rouge ni
+  d'historique réécrit sur `main`.
 - Branches de feature `claude/<task-name>` créées par les sessions, à
   cleaner après merge (depuis la machine du dev, pas le sandbox).
 - La production est une seedbox Whatbox, sans root, sans systemd ni pm2 :
