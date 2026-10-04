@@ -161,21 +161,6 @@ test("butin réservé : ordinaire à l'échéance ou si le tueur meurt", () => {
   assert.equal(orphan.claimUntil, 0);
 });
 
-test("lame de boost : ni ramassée ni aimantée par son semeur, les autres si", () => {
-  const sower = addPlayer(state, { x: 0, y: -20 });
-  const trail = addGroundBlade(state, { x: 1, y: -20, expiresAt: clock.now + 15000 });
-  trail.droppedBy = sower.id;
-  updateBladePositions(DT, 0, state, new OrbitPositionCache());
-  assert.equal(trail.x, 1, "pas d'aimant pour son semeur");
-  const pickup = new PickupSystem();
-  pickup.update(state, () => {});
-  assert.equal(trail.ownerId, "");
-  const other = addPlayer(state, { x: 2, y: -20 });
-  pickup.update(state, () => {});
-  assert.equal(trail.ownerId, other.id);
-  assert.equal(trail.droppedBy, "");
-});
-
 test("friction des lames au sol et butée au bord de l'arène", () => {
   const sliding = addGroundBlade(state, { x: 100, y: 100, vx: 3 });
   const edge = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;

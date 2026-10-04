@@ -675,14 +675,17 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   a pas : `BENCH_RETURNING=1` pour les bancs de survie, et
   `node tools/bench-champions.js`.
 - **Lames de boost (tâche 4.13)** : une lame dépensée au boost
-  (`removePlayerBlades`, les moins rares d'abord) tombe derrière l'orbite,
+  (`removePlayerBlades`, les moins rares d'abord) tombe derrière le joueur,
   dans l'axe de la course (`dropBoostBlade`, `BOOST_DROP_*`), à échéance
-  comme le butin. `Blade.droppedBy` (champ serveur) : son semeur ne la
-  ramasse ni ne l'attire jamais (`PickupSystem`, aimant de
-  `updateBladePositions`), ses bots ne la visent pas ; sinon il boosterait
-  gratuitement en repassant sur sa traînée. Le plafond des lames ambiantes
-  (`countGroundBlades`) compte ces drops : quand les traînées s'accumulent,
-  il en apparaît moins ailleurs. `BOOST_DROP_RATIO` règle la part qui tombe.
+  comme le butin, ramassable par tous, lui compris. Elle tombe hors de
+  portée de son aimant (`PICKUP_MAGNET_RADIUS`, ou au-delà de l'orbite si
+  elle est plus grande) : tombée près de l'orbite, l'aimant la lui rendait
+  dès qu'il s'arrêtait après un sprint, un sprint gratuit (test « sa
+  traînée se reprend en faisant demi-tour » de `room.test.ts`). Avec le
+  power-up Magnet (rayon doublé), il la récupère en s'arrêtant : c'est
+  l'effet du power-up. Le plafond des lames ambiantes (`countGroundBlades`)
+  compte ces drops : quand les traînées s'accumulent, il en apparaît moins
+  ailleurs. `BOOST_DROP_RATIO` règle la part qui tombe.
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en

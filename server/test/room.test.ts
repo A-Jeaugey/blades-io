@@ -8,6 +8,7 @@ import {
   GROUND_BLADE_TTL_MS,
   KILL_LOOT_CLAIM_MS,
   MAP_RADIUS,
+  PICKUP_MAGNET_RADIUS,
   PLAYER_SPEED,
   SPAWN_PROTECTION_MS,
   WALL_KILL_THICKNESS,
@@ -349,55 +350,70 @@ test("boost : les lames les moins rares sont dépensées en premier", () => {
   assert.equal(p.bladeCount, 1);
 });
 
-// Lames de boost (tâche 4.13) : elles tombent derrière l'orbite, dans
-// l'axe de la course, comme la traînée de slither.io.
-test("boost : les lames dépensées tombent derrière le joueur", () => {
+// Lames de boost (tâche 4.13) : elles tombent derrière le joueur, dans
+// l'axe de la course, comme la traînée de slither.io, hors de portée de son
+// aimant.
+test("boost : les lames dépensées tombent derrière le joueur, hors de son aimant", () => {
   const r = new TestRoom(clock);
   const p = armed(r, "p1", 20);
   p.x = 0; p.y = 0;
   p.moveVx = 18.7; p.moveVy = 0;
   r.room.removePlayerBlades(p, 2);
   assert.equal(p.bladeCount, 18);
-  const drops = groundBlades(r.state).filter((b) => b.droppedBy === p.id);
+  const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0);
   assert.equal(drops.length, 2);
-  const back = outerOrbitRadius(18);
+  const back = Math.max(outerOrbitRadius(18), PICKUP_MAGNET_RADIUS);
   for (const b of drops) {
-    assert.ok(b.x < -back, `derrière l'orbite : x = ${b.x}`);
+    assert.ok(b.x < -back, `derrière l'orbite et l'aimant : x = ${b.x}`);
     assert.ok(Math.abs(b.y) <= 0.6 + 1e-9, "dans l'axe de la course");
     assert.ok(b.vx < 0, "élan vers l'arrière");
     assert.equal(b.expiresAt, clock.now + GROUND_BLADE_TTL_MS);
   }
 });
 
-// Bout à bout : celui qui boost ne ramasse pas sa traînée, son poursuivant
-// si.
-test("boost : la traînée nourrit le poursuivant, pas celui qui boost", () => {
+// Bout à bout : s'arrêter net après un sprint ne rend rien, l'aimant ne
+// l'atteint pas ; faire demi-tour sur sa traînée, si.
+test("boost : sa traînée se reprend en faisant demi-tour, pas en s'arrêtant", () => {
   const r = new TestRoom(clock);
   const runner = armed(r, "runner", 10);
-  const chaser = r.join("chaser");
   runner.x = 0; runner.y = -30;
-  chaser.x = -40; chaser.y = -30;
   let seq = 0;
   const step = (dx: number, boost: boolean) => {
     runner.inputQueue.push({ dx, dy: 0, boost, seq: ++seq });
     r.tick();
   };
-  // Une lame toutes les 0,5 s de boost : deux en un peu plus d'une seconde.
-  for (let i = 0; i < 70; i++) step(1, true);
-  const dropped = groundBlades(r.state).filter((b) => b.droppedBy === runner.id).length;
-  assert.equal(dropped, 2, "deux lames semées");
-  assert.equal(runner.bladeCount, 8);
-  // Demi-tour sur sa propre traînée : rien de ramassé.
-  for (let i = 0; i < 120; i++) step(-1, false);
-  assert.equal(runner.bladeCount, 8);
-  // Le poursuivant, lui, la ramasse en passant (le coureur parti ailleurs).
+  const drops = () => groundBlades(r.state).filter((b) => b.expiresAt > 0);
+  // Sprint jusqu'à la première lame dépensée (0,5 s de boost), puis arrêt.
+  for (let i = 0; i < 60 && drops().length === 0; i++) step(1, true);
+  const [drop] = drops();
+  assert.ok(drop, "une lame semée");
+  assert.equal(runner.bladeCount, 9);
+  for (let i = 0; i < 120; i++) step(0, false);
+  assert.equal(drop.ownerId, "", "arrêt : l'aimant ne la rend pas");
+  for (let i = 0; i < 60; i++) step(-1, false);
+  assert.equal(drop.ownerId, runner.id, "demi-tour : reprise");
+});
+
+// Le poursuivant la ramasse en passant (le coureur parti ailleurs).
+test("boost : la traînée nourrit le poursuivant", () => {
+  const r = new TestRoom(clock);
+  const runner = armed(r, "runner", 10);
+  const chaser = r.join("chaser");
+  runner.x = 0; runner.y = -30;
+  chaser.x = -40; chaser.y = -30;
+  for (let i = 0; i < 70; i++) {
+    runner.inputQueue.push({ dx: 1, dy: 0, boost: true, seq: i + 1 });
+    r.tick();
+  }
+  const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0);
+  assert.equal(drops.length, 2);
   runner.y = 60;
   chaser.x = -20;
   for (let i = 0; i < 360; i++) {
     chaser.inputQueue.push({ dx: 1, dy: 0, boost: false, seq: i + 1 });
     r.tick();
   }
-  assert.ok(chaser.bladeCount >= 3 + 2, `poursuivant : ${chaser.bladeCount} lames`);
+  assert.deepEqual(drops.map((b) => b.ownerId), [chaser.id, chaser.id]);
 });
 
 test("tick : tier recalculé d'après le nombre de lames, avec un évènement tierUp", () => {

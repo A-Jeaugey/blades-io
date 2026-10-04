@@ -79,6 +79,7 @@ import {
   BOOST_DROP_RATIO,
   BOOST_DROP_SPEED,
   outerOrbitRadius,
+  PICKUP_MAGNET_RADIUS,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -1319,10 +1320,12 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     }
   }
 
-  // Lame dépensée au boost (tâche 4.13) : elle tombe derrière l'orbite du
-  // joueur, dans l'axe de sa course (un peu de côté au hasard, pour que la
-  // traînée ne s'empile pas), avec un petit élan vers l'arrière. Ramassable
-  // par tous sauf lui (Blade.droppedBy), à échéance comme le butin.
+  // Lame dépensée au boost (tâche 4.13) : elle tombe derrière le joueur,
+  // dans l'axe de sa course (un peu de côté au hasard, pour que la traînée
+  // ne s'empile pas), avec un petit élan vers l'arrière, à échéance comme le
+  // butin. Ramassable par tous, lui compris, mais hors de portée de son
+  // aimant : tombée près de l'orbite, l'aimant la lui rendait dès qu'il
+  // s'arrêtait après un sprint ; pour la reprendre, il fait demi-tour.
   private dropBoostBlade(player: Player, rarity: BladeRarity): void {
     let dx = player.moveVx;
     let dy = player.moveVy;
@@ -1334,7 +1337,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     }
     const ux = d > 1e-3 ? dx / d : 0;
     const uy = d > 1e-3 ? dy / d : 0;
-    const back = outerOrbitRadius(player.bladeCount) + BOOST_DROP_MARGIN;
+    const back = Math.max(outerOrbitRadius(player.bladeCount), PICKUP_MAGNET_RADIUS) + BOOST_DROP_MARGIN;
     const side = (Math.random() - 0.5) * 1.2;
     const now = Date.now();
     const nb = new Blade();
@@ -1347,7 +1350,6 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     nb.vy = -uy * BOOST_DROP_SPEED;
     nb.pickupLockUntil = now + 300;
     nb.expiresAt = now + GROUND_BLADE_TTL_MS;
-    nb.droppedBy = player.id;
     this.state.blades.set(nb.id, nb);
   }
 
