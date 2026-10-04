@@ -673,8 +673,9 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   et champion ; historique d'une seconde dans `VelocityCache.hist`) : un
   virage juste avant le lancer l'esquive, une ligne droite ne change rien.
   Ne pas la remplacer par la vitesse du moment : la visée suivait chaque
-  virage en 50 à 100 ms (« ils visent trop bien »). Banc de travail :
-  touchés 82 → 80 % en ligne droite, 71 → 60 % en zigzag.
+  virage en 50 à 100 ms (« ils visent trop bien »). Banc de travail (même
+  code sans puis avec temps de réaction, 18 graines) : lancers touchés 80 →
+  78 % sur une cible en ligne droite, 70 → 63 % sur une cible qui zigzague.
 - **Champions (tâche 4.12)** : jusqu'à `BOT_CHAMPIONS_MAX` bots (un, deux
   dès que le plus gros humain aguerri a `CHAMPION_SECOND_AT` lames)
   apparaissent avec une grosse orbite, à `CHAMPION_SIZE_RATIO` de ce
