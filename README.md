@@ -9,7 +9,7 @@
 
 ## Concept
 
-You are a glider in a circular arena. Around you orbit rings of blades that grow denser and faster the more you collect. Push your blades into another player's blades to break theirs; touch their body and they die. When you die, 70 % of your orbiting blades scatter as loot, plus every blade you lost in clashes during the last 10 seconds. Your killer's loot is reserved for them for 3 s and flies straight into their orbit, wherever they killed you from (edge of a huge orbit, a throw). Dropped blades blink, then vanish after 15 s.
+You are a glider in a circular arena. Around you orbit rings of blades that grow denser and faster the more you collect. Push your blades into another player's blades to break theirs; touch their body and they die. When you die, 70 % of your orbiting blades scatter as loot, plus every blade you lost in clashes during the last 10 seconds. Dropped blades blink, then vanish after 15 s.
 
 It plays like the kind of arena clash you see on TikTok feeds — short matches, instant replay, satisfying snowball — but rendered in real-time WebGL with a neon cyberpunk skin.
 
@@ -158,7 +158,7 @@ New players get a controls card (matching their device) when they first enter a 
 ### Gameplay tips
 
 - Spawn with 3 Common blades. Ring 0 caps at 16 blades; ring 1 at 24; ring 2 at 32; etc.
-- Boost drains 1 blade every 0.5 s, cheapest first, and drops it behind you, slither.io style, for anyone to grab, you included. It lands out of your magnet's reach: stopping after a sprint doesn't refund it, you have to turn back. Fleeing on boost feeds whoever chases you; chase a booster along their line and the chase pays for itself. Dropped blades count toward the loose-blade cap, so the map fills less elsewhere when trails pile up.
+- Boost drains 1 blade every 0.5 s, cheapest first, and drops it right behind you, slither.io style, for anyone to grab; you can only take yours back after 3 s, so stepping back after a sprint refunds nothing. Fleeing on boost feeds whoever chases you; chase a booster along their line and the chase pays for itself. Dropped blades count toward the loose-blade cap, so the map fills less elsewhere when trails pile up.
 - Throwing eats your **outermost** blade, so a Legendary on the outside ring is a 3-pierce missile.
 - Shield power-up halves incoming blade damage; combine with Spin for an oppressive wall.
 - Bushes hide you AND your blades from opponents and bots until they get within orbit range — perfect for ambushes.

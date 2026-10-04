@@ -3,12 +3,12 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { CloseCode } from "@colyseus/core";
 import {
+  BOOST_DROP_BACK,
+  BOOST_DROP_SELF_LOCK_MS,
   BladeRarity,
   CLOSE_CODE_INPUT_FLOOD,
   GROUND_BLADE_TTL_MS,
-  KILL_LOOT_CLAIM_MS,
   MAP_RADIUS,
-  PICKUP_MAGNET_RADIUS,
   PLAYER_SPEED,
   SPAWN_PROTECTION_MS,
   WALL_KILL_THICKNESS,
@@ -101,32 +101,6 @@ test("mort : toutes les lames perdues au combat tombent, pas seulement 12", () =
   r.room.killPlayer(victim, null, "wall");
   // floor(10 × 0,7) = 7 lames en orbite + 30 pertes récentes.
   assert.equal(groundBlades(r.state).length, 37);
-});
-
-// Butin d'un kill : réservé au tueur et aspiré jusque dans son orbite, même
-// tué de loin, même avec un autre joueur collé à la victime.
-test("mort : le butin rejoint l'orbite du tueur, même de loin", () => {
-  const r = new TestRoom(clock);
-  const victim = armed(r, "victim", 20);
-  const killer = armed(r, "killer", 5);
-  const bystander = r.join("bystander");
-  victim.x = 0; victim.y = 30;
-  killer.x = 0; killer.y = 15;
-  bystander.x = 1.5; bystander.y = 30;
-  killer.spawnProtectionUntil = 0;
-  bystander.spawnProtectionUntil = 0;
-  r.room.killPlayer(victim, killer, "blades");
-  const drops = groundBlades(r.state).filter((b) => b.claimedBy === killer.id);
-  assert.equal(drops.length, 14);
-  for (const b of drops) assert.equal(b.claimUntil, clock.now + KILL_LOOT_CLAIM_MS);
-  r.tick(90);
-  assert.equal(killer.bladeCount, 5 + 14);
-  assert.equal(bystander.bladeCount, 3);
-  // Mort contre le mur : butin ordinaire.
-  const r2 = new TestRoom(clock);
-  const fallen = armed(r2, "fallen", 10);
-  r2.room.killPlayer(fallen, null, "wall");
-  assert.ok(groundBlades(r2.state).every((b) => b.claimedBy === "" && b.claimUntil === 0));
 });
 
 test("drops : clignotent puis disparaissent, les lames ambiantes restent", () => {
@@ -350,10 +324,10 @@ test("boost : les lames les moins rares sont dépensées en premier", () => {
   assert.equal(p.bladeCount, 1);
 });
 
-// Lames de boost (tâche 4.13) : elles tombent derrière le joueur, dans
-// l'axe de la course, comme la traînée de slither.io, hors de portée de son
-// aimant.
-test("boost : les lames dépensées tombent derrière le joueur, hors de son aimant", () => {
+// Lames de boost (tâche 4.13) : elles se posent juste derrière le joueur,
+// dans l'axe de la course, comme la traînée de slither.io, verrouillées
+// pour lui un moment.
+test("boost : les lames dépensées se posent juste derrière le joueur", () => {
   const r = new TestRoom(clock);
   const p = armed(r, "p1", 20);
   p.x = 0; p.y = 0;
@@ -362,18 +336,19 @@ test("boost : les lames dépensées tombent derrière le joueur, hors de son aim
   assert.equal(p.bladeCount, 18);
   const drops = groundBlades(r.state).filter((b) => b.expiresAt > 0);
   assert.equal(drops.length, 2);
-  const back = Math.max(outerOrbitRadius(18), PICKUP_MAGNET_RADIUS);
   for (const b of drops) {
-    assert.ok(b.x < -back, `derrière l'orbite et l'aimant : x = ${b.x}`);
-    assert.ok(Math.abs(b.y) <= 0.6 + 1e-9, "dans l'axe de la course");
+    assert.ok(Math.abs(b.x + BOOST_DROP_BACK) < 1e-9, `juste derrière : x = ${b.x}`);
+    assert.ok(Math.abs(b.y) <= 0.4 + 1e-9, "dans l'axe de la course");
     assert.ok(b.vx < 0, "élan vers l'arrière");
     assert.equal(b.expiresAt, clock.now + GROUND_BLADE_TTL_MS);
+    assert.equal(b.droppedBy, p.id);
+    assert.equal(b.dropperLockUntil, clock.now + BOOST_DROP_SELF_LOCK_MS);
   }
 });
 
-// Bout à bout : s'arrêter net après un sprint ne rend rien, l'aimant ne
-// l'atteint pas ; faire demi-tour sur sa traînée, si.
-test("boost : sa traînée se reprend en faisant demi-tour, pas en s'arrêtant", () => {
+// Bout à bout : un pas en arrière juste après le sprint ne rend pas la
+// lame ; passé le verrou, elle se reprend comme les autres.
+test("boost : un pas en arrière ne rend pas la lame, le verrou passé si", () => {
   const r = new TestRoom(clock);
   const runner = armed(r, "runner", 10);
   runner.x = 0; runner.y = -30;
@@ -383,15 +358,17 @@ test("boost : sa traînée se reprend en faisant demi-tour, pas en s'arrêtant",
     r.tick();
   };
   const drops = () => groundBlades(r.state).filter((b) => b.expiresAt > 0);
-  // Sprint jusqu'à la première lame dépensée (0,5 s de boost), puis arrêt.
+  // Sprint jusqu'à la première lame dépensée (0,5 s de boost).
   for (let i = 0; i < 60 && drops().length === 0; i++) step(1, true);
   const [drop] = drops();
   assert.ok(drop, "une lame semée");
   assert.equal(runner.bladeCount, 9);
-  for (let i = 0; i < 120; i++) step(0, false);
-  assert.equal(drop.ownerId, "", "arrêt : l'aimant ne la rend pas");
-  for (let i = 0; i < 60; i++) step(-1, false);
-  assert.equal(drop.ownerId, runner.id, "demi-tour : reprise");
+  // Demi-tour immédiat, en repassant dessus.
+  for (let i = 0; i < 30; i++) step(-1, false);
+  assert.equal(drop.ownerId, "", "pas de remboursement immédiat");
+  // Le verrou passé, l'aimant la lui rend.
+  for (let i = 0; i < (BOOST_DROP_SELF_LOCK_MS / 1000) * 60; i++) step(0, false);
+  assert.equal(drop.ownerId, runner.id, "reprise après le verrou");
 });
 
 // Le poursuivant la ramasse en passant (le coureur parti ailleurs).

@@ -3,7 +3,6 @@ import { Blade } from "../state/Blade";
 import { Player } from "../state/Player";
 import {
   GROUND_BLADE_FRICTION,
-  KILL_LOOT_PULL_SPEED,
   MAP_RADIUS,
   MAX_BLADES_PER_PLAYER,
   PICKUP_MAGNET_RADIUS,
@@ -25,7 +24,6 @@ const MAGNET_RADIUS = PICKUP_MAGNET_RADIUS;
 const MAGNET_RADIUS_BOOSTED = PICKUP_MAGNET_RADIUS * POWERUP_MAGNET_MULT;
 const MAGNET_STRENGTH = PICKUP_MAGNET_STRENGTH;
 const FRICTION = GROUND_BLADE_FRICTION;
-const LOOT_PULL_SPEED = KILL_LOOT_PULL_SPEED;
 const MAX_BLADES = MAX_BLADES_PER_PLAYER;
 const SPIN_MULT = POWERUP_SPIN_MULT;
 const GROUND_MAX_R = MAP_RADIUS - WALL_KILL_THICKNESS - 0.5;
@@ -80,6 +78,7 @@ interface OwnerOrbit {
 }
 
 interface MagnetSource {
+  id: string;
   x: number;
   y: number;
   radius: number;
@@ -108,8 +107,6 @@ export function updateBladePositions(
   // atteinte : l'angle reste continu, seule la vitesse change.
   const owners = new Map<string, OwnerOrbit>();
   const magnetGrid = new Map<number, MagnetSource[]>();
-  // Joueurs qui peuvent encore ramasser, par id : tueurs du butin réservé.
-  const collectors = new Map<string, MagnetSource>();
   let magnetCount = 0;
   state.players.forEach((p) => {
     if (!p.alive) return;
@@ -138,9 +135,7 @@ export function updateBladePositions(
       cell = [];
       magnetGrid.set(key, cell);
     }
-    const source = { x, y, radius, radiusSq: radius * radius };
-    cell.push(source);
-    collectors.set(p.id, source);
+    cell.push({ id: p.id, x, y, radius, radiusSq: radius * radius });
     magnetCount++;
   });
 
@@ -202,38 +197,10 @@ export function updateBladePositions(
     let x = b.x;
     let y = b.y;
     let moved = false;
-    // Butin d'un kill : aspiré vers son tueur, d'où qu'il soit, une fois
-    // l'éclat du drop passé ; seul lui l'attire. Tueur mort, parti ou plein :
-    // butin ordinaire.
-    let claimed = false;
-    if (b.claimUntil > nowMs) {
-      const killer = collectors.get(b.claimedBy);
-      if (killer) {
-        claimed = true;
-        if (nowMs >= b.pickupLockUntil) {
-          const dx = killer.x - x;
-          const dy = killer.y - y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          const step = LOOT_PULL_SPEED * dt;
-          if (d <= step) {
-            x = killer.x;
-            y = killer.y;
-          } else {
-            x += (dx / d) * step;
-            y += (dy / d) * step;
-          }
-          vx = 0;
-          vy = 0;
-          b.vx = 0;
-          b.vy = 0;
-          moved = true;
-        }
-      } else {
-        b.claimUntil = 0;
-        b.claimedBy = "";
-      }
-    }
-    if (!claimed && magnetCount > 0 && nowMs >= b.pickupLockUntil) {
+    if (magnetCount > 0 && nowMs >= b.pickupLockUntil) {
+      // Lame semée au boost : son semeur ne l'attire pas avant la fin de
+      // son verrou (tâche 4.13).
+      const lockedFor = b.dropperLockUntil > nowMs ? b.droppedBy : "";
       const cx = Math.floor(x / MAGNET_CELL);
       const cy = Math.floor(y / MAGNET_CELL);
       let best: MagnetSource | null = null;
@@ -244,6 +211,7 @@ export function updateBladePositions(
           if (!cell) continue;
           for (let i = 0; i < cell.length; i++) {
             const src = cell[i];
+            if (src.id === lockedFor) continue;
             const dx = src.x - x;
             const dy = src.y - y;
             const d2 = dx * dx + dy * dy;

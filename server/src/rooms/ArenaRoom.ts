@@ -32,7 +32,6 @@ import {
   isInBush,
   GROUND_BLADE_TTL_MS,
   INITIAL_BLADE_COUNT,
-  KILL_LOOT_CLAIM_MS,
   MAP_RADIUS,
   MAX_INPUT_QUEUE,
   MAX_INPUT_RATE,
@@ -75,11 +74,10 @@ import {
   tierFromBladeCount,
   CHAMPION_RARITY_WEIGHTS,
   isTeamMode,
-  BOOST_DROP_MARGIN,
+  BOOST_DROP_BACK,
   BOOST_DROP_RATIO,
+  BOOST_DROP_SELF_LOCK_MS,
   BOOST_DROP_SPEED,
-  outerOrbitRadius,
-  PICKUP_MAGNET_RADIUS,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
@@ -1320,12 +1318,11 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     }
   }
 
-  // Lame dépensée au boost (tâche 4.13) : elle tombe derrière le joueur,
-  // dans l'axe de sa course (un peu de côté au hasard, pour que la traînée
-  // ne s'empile pas), avec un petit élan vers l'arrière, à échéance comme le
-  // butin. Ramassable par tous, lui compris, mais hors de portée de son
-  // aimant : tombée près de l'orbite, l'aimant la lui rendait dès qu'il
-  // s'arrêtait après un sprint ; pour la reprendre, il fait demi-tour.
+  // Lame dépensée au boost (tâche 4.13) : elle se pose juste derrière le
+  // joueur, dans l'axe de sa course (un peu de côté au hasard, pour que la
+  // traînée ne s'empile pas), avec un petit élan vers l'arrière, à échéance
+  // comme le butin. Ramassable par tous ; par lui, seulement après
+  // BOOST_DROP_SELF_LOCK_MS (un pas en arrière la lui rendait aussitôt).
   private dropBoostBlade(player: Player, rarity: BladeRarity): void {
     let dx = player.moveVx;
     let dy = player.moveVy;
@@ -1337,8 +1334,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     }
     const ux = d > 1e-3 ? dx / d : 0;
     const uy = d > 1e-3 ? dy / d : 0;
-    const back = Math.max(outerOrbitRadius(player.bladeCount), PICKUP_MAGNET_RADIUS) + BOOST_DROP_MARGIN;
-    const side = (Math.random() - 0.5) * 1.2;
+    const back = BOOST_DROP_BACK;
+    const side = (Math.random() - 0.5) * 0.8;
     const now = Date.now();
     const nb = new Blade();
     nb.id = randomId();
@@ -1350,6 +1347,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     nb.vy = -uy * BOOST_DROP_SPEED;
     nb.pickupLockUntil = now + 300;
     nb.expiresAt = now + GROUND_BLADE_TTL_MS;
+    nb.droppedBy = player.id;
+    nb.dropperLockUntil = now + BOOST_DROP_SELF_LOCK_MS;
     this.state.blades.set(nb.id, nb);
   }
 
@@ -1406,8 +1405,6 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       droppedRarities.push(fresh[idx].rarity as BladeRarity);
     }
     victim.recentLosses = [];
-    // Butin réservé au tueur et aspiré vers lui (KILL_LOOT_CLAIM_MS).
-    const claimer = killer && killer.alive && killer.id !== victim.id ? killer.id : "";
     for (const rarity of droppedRarities) {
       const a = Math.random() * Math.PI * 2;
       const d = DEATH_DROP_MIN_DIST + Math.random() * (DEATH_DROP_MAX_DIST - DEATH_DROP_MIN_DIST);
@@ -1423,10 +1420,6 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       nb.vx = Math.cos(a) * speed; nb.vy = Math.sin(a) * speed;
       nb.pickupLockUntil = now + 400;
       nb.expiresAt = now + GROUND_BLADE_TTL_MS;
-      if (claimer) {
-        nb.claimedBy = claimer;
-        nb.claimUntil = now + KILL_LOOT_CLAIM_MS;
-      }
       this.state.blades.set(nb.id, nb);
     }
     if (killer) {

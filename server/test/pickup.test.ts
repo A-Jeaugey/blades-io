@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import {
   BladeRarity,
   GROUND_BLADE_FRICTION,
-  KILL_LOOT_PULL_SPEED,
   MAP_RADIUS,
   MAX_BLADES_PER_PLAYER,
   PICKUP_MAGNET_RADIUS,
@@ -118,47 +117,33 @@ test("aimant : rayon doublé par le power-up, sans effet sur une lame verrouill�
   assert.equal(locked.x, 3);
 });
 
-// Butin d'un kill : réservé au tueur, aspiré vers lui d'où qu'il soit, à
-// l'écart de l'aimant des autres.
-test("butin réservé : aspiré vers son tueur seul, ramassé par lui seul", () => {
-  const killer = addPlayer(state, { x: 0, y: -20 });
-  const bystander = addPlayer(state, { x: 21, y: -20 });
-  const loot = addGroundBlade(state, { x: 20, y: -20, expiresAt: clock.now + 15000 });
-  loot.claimedBy = killer.id;
-  loot.claimUntil = clock.now + 3000;
+// Lame semée au boost (tâche 4.13) : son semeur ne la ramasse ni ne
+// l'attire avant la fin de son verrou ; les autres, tout de suite.
+test("lame de boost : verrouillée pour son semeur, pas pour les autres", () => {
+  const sower = addPlayer(state, { x: 0, y: -20 });
+  const trail = addGroundBlade(state, { x: 1, y: -20, expiresAt: clock.now + 15000 });
+  trail.droppedBy = sower.id;
+  trail.dropperLockUntil = clock.now + 3000;
   updateBladePositions(DT, 0, state, new OrbitPositionCache());
-  // Vers le tueur, à 20 u, pas vers le joueur collé à elle.
-  assert.ok(Math.abs(loot.x - (20 - KILL_LOOT_PULL_SPEED * DT)) < 1e-6, `x = ${loot.x}`);
+  assert.equal(trail.x, 1, "pas d'aimant pour son semeur");
   const pickup = new PickupSystem();
-  const picked: string[] = [];
-  pickup.update(state, (p) => { picked.push(p.id); });
-  assert.equal(picked.length, 0, "le voisin ne le ramasse pas");
-  assert.equal(bystander.bladeCount, 0);
-  // Arrivé au tueur en moins d'une seconde, ramassé.
-  for (let i = 0; i < 60 && !loot.ownerId; i++) {
-    updateBladePositions(DT, i, state, new OrbitPositionCache());
-    pickup.update(state, (p) => { picked.push(p.id); });
-  }
-  assert.equal(loot.ownerId, killer.id);
-  assert.deepEqual(picked, [killer.id]);
-  assert.equal(loot.claimedBy, "");
-});
-
-test("butin réservé : ordinaire à l'échéance ou si le tueur meurt", () => {
-  const killer = addPlayer(state, { x: 0, y: -20 });
-  addPlayer(state, { x: 24, y: -20 });
-  const expired = addGroundBlade(state, { x: 20, y: -20 });
-  expired.claimedBy = killer.id;
-  expired.claimUntil = clock.now - 1;
-  updateBladePositions(DT, 0, state, new OrbitPositionCache());
-  assert.ok(expired.x > 20, "aimant du voisin");
-  const orphan = addGroundBlade(state, { x: 40, y: -20 });
-  orphan.claimedBy = killer.id;
-  orphan.claimUntil = clock.now + 3000;
-  killer.alive = false;
-  updateBladePositions(DT, 0, state, new OrbitPositionCache());
-  assert.equal(orphan.claimedBy, "");
-  assert.equal(orphan.claimUntil, 0);
+  pickup.update(state, () => {});
+  assert.equal(trail.ownerId, "");
+  // Verrou passé : une lame comme les autres, pour lui aussi.
+  clock.advance(3000);
+  updateBladePositions(DT, 1, state, new OrbitPositionCache());
+  assert.ok(trail.x < 1, "aimant du semeur");
+  pickup.update(state, () => {});
+  assert.equal(trail.ownerId, sower.id);
+  assert.equal(trail.droppedBy, "");
+  assert.equal(trail.dropperLockUntil, 0);
+  // Un autre joueur la ramasse pendant le verrou.
+  const other = addPlayer(state, { x: 40, y: -20 });
+  const fresh = addGroundBlade(state, { x: 41, y: -20, expiresAt: clock.now + 15000 });
+  fresh.droppedBy = sower.id;
+  fresh.dropperLockUntil = clock.now + 3000;
+  pickup.update(state, () => {});
+  assert.equal(fresh.ownerId, other.id);
 });
 
 test("friction des lames au sol et butée au bord de l'arène", () => {

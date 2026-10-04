@@ -48,8 +48,8 @@ export class Blade extends Schema {
   // Équipe du lanceur au moment du lancer (modes équipe) : le projectile
   // traverse ses alliés, même si le lanceur a quitté la partie.
   thrownTeam: number = 0;
-  // Butin d'un kill : réservé à son tueur jusqu'à claimUntil (ms epoch) et
-  // aspiré vers lui (KILL_LOOT_CLAIM_MS).
-  claimedBy: string = "";
-  claimUntil: number = 0;
+  // Lame semée au boost (tâche 4.13) : son semeur ne la ramasse ni ne
+  // l'attire avant dropperLockUntil (ms epoch).
+  droppedBy: string = "";
+  dropperLockUntil: number = 0;
 }

@@ -59,21 +59,21 @@ export const PLAYER_ORBIT_PUSH_MARGIN = 0.05;
 export const MAX_BLADES_PER_PLAYER = 2000;
 export const INITIAL_BLADE_COUNT = 3;
 export const BOOST_DRAIN_INTERVAL = 0.5; // une lame toutes les 0.5s de boost
-// Lames dépensées au boost (tâche 4.13) : elles tombent derrière l'orbite
-// du joueur, comme la traînée de slither.io, au lieu de disparaître, et
-// tout le monde peut les ramasser, lui compris. Elles tombent hors de
-// portée de son aimant (PICKUP_MAGNET_RADIUS) : près de l'orbite, l'aimant
-// les lui rendait dès qu'il s'arrêtait après un sprint (sprint gratuit) ;
-// pour les reprendre, il faut faire demi-tour. Fuir en boostant nourrit son
-// poursuivant ; poursuivre sur la même ligne ne coûte presque plus rien. Le
-// plafond des lames ambiantes compte ces drops : quand il y en a beaucoup
-// au sol, il en apparaît moins ailleurs. BOOST_DROP_RATIO : part des lames
-// dépensées qui tombent (le reste disparaît, comme avant).
+// Lames dépensées au boost (tâche 4.13) : elles se posent au sol juste
+// derrière le joueur, comme la traînée de slither.io, au lieu de
+// disparaître. Tout le monde peut les ramasser ; leur semeur aussi, mais
+// pas avant BOOST_DROP_SELF_LOCK_MS : sinon un pas en arrière rendait le
+// sprint gratuit. Fuir en boostant nourrit son poursuivant ; poursuivre sur
+// la même ligne ne coûte presque plus rien. Le plafond des lames ambiantes
+// compte ces drops : quand il y en a beaucoup au sol, il en apparaît moins
+// ailleurs. BOOST_DROP_RATIO : part des lames dépensées qui tombent (le
+// reste disparaît, comme avant).
 export const BOOST_DROP_RATIO = 1;
-// Distance au-delà de l'orbite extérieure ou de l'aimant, le plus loin des
-// deux (u), et élan vers l'arrière (u/s).
-export const BOOST_DROP_MARGIN = 0.8;
+// Distance derrière le centre du joueur (u) et élan vers l'arrière (u/s).
+export const BOOST_DROP_BACK = 1;
 export const BOOST_DROP_SPEED = 1.5;
+// Ni ramassage ni aimant pour son semeur pendant ce délai (ms).
+export const BOOST_DROP_SELF_LOCK_MS = 3000;
 export const LOW_BLADE_WARNING = 3;
 
 // --- Orbites ---
@@ -403,14 +403,6 @@ export const RECENT_LOSS_BUFFER_CAP = 400;
 // le tueur récupère 100 % de ce que la victime a cramé dans les 10 dernières
 // secondes — encourage l'aggro.
 export const RECENT_LOSS_DROP_RATIO = 1.0;
-// Butin d'un kill réservé au tueur pendant KILL_LOOT_CLAIM_MS et aspiré
-// vers lui à KILL_LOOT_PULL_SPEED (u/s, plus vite qu'un joueur au boost),
-// d'où qu'il ait tué (bord d'une grosse orbite, lancer). Avant, il tombait
-// sous la victime, hors de l'aimant du tueur (5,5 u de son centre) dès que
-// son orbite était grande : il fallait aller le chercher, et d'autres le
-// ramassaient avant lui. Au-delà, butin ordinaire.
-export const KILL_LOOT_CLAIM_MS = 3000;
-export const KILL_LOOT_PULL_SPEED = 40;
 
 // --- Raretés ---
 export enum BladeRarity {

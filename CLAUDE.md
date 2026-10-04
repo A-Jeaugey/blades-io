@@ -649,12 +649,10 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
 - **Butin d'un kill (tâche 4.11)** : la victime lâche 70 % de son orbite
   (tout si elle menait) et toutes les lames perdues dans les 10 dernières
   secondes (`recentLosses`, plafonné à 12 avant : le butin d'un combat ne
-  dépassait jamais 12 lames). Ce butin est réservé à son tueur pendant
-  `KILL_LOOT_CLAIM_MS` (`Blade.claimedBy`, `claimUntil`, champs serveur) :
-  aspiré vers lui d'où qu'il soit (`updateBladePositions`), ramassé par lui
-  seul (`PickupSystem`), ignoré des bots qui récoltent. Tueur mort, parti
-  ou au plafond de lames : butin ordinaire. Mort sans tueur (mur) : butin
-  ordinaire.
+  dépassait jamais 12 lames). Ce butin est ordinaire, éparpillé autour de
+  la victime : il était réservé au tueur et aspiré vers lui d'où qu'il
+  soit, retiré le 2026-10-04 à la demande du owner (ça cassait des
+  mécaniques : butin à disputer, lancers de loin).
 - **Champions (tâche 4.12)** : jusqu'à `BOT_CHAMPIONS_MAX` bots (un, deux
   dès que le plus gros humain aguerri a `CHAMPION_SECOND_AT` lames)
   apparaissent avec une grosse orbite, à `CHAMPION_SIZE_RATIO` de ce
@@ -675,15 +673,14 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   a pas : `BENCH_RETURNING=1` pour les bancs de survie, et
   `node tools/bench-champions.js`.
 - **Lames de boost (tâche 4.13)** : une lame dépensée au boost
-  (`removePlayerBlades`, les moins rares d'abord) tombe derrière le joueur,
-  dans l'axe de la course (`dropBoostBlade`, `BOOST_DROP_*`), à échéance
-  comme le butin, ramassable par tous, lui compris. Elle tombe hors de
-  portée de son aimant (`PICKUP_MAGNET_RADIUS`, ou au-delà de l'orbite si
-  elle est plus grande) : tombée près de l'orbite, l'aimant la lui rendait
-  dès qu'il s'arrêtait après un sprint, un sprint gratuit (test « sa
-  traînée se reprend en faisant demi-tour » de `room.test.ts`). Avec le
-  power-up Magnet (rayon doublé), il la récupère en s'arrêtant : c'est
-  l'effet du power-up. Le plafond des lames ambiantes (`countGroundBlades`)
+  (`removePlayerBlades`, les moins rares d'abord) se pose juste derrière le
+  joueur, dans l'axe de la course (`dropBoostBlade`, `BOOST_DROP_BACK`), à
+  échéance comme le butin, ramassable par tous. Son semeur ne la ramasse ni
+  ne l'attire avant `BOOST_DROP_SELF_LOCK_MS` (`Blade.droppedBy`,
+  `dropperLockUntil`, champs serveur ; `PickupSystem`, aimant de
+  `updateBladePositions`, récolte des bots) : sinon un pas en arrière
+  rendait le sprint gratuit (test « un pas en arrière ne rend pas la lame »
+  de `room.test.ts`). Le plafond des lames ambiantes (`countGroundBlades`)
   compte ces drops : quand les traînées s'accumulent, il en apparaît moins
   ailleurs. `BOOST_DROP_RATIO` règle la part qui tombe.
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
