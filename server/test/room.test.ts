@@ -140,7 +140,7 @@ test("mort : la traînée de boost et les lancers ne retombent pas une seconde f
 
 // Le tueur récupère les lames qu'il a perdues contre sa victime : sinon,
 // 100 lames contre 50, on tombait à 50 et on remontait à 100 en ramassant
-// son butin, sans rien gagner.
+// son butin, sans rien gagner. Un humain seulement.
 test("kill : le tueur récupère les lames qu'il a perdues contre sa victime", () => {
   const r = new TestRoom(clock);
   const killer = armed(r, "killer", 20);
@@ -160,6 +160,14 @@ test("kill : le tueur récupère les lames qu'il a perdues contre sa victime", (
   clock.advance(DEATH_LOOT_WINDOW_MS + 1000);
   r.room.killPlayer(late, killer, "blades");
   assert.equal(killer.bladeCount, 15);
+  assert.equal(r.eventsOf("playerKilled").at(-1).refund, 0);
+  // Un bot n'est pas remboursé : les bots grossissaient entre eux.
+  const bot = armed(r, "bot", 10);
+  bot.isBot = true;
+  const prey = armed(r, "prey", 5);
+  for (const b of ownedBlades(r.state, bot).slice(0, 4)) r.room.handleBladeDestroyed(b, prey);
+  r.room.killPlayer(prey, bot, "blades");
+  assert.equal(bot.bladeCount, 6);
   assert.equal(r.eventsOf("playerKilled").at(-1).refund, 0);
 });
 

@@ -1418,8 +1418,12 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     victim.bladeCount = 0;
     victim.recentLosses = [];
     resetBladePeak(victim);
-    // Le tueur récupère les lames qu'il a perdues contre elle.
-    const refund = killer && killer.alive && killer.id !== victim.id ? this.refundKiller(killer, victim.id, cutoff) : 0;
+    // Le tueur récupère les lames qu'il a perdues contre elle. Pas un bot :
+    // remboursés, les bots grossissaient entre eux et un débutant mourait
+    // deux fois plus souvent avant 30 s (banc de survie, 40 graines).
+    const refund = killer && killer.alive && !killer.isBot && killer.id !== victim.id
+      ? this.refundKiller(killer, victim.id, cutoff)
+      : 0;
     for (const rarity of droppedRarities) {
       const a = Math.random() * Math.PI * 2;
       const d = DEATH_DROP_MIN_DIST + Math.random() * (DEATH_DROP_MAX_DIST - DEATH_DROP_MIN_DIST);
