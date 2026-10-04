@@ -656,11 +656,13 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   partie : sans ça, un tiers du butin de mort était un doublon au banc.
   Toute nouvelle façon de poser une lame au sol depuis son orbite passe par
   `recordRelease`.
-  Son tueur récupère dans son orbite les lames qu'il a perdues contre elle
-  sur la même fenêtre (`refundKiller`, gain « +N 🗡️ » au client) : chaque
-  perte garde son responsable (`by`), et une lame lancée consommée sur un
-  adversaire compte comme perdue contre lui (`thrown` : pas un dégât subi,
-  la fuite des bots l'ignore). Toute nouvelle façon de perdre une lame à
+  Son tueur, s'il est humain, récupère dans son orbite les lames qu'il a
+  perdues contre elle sur la même fenêtre (`refundKiller`, gain « +N 🗡️ »
+  au client) : chaque perte garde son responsable (`by`), et une lame lancée
+  consommée sur un adversaire compte comme perdue contre lui (`thrown` : pas
+  un dégât subi, la fuite des bots l'ignore). Pas un bot : remboursés, les
+  bots grossissaient entre eux et un débutant mourait deux fois plus souvent
+  avant 30 s (banc de survie, mode capped, 40 graines : 2,0 → 3,8 %). Toute nouvelle façon de perdre une lame à
   cause d'un joueur passe par `recordLoss`. Le butin est ordinaire,
   éparpillé autour de la victime : il était réservé au tueur et aspiré vers
   lui d'où qu'il soit, retiré le 2026-10-04 à la demande du owner (ça

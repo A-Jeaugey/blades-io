@@ -374,10 +374,11 @@ export const PRIVATE_ROOM_DENSITY_MULT = 2.5;
 // lames de la victime sur les DEATH_LOOT_WINDOW_MS précédents retourne au
 // sol, pas 70 % de ce qui lui restait en orbite (un combat la laissait
 // souvent à 0) ; ce qu'elle y a déjà laissé depuis (traînée de boost,
-// lancers) n'est pas compté deux fois. Son tueur récupère les lames qu'il a
-// perdues contre elle sur la même fenêtre, cassées en clash ou lancées.
-// Sinon tuer ne rapportait rien : 100 lames contre 50, on tombait à 50 en
-// cassant les siennes et on remontait à 100 en ramassant son butin.
+// lancers) n'est pas compté deux fois. Son tueur, s'il est humain, récupère
+// les lames qu'il a perdues contre elle sur la même fenêtre, cassées en
+// clash ou lancées. Sinon tuer ne rapportait rien : 100 lames contre 50, on
+// tombait à 50 en cassant les siennes et on remontait à 100 en ramassant son
+// butin.
 export const DEATH_LOOT_WINDOW_MS = 15000;
 // Distances de spawn des drops autour de la victime. Volontairement
 // resserrées (1-3.5) pour que les lames atterrissent toutes DANS le
