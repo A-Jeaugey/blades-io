@@ -14,6 +14,8 @@ import {
   bladeBodyReach,
   bladeEdgeRadius,
   bladeTipReach,
+  CrateKind,
+  crateHitbox,
   outerOrbitRadius,
   tierBladeHitbox,
   tierHitlagMs,
@@ -24,6 +26,7 @@ import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
 import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
+import { damageCrate } from "./crateDamage";
 import { OrbitPositionCache } from "./orbitPositions";
 
 export interface ClashInfo {
@@ -58,6 +61,8 @@ function pairKey(idA: string, idB: string): string {
 const BODY_RADIUS = PLAYER_BODY_RADIUS;
 const BODY_COLLISION = PLAYER_BODY_COLLISION;
 const CRATE_RADIUS = CRATE_HITBOX;
+const NORMAL_CRATE = CrateKind.Normal;
+const crateRadiusOf = crateHitbox;
 const COOLDOWN = BLADE_COLLISION_COOLDOWN;
 const HITLAG_COOLDOWN = HITLAG_COOLDOWN_MS;
 const KNOCKBACK_MAX = KNOCKBACK_MAX_SPEED;
@@ -289,23 +294,26 @@ export function resolveCollisions(
   // -------- Phase 2 : blade-vs-crate ---------------------------------------
   // Pas de broad-phase joueur ici car les caisses ne sont pas indexées par
   // owner. Mais le coût reste O(crates × blades_orbitales) avec un test
-  // distance² très bon marché.
+  // distance² très bon marché. Les lames ne s'y abîment pas, coffre-fort
+  // compris.
   state.crates.forEach((crate) => {
     if (crate.hp <= 0) return;
     const crateX = crate.x;
     const crateY = crate.y;
     const crateId = crate.id;
+    // Coffre-fort et puces des évènements de carte : plus gros.
+    const crateRadius = crate.kind === NORMAL_CRATE ? CRATE_RADIUS : crateRadiusOf(crate.kind);
     for (const owner of owners) {
       // Early-out par owner : si le centre du joueur est plus loin que
-      // (reach + CRATE_HITBOX), aucune de ses lames ne peut toucher.
+      // (reach + rayon de la caisse), aucune de ses lames ne peut toucher.
       const cdx = owner.x - crateX;
       const cdy = owner.y - crateY;
-      const cReach = owner.reach + CRATE_RADIUS;
+      const cReach = owner.reach + crateRadius;
       if (cdx * cdx + cdy * cdy > cReach * cReach) continue;
 
       for (const e of owner.blades) {
         if (destroyed.has(e.id)) continue;
-        const minDist = CRATE_RADIUS + e.hitbox;
+        const minDist = crateRadius + e.hitbox;
         const dx = e.x - crateX;
         const dy = e.y - crateY;
         if (dx * dx + dy * dy > minDist * minDist) continue;
@@ -313,7 +321,8 @@ export function resolveCollisions(
         const last = lastHitAt.get(key) ?? 0;
         if (nowSec - last < COOLDOWN) continue;
         lastHitAt.set(key, nowSec);
-        crate.hp = Math.max(0, crate.hp - e.damage);
+        // Plafond par joueur du coffre-fort : un coup au-delà ne compte pas.
+        if (damageCrate(crate, owner.id, e.damage, nowMs) <= 0) continue;
         const attacker = owner.player;
         if (crate.hp <= 0) {
           cb.onCrateDestroyed(crate, attacker);

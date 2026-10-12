@@ -199,13 +199,22 @@ export interface ChatMutedEvent {
 export interface CheatMessage {
   blades?: number;
   rarity?: BladeRarity;
+  // /event : évènement de carte lancé tout de suite, à la place de celui en
+  // cours (au lieu de lames).
+  event?: CheatEventName;
 }
 
-// Server → Client : lames ajoutées, ou raison du refus.
+// Évènements de carte que /event sait lancer.
+export type CheatEventName = "vault" | "processors" | "rain" | "golden";
+
+// Server → Client : lames ajoutées ou évènement lancé, ou raison du refus
+// (noEvents : pas d'évènements de carte dans ce mode ; noSpot : pas de
+// place pour lui).
 export interface CheatResult {
   ok: boolean;
   blades?: number;
-  reason?: "disabled" | "public" | "dead" | "full";
+  event?: CheatEventName;
+  reason?: "disabled" | "public" | "dead" | "full" | "noEvents" | "noSpot";
 }
 
 

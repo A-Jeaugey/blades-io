@@ -15,8 +15,9 @@ import {
   THROW_PROJECTILE_SPEED,
   THROW_PROJECTILE_TTL_MS,
   WALL_KILL_THICKNESS,
-  CRATE_HITBOX,
+  CrateKind,
   bladeEdgeRadius,
+  crateHitbox,
   bladeTipReach,
   outerOrbitRadius,
   sameTeam,
@@ -28,6 +29,7 @@ import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
 import { recordLoss, recordRelease } from "./bladePeak";
 import { sparedByBots } from "./collisions";
+import { damageCrate } from "./crateDamage";
 import { closestOnSegment, pointSegmentDist2, segmentSegmentDist2 } from "./geometry";
 import { OrbitPositionCache, recompactOwnerRing } from "./orbitPositions";
 
@@ -219,6 +221,36 @@ function landProjectile(b: Blade, now: number, cb: ThrowCallbacks): void {
   });
 }
 
+// Lame lancée retombée au pied d'un coffre-fort, entre lui et le point
+// d'où elle venait sur ce tick (x0, y0) : juste hors de sa hitbox, pour ne
+// pas se poser dans le modèle. Le coffre a pu être placé hors du décor, son
+// pied l'est aussi (marge de placement plus large que DROP_GAP).
+const DROP_GAP = 0.6;
+function dropAtFoot(b: Blade, crate: Crate, x0: number, y0: number, now: number): void {
+  let dx = x0 - crate.x;
+  let dy = y0 - crate.y;
+  let d = Math.hypot(dx, dy);
+  if (d < 1e-3) {
+    // Lancé depuis le coffre même : à l'opposé de sa course.
+    dx = -b.vx;
+    dy = -b.vy;
+    d = Math.hypot(dx, dy) || 1;
+  }
+  const r = crateHitbox(crate.kind) + DROP_GAP;
+  b.x = crate.x + (dx / d) * r;
+  b.y = crate.y + (dy / d) * r;
+  b.isProjectile = false;
+  b.thrownBy = "";
+  b.thrownTeam = 0;
+  b.pierceLeft = 0;
+  b.vx = 0;
+  b.vy = 0;
+  b.pickupLockUntil = now + THROW_LANDED_PICKUP_LOCK_MS;
+  b.expiresAt = now + GROUND_BLADE_TTL_MS;
+  b.expiring = false;
+  b.hitIds.clear();
+}
+
 // Collisions des projectiles vs joueurs (orbite + corps) et caisses.
 // Appelée APRÈS resolveCollisions classique pour que la position des
 // orbites soit fraîche dans le state (vx,vy projectile sont en world
@@ -264,30 +296,52 @@ export function resolveProjectileCollisions(
     const attacker = state.players.get(proj.thrownBy) ?? null;
 
     // 1) vs caisses
+    let landed = false;
     state.crates.forEach((crate) => {
-      if (proj.pierceLeft <= 0) return;
+      if (landed || proj.pierceLeft <= 0) return;
       if (crate.hp <= 0) return;
       if (proj.hitIds.has(crate.id)) return;
-      const minD = ph + CRATE_HITBOX;
+      const minD = ph + crateHitbox(crate.kind);
       if (pointSegmentDist2(crate.x, crate.y, x0, y0, x1, y1) > minD * minD) return;
       proj.hitIds.add(crate.id);
       const dmg = RARITY_DAMAGE[proj.rarity as BladeRarity];
-      crate.hp = Math.max(0, crate.hp - dmg);
+      damageCrate(crate, proj.thrownBy || null, dmg, now);
+      const t = closestOnSegment(crate.x, crate.y, x0, y0, x1, y1);
+      const hx = x0 + (x1 - x0) * t;
+      const hy = y0 + (y1 - y0) * t;
+      if (crate.kind === CrateKind.Vault) {
+        // Coffre-fort : la lame y fait ses dégâts puis retombe à son pied,
+        // du côté d'où elle venait, ramassable comme un lancer retombé
+        // (retours du 2026-10-12). Consommée comme sur une caisse, le
+        // coffre aurait englouti les lames de qui le visait de loin.
+        landed = true;
+        cb.onProjectileImpact({
+          bladeId: proj.id,
+          rarity: proj.rarity as BladeRarity,
+          x: hx,
+          y: hy,
+          kind: 2, // crate
+          destroyed: false,
+        });
+        dropAtFoot(proj, crate, x0, y0, now);
+        if (crate.hp <= 0) cb.onCrateDestroyed(crate, attacker);
+        else cb.onCrateHit(crate, attacker);
+        return;
+      }
       proj.pierceLeft = Math.max(0, proj.pierceLeft - 1);
       const consumed = proj.pierceLeft <= 0;
-      const t = closestOnSegment(crate.x, crate.y, x0, y0, x1, y1);
       cb.onProjectileImpact({
         bladeId: proj.id,
         rarity: proj.rarity as BladeRarity,
-        x: x0 + (x1 - x0) * t,
-        y: y0 + (y1 - y0) * t,
+        x: hx,
+        y: hy,
         kind: 2, // crate
         destroyed: consumed,
       });
       if (crate.hp <= 0) cb.onCrateDestroyed(crate, attacker);
       else cb.onCrateHit(crate, attacker);
     });
-    if (proj.pierceLeft <= 0) continue;
+    if (landed || proj.pierceLeft <= 0) continue;
 
     // 2) vs joueurs (corps & orbite)
     state.players.forEach((target) => {
@@ -392,9 +446,10 @@ export function resolveProjectileCollisions(
     });
   }
 
-  // Cleanup : projectiles avec pierceLeft <= 0 → suppression.
+  // Cleanup : projectiles avec pierceLeft <= 0 → suppression (pas ceux
+  // retombés au pied d'un coffre-fort, redevenus des lames au sol).
   for (const proj of projectiles) {
-    if (proj.pierceLeft <= 0 && state.blades.has(proj.id)) {
+    if (proj.isProjectile && proj.pierceLeft <= 0 && state.blades.has(proj.id)) {
       cb.onBladeDestroyed(proj, null);
     }
   }

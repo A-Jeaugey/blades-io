@@ -107,11 +107,14 @@ function warn(message: string): void {
 }
 
 // Évènement de carte fini (tâche 4.4) : une ligne dans map_events
-// (migration 0012) avec la part des joueurs venus jusqu'à lui.
+// (migration 0012) avec la part des joueurs venus jusqu'à lui. 'crate' est
+// le coffre-fort (l'ancienne caisse légendaire) ; 'processors' demande la
+// migration 0014 : sans elle, la contrainte de la colonne refuse la ligne
+// (un avertissement par minute au plus, cf. warnEvents), le jeu continue.
 export interface MapEventRecord {
   roomPrivate: boolean;
   gameMode: GameModeId;
-  kind: "rain" | "crate" | "golden";
+  kind: "rain" | "crate" | "golden" | "processors";
   durationMs: number;
   humans: number;
   humansReached: number;

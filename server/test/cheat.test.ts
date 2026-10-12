@@ -2,7 +2,7 @@
 // le serveur l'autorise (CHEATS=1 dans son environnement).
 import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { BladeRarity, CheatResult, INITIAL_BLADE_COUNT, MAX_BLADES_PER_PLAYER } from "@bladeio/shared";
+import { BladeRarity, CheatResult, CrateKind, INITIAL_BLADE_COUNT, MAX_BLADES_PER_PLAYER, MapEventKind } from "@bladeio/shared";
 import { FakeClock, ownedBlades, seedRandom } from "./helpers";
 import { TestRoom } from "./testRoom";
 
@@ -62,4 +62,29 @@ test("triche : refusée en partie publique, sans CHEATS=1, ou une fois mort", ()
   process.env.CHEATS = "1";
   priv.room.killPlayer(b, null, "wall");
   assert.deepEqual(cheat(priv, "b", { blades: 50 }), [{ ok: false, reason: "dead" }]);
+});
+
+// /event (évènements de carte) : essais au navigateur sans attendre la
+// minuterie ; l'évènement en cours s'arrête, son coffre est retiré.
+test("triche : /event lance l'évènement voulu tout de suite, en salon privé et dans un mode qui en a", () => {
+  const r = new TestRoom(clock, { code: "TESTS" });
+  r.join("a");
+  assert.deepEqual(cheat(r, "a", { event: "vault" }), [{ ok: true, event: "vault" }]);
+  assert.equal(r.state.mapEvent.kind, MapEventKind.Crate);
+  const vault = r.state.mapEvent.crateId;
+  assert.equal(r.state.crates.get(vault)?.kind, CrateKind.Vault);
+  assert.deepEqual(cheat(r, "a", { event: "processors" }), [{ ok: true, event: "processors" }]);
+  assert.equal(r.state.mapEvent.kind, MapEventKind.Processors);
+  assert.equal(r.state.crates.has(vault), false);
+  assert.deepEqual(cheat(r, "a", { event: "rain" }), [{ ok: true, event: "rain" }]);
+  assert.deepEqual(cheat(r, "a", { event: "golden" }), [{ ok: true, event: "golden" }]);
+  assert.equal(r.state.mapEvent.kind, MapEventKind.Golden);
+  assert.deepEqual(cheat(r, "a", { event: "meteor" }), [{ ok: false, reason: "noEvents" }]);
+  const ctf = new TestRoom(clock, { code: "TESTC", mode: "ctf" });
+  ctf.join("b");
+  assert.deepEqual(cheat(ctf, "b", { event: "vault" }), [{ ok: false, reason: "noEvents" }]);
+  const pub = new TestRoom(clock);
+  pub.join("c");
+  assert.deepEqual(cheat(pub, "c", { event: "vault" }), [{ ok: false, reason: "public" }]);
+  assert.equal(pub.state.mapEvent.kind, MapEventKind.None);
 });
