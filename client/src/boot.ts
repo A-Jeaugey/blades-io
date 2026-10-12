@@ -7,6 +7,7 @@ import { Onboarding } from "./ui/Onboarding";
 import { showAlert } from "./ui/Dialog";
 import { SoundManager } from "./audio/SoundManager";
 import { bindBoutiqueButton } from "./boutique/entry";
+import { bindQuestsButton, refreshQuestsBadge } from "./ui/questsEntry";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken } from "./auth/guestToken";
 import type { Game, LobbyParts } from "./main";
@@ -26,6 +27,7 @@ const engineModule = import("./main");
 applyThemeCss();
 applyI18n();
 bindBoutiqueButton();
+bindQuestsButton();
 
 const sound = new SoundManager();
 // Bloquée tant que le joueur n'a pas interagi : SoundManager retente au
@@ -33,7 +35,7 @@ const sound = new SoundManager();
 void sound.playLobbyMusic();
 const settings = new SettingsPanel();
 const profile = new ProfilePanel();
-void profile.refreshBadge();
+void refreshQuestsBadge();
 // Tactile ou non : d'après le pointeur, jusqu'à ce que le jeu suive le
 // dernier périphérique utilisé.
 const touch = { source: () => matchMedia("(pointer: coarse)").matches };

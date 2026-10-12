@@ -148,18 +148,24 @@ class WalletService {
 
   // Liste des item_id possédés côté serveur. [] si pas authed ou erreur.
   async fetchInventory(): Promise<string[]> {
+    return (await this.fetchInventoryOrNull()) ?? [];
+  }
+
+  // Même lecture, null en cas d'échec : les niveaux d'amélioration des
+  // QUÊTES distinguent un inventaire vide d'un serveur qui ne répond pas.
+  async fetchInventoryOrNull(): Promise<string[] | null> {
     const token = auth.getAccessToken();
-    if (!token) return [];
+    if (!token) return null;
     try {
       const r = await fetch("/api/wallet/inventory", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!r.ok) return [];
+      if (!r.ok) return null;
       const j = (await r.json().catch(() => ({}))) as { items?: unknown };
-      if (!Array.isArray(j?.items)) return [];
+      if (!Array.isArray(j?.items)) return null;
       return j.items.filter((x): x is string => typeof x === "string");
     } catch {
-      return [];
+      return null;
     }
   }
 }

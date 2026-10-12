@@ -302,9 +302,10 @@ canvas#game.booting {
   font-weight: 700;
   letter-spacing: 2px;
 }
-/* Défis (tâche 5.3) : texte et récompense, barre, avancement. */
-.profile-challenges.hidden { display: none; }
-.profile-challenges h3 small {
+/* Défis (tâche 5.3, onglet DÉFIS des QUÊTES) : texte et récompense, barre,
+   avancement. */
+.quests-challenges.hidden { display: none; }
+.quests-challenges h3 small {
   margin-left: 6px;
   color: var(--fg-muted);
   font-size: 12px;
@@ -338,7 +339,7 @@ canvas#game.booting {
 }
 .challenge.done .challenge-name { color: var(--fg-muted); }
 .challenge.done .challenge-progress { color: var(--cyan); }
-/* Défis réussis du jour, sur le bouton PROFIL. */
+/* Défis réussis du jour, sur le bouton QUÊTES. */
 .bio2-cta-badge {
   padding: 0 5px;
   border: 1px solid rgba(var(--accent-cool-rgb), .45);
@@ -372,6 +373,219 @@ canvas#game.booting {
   box-shadow: 0 0 18px rgba(var(--accent-cool-rgb), .35);
   pointer-events: none;
   z-index: 40;
+}
+/* QUÊTES (retours du 2026-10-12, ui/QuestsPanel.ts), dans la coque de « How
+   to play » : onglets DÉFIS, NIVEAUX et AMÉLIORATIONS. */
+.quests-wallet {
+  margin: 0 12px 0 auto;
+  color: var(--pink);
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* La croix sans la marge des boutons (button, plus bas) : alignée sur le
+   titre, et l'en-tête plus bas laisse de la place au contenu en paysage. */
+.quests .howto-close { margin: 0; }
+/* Largeur partagée, mais jamais sous celle du libellé : « AMÉLIORATIONS »
+   sortait de son tiers à 360 px. */
+.quests-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(min-content, 1fr));
+  gap: 4px;
+  padding: 10px 20px 2px;
+}
+/* Cibles au doigt (44 px) partout : le panneau sert surtout au lobby d'un
+   téléphone. Compteur sous le libellé, comme les onglets de la boutique. */
+.quests-tabs button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 44px;
+  margin: 0;
+  padding: 6px 4px;
+  background: transparent;
+  border: 1px solid rgba(var(--accent-cool-rgb), .25);
+  border-radius: 2px;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+.quests-tabs button:hover { color: var(--cyan); background: rgba(var(--accent-cool-rgb), .05); box-shadow: none; }
+.quests-tabs button.active { border-color: var(--cyan); color: var(--cyan); background: rgba(var(--accent-cool-rgb), .08); }
+.quests-tab-count { font-size: 11px; font-weight: 600; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.quests-tab-count:empty { display: none; }
+#quests-challenges-status.hidden { display: none; }
+.quests .profile-level-bar { width: 100%; }
+.quests-level-total { grid-column: 1 / -1; color: var(--fg-muted); font-size: 12px; }
+.quests-next { margin: 0 0 4px; color: var(--cyan); font-size: 14px; }
+.quests-next.hidden { display: none; }
+/* Piste des récompenses de niveau : acquis (plein, ✓), le prochain (accent
+   chaud, XP restante), puis verrouillés (🔒) ; l'état est écrit, pas
+   seulement coloré. */
+.quests-track { list-style: none; margin: 0; padding: 0 0 0 6px; }
+.quests-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 7px 0 7px 16px;
+  border-left: 2px solid rgba(var(--accent-cool-rgb), .15);
+}
+.quests-step::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -6px;
+  border: 2px solid rgba(var(--accent-cool-rgb), .35);
+  border-radius: 50%;
+  background: var(--dark);
+}
+.quests-step.got { border-left-color: var(--cyan); }
+.quests-step.got::before { border-color: var(--cyan); background: var(--cyan); }
+.quests-step.next::before { border-color: var(--pink); box-shadow: 0 0 8px rgba(var(--accent-warm-rgb), .6); }
+.quests-step-level { color: var(--fg-muted); font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.quests-step.got .quests-step-level,
+.quests-step.got .quests-step-state { color: var(--cyan); }
+.quests-step.next .quests-step-level,
+.quests-step.next .quests-step-state { color: var(--pink); }
+.quests-step-items { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.quests-reward {
+  padding: 1px 8px;
+  border: 1px solid rgba(var(--accent-cool-rgb), .22);
+  border-radius: 3px;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+.quests-step.got .quests-reward,
+.quests-step.next .quests-reward { color: var(--fg-bright); }
+.quests-reward small { color: var(--fg-muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.quests-reward-title { border-style: dashed; }
+.quests-step-state { color: var(--fg-muted); font-size: 12px; text-align: right; white-space: nowrap; }
+/* AMÉLIORATIONS : une carte par power-up (forme et couleur du power-up au
+   sol, niveau, crans, durées par rareté, achat). */
+.upg-intro { margin: 12px 0 4px; }
+.upg-guest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(var(--accent-warm-rgb), .45);
+  border-radius: 3px;
+}
+.upg-guest.hidden { display: none; }
+.upg-guest p { flex: 1 1 220px; margin: 0; font-size: 14px; }
+.upg-guest .boutique-btn,
+.upg-buy .boutique-btn { margin: 0; }
+.upg-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.upg-card {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-areas: "icon main buy" ". table buy";
+  gap: 6px 14px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-cool-rgb), .22);
+  border-radius: 3px;
+  background: rgba(var(--accent-cool-rgb), .04);
+}
+.upg-card.max { border-color: rgba(var(--accent-cool-rgb), .5); }
+.upg-card.just-bought { animation: upg-bought 1.4s ease-out 1; }
+@keyframes upg-bought {
+  from { box-shadow: 0 0 0 1px var(--cyan), 0 0 22px rgba(var(--accent-cool-rgb), .5); }
+  to { box-shadow: 0 0 0 1px transparent; }
+}
+.upg-icon {
+  grid-area: icon;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--c);
+  border-radius: 50%;
+  box-shadow: inset 0 0 14px -6px var(--c);
+}
+.upg-icon svg { width: 30px; height: 30px; fill: var(--c); filter: drop-shadow(0 0 3px var(--c)); }
+.upg-main { grid-area: main; min-width: 0; }
+.upg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.upg-head h4 { margin: 0; color: var(--fg-bright); font-size: 16px; letter-spacing: 2px; text-transform: uppercase; }
+.upg-level { color: var(--cyan); font-size: 13px; font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.upg-desc { margin: 2px 0 6px; color: var(--fg-muted); font-size: 14px; }
+/* Vingt crans, les niveaux acquis remplis. */
+.upg-pips {
+  display: block;
+  height: 6px;
+  background: linear-gradient(90deg, var(--cyan) calc(var(--p, 0) * 100%), rgba(var(--accent-cool-rgb), .18) 0);
+  -webkit-mask: repeating-linear-gradient(90deg, black 0 calc(5% - 2px), transparent calc(5% - 2px) 5%);
+  mask: repeating-linear-gradient(90deg, black 0 calc(5% - 2px), transparent calc(5% - 2px) 5%);
+}
+.upg-effect { margin: 6px 0 0; font-size: 14px; }
+.upg-table { grid-area: table; justify-self: start; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.upg-table th,
+.upg-table td { padding: 1px 14px 1px 0; text-align: right; white-space: nowrap; }
+.upg-table tr:first-of-type th { color: var(--fg-muted); font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.upg-table th[scope="row"] { color: var(--fg-muted); font-weight: 600; text-align: left; }
+.upg-table .next { color: var(--cyan); }
+.upg-dot {
+  display: inline-block;
+  width: var(--s);
+  height: var(--s);
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+.upg-buy { grid-area: buy; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 112px; }
+.upg-tomax { color: var(--fg-muted); font-size: 11px; white-space: nowrap; }
+.upg-max {
+  padding: 6px 14px;
+  border: 1px dashed var(--cyan);
+  border-radius: 3px;
+  color: var(--cyan);
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+@media (max-width: 560px) {
+  .quests-tabs { padding: 8px 12px 2px; }
+  .quests-tabs button { font-size: 11px; letter-spacing: .5px; }
+  .quests-step { grid-template-columns: 52px minmax(0, 1fr); }
+  .quests-step-state { grid-column: 2; text-align: left; }
+  .upg-card { grid-template-columns: 40px minmax(0, 1fr); grid-template-areas: "icon main" "table table" "buy buy"; }
+  .upg-icon { width: 40px; height: 40px; }
+  .upg-icon svg { width: 24px; height: 24px; }
+  /* Prix et bouton sur une ligne, le reste jusqu'au maximum dessous. */
+  .upg-buy { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; min-width: 0; }
+  .upg-tomax { flex-basis: 100%; text-align: right; }
+}
+/* Téléphone en paysage : en-tête et onglets plus bas, pour le contenu. */
+@media (max-height: 500px) {
+  .quests .howto-head { padding: 4px 16px; }
+  .quests-tabs { padding: 6px 16px 0; }
+  .quests-tabs button { flex-direction: row; gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .upg-card.just-bought { animation: none; border-color: var(--cyan); }
 }
 .profile-level {
   display: grid;
@@ -445,7 +659,7 @@ canvas#game.booting {
   .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .profile-tile-value { font-size: 18px; }
   /* Échéance des défis sous le titre plutôt que coupée. */
-  .profile-challenges h3 small { display: block; margin: 2px 0 0; }
+  .quests-challenges h3 small { display: block; margin: 2px 0 0; }
   /* Cinq colonnes dans 300 px : en-têtes serrés. */
   .profile-recent { font-size: 13px; }
   .profile-recent th { letter-spacing: 0; padding: 4px 3px; }
@@ -3615,10 +3829,12 @@ body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0
   font-weight: 400;
 }
 .bio2-tb-settings:hover { color: var(--cyan); box-shadow: none; background: transparent; }
-/* BOUTIQUE, COMMENT JOUER et PROFIL (tâche 5.1) côte à côte : empilés, le
-   troisième sortait de la console. */
-.bio2-cta-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.bio2-cta-row .bio2-cta-secondary { letter-spacing: 2px; gap: 6px; padding: 10px 6px; }
+/* BOUTIQUE, QUÊTES, COMMENT JOUER et PROFIL (tâche 5.1) côte à côte :
+   empilés, le troisième sortait de la console. À quatre, icône au-dessus du
+   libellé à toutes les tailles : « ✦ QUÊTES 0/3 » ne tenait plus sur une
+   ligne dans un quart de la console. */
+.bio2-cta-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.bio2-cta-row .bio2-cta-secondary { flex-direction: column; letter-spacing: 1.5px; gap: 2px; padding: 8px 4px; }
 
 /* ---- Lobby étroit (téléphone en portrait) ---- */
 @media (max-width: 480px) {
@@ -3645,8 +3861,9 @@ body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0
   .bio2-mode { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; }
   .bio2-mode-hint { margin-left: auto; text-align: right; }
   /* Icône au-dessus du libellé : « BOUTIQUE » ne passe pas à côté dans un
-     tiers de 360 px. */
-  .bio2-cta-row .bio2-cta-secondary { flex-direction: column; gap: 2px; letter-spacing: 1px; padding: 6px 4px; }
+     tiers de 360 px ; dans un quart, il ne tient qu'en serrant les lettres. */
+  .bio2-cta-row { gap: 6px; }
+  .bio2-cta-row .bio2-cta-secondary { flex-direction: column; gap: 2px; letter-spacing: .5px; padding: 6px 2px; }
   .bio2-cta { letter-spacing: 3px; padding: 12px 10px; }
 
   /* Boutique : la croix de fermeture sortait du cadre, « ÉPÉES » était

@@ -6,6 +6,7 @@ export * from "./tiers";
 export * from "./bounty";
 export * from "./decor";
 export * from "./shop";
+export * from "./upgrades";
 export * from "./movement";
 export * from "./prediction";
 export * from "./profile";
