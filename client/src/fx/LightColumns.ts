@@ -165,8 +165,11 @@ export class LightColumns {
     c.z = z;
     c.color.setHex(color);
     c.core.setHex(color).lerp(this.white, 0.45 * this.flashK);
+    // Hauteur plafonnée au palier 5 (8 u : colonne courte, cf. plus haut) ;
+    // au-delà, seul le faisceau s'élargit encore, au milieu d'une orbite de
+    // 5 à 8 u de rayon.
     c.height = 5 + Math.min(tier, 5) * 0.6;
-    c.radius = 0.9 + Math.min(tier, 5) * 0.08;
+    c.radius = 0.9 + Math.max(0, tier) * 0.08;
     c.alpha = 1;
     c.age = 0;
   }
