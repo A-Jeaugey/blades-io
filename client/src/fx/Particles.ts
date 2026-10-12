@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { fxIntensity } from "./flash";
+import { BurstShape, BurstStart, burstStart } from "../cosmetics/looks";
 
 // Particules rondes (tâche 2.6) : PointsMaterial dessinait des carrés et
 // ignorait l'attribut de taille. Disque doux, taille et opacité par
@@ -44,6 +45,9 @@ void main() {
   gl_FragColor = vec4(vColor, a);
 }
 `;
+
+// Départ d'une particule de salve en figure, réutilisé.
+const tmpStart: BurstStart = { x: 0, z: 0, speed: 0, rise: 0, ox: 0, oz: 0 };
 
 interface Particle {
   px: number; py: number; pz: number;
@@ -173,20 +177,34 @@ export class ParticlePool {
   }
 
   // Salve d'un effet d'élimination (tâche 6.1) : couleurs tirées de la
-  // liste, montée, gravité et durée propres à l'effet.
+  // liste, montée, gravité et durée propres à l'effet ; en figure (étoile,
+  // spirale, cœur) si l'effet en a une, avec peu d'aléa pour qu'elle se lise.
   spawnBurst(x: number, y: number, z: number, look: {
     colors: readonly number[]; count: number; speed: number; rise: number; gravity: number; life: number; size: number;
+    shape?: BurstShape;
   }): void {
-    const scaled = Math.max(1, Math.round(look.count * this.particleScale));
+    // Figure : au moins 24 points, même en potato (à 17, l'étoile et le cœur
+    // ne se lisaient plus) ; une salve reste un seul appel de rendu.
+    const scaled = Math.max(look.shape ? Math.min(24, look.count) : 1, Math.round(look.count * this.particleScale));
+    const spin = Math.random() * Math.PI * 2;
     for (let i = 0; i < scaled; i++) {
       const p = this.take();
       const color = look.colors[i % look.colors.length];
-      const a = Math.random() * Math.PI * 2;
-      const s = look.speed * (0.4 + Math.random() * 0.8);
-      p.px = x; p.py = y; p.pz = z;
-      p.vx = Math.cos(a) * s;
-      p.vy = look.rise * (0.5 + Math.random());
-      p.vz = Math.sin(a) * s;
+      if (look.shape) {
+        const b = burstStart(look.shape, i, scaled, spin, tmpStart);
+        const s = look.speed * b.speed * (0.94 + Math.random() * 0.12);
+        p.px = x + b.ox; p.py = y; p.pz = z + b.oz;
+        p.vx = b.x * s;
+        p.vy = look.rise * b.rise;
+        p.vz = b.z * s;
+      } else {
+        const a = Math.random() * Math.PI * 2;
+        const s = look.speed * (0.4 + Math.random() * 0.8);
+        p.px = x; p.py = y; p.pz = z;
+        p.vx = Math.cos(a) * s;
+        p.vy = look.rise * (0.5 + Math.random());
+        p.vz = Math.sin(a) * s;
+      }
       p.life = look.life * (0.7 + Math.random() * 0.3);
       p.maxLife = look.life;
       p.cr = ((color >> 16) & 0xff) / 255;

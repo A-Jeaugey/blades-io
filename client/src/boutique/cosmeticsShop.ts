@@ -3,7 +3,7 @@ import { auth } from "../auth/supabase";
 import { wallet } from "../auth/wallet";
 import { fetchGuestWallet } from "../auth/guestToken";
 import { equip, getLoadout } from "../cosmetics/loadout";
-import { BLADE_STYLES, KILL_FX_LOOKS, SKIN_LOOKS, TRAIL_LOOKS, lookOf } from "../cosmetics/looks";
+import { BLADE_STYLES, BurstStart, KILL_FX_LOOKS, SKIN_LOOKS, TRAIL_LOOKS, burstStart, lookOf } from "../cosmetics/looks";
 import { getActiveTheme } from "../themes";
 import { cosmeticDesc, cosmeticName, formatNumber, t } from "../i18n";
 import { grantOwnership, isOwned } from "./owned";
@@ -309,7 +309,7 @@ export class CosmeticsShop {
     if (slot === "skin") {
       const look = lookOf(SKIN_LOOKS, id);
       const pal = getActiveTheme().palette.playerLocal;
-      el.className = `cos-fig${look?.headShape === "box" ? " cos-fig-box" : ""}`;
+      el.className = `cos-fig${look && look.headShape !== "sphere" ? ` cos-fig-${look.headShape}` : ""}`;
       el.style.setProperty("--body", hex(look?.body ?? pal.primary));
       el.style.setProperty("--head", hex(look?.head ?? pal.primary));
       el.style.setProperty("--glow", hex(look?.emissive ?? pal.accent));
@@ -331,6 +331,11 @@ export class CosmeticsShop {
       const look = lookOf(TRAIL_LOOKS, id);
       const accent = getActiveTheme().palette.playerLocal.accent;
       el.className = "cos-trail";
+      if (look?.mid !== undefined) {
+        el.classList.add("cos-trail-mid");
+        el.style.setProperty("--mid", hex(look.mid));
+      }
+      if (look?.pattern) el.classList.add(`cos-trail-${look.pattern}`);
       el.style.setProperty("--head", hex(look?.head ?? accent));
       el.style.setProperty("--tail", hex(look?.tail ?? accent));
       el.style.setProperty("--w", String(look?.width ?? 0.8));
@@ -343,13 +348,32 @@ export class CosmeticsShop {
       const reach = Math.min(1.3, Math.max(0.6, (look?.speed ?? 5) / 5));
       el.style.setProperty("--dur", `${Math.max(0.9, (look?.life ?? 1) * 1.2).toFixed(2)}s`);
       const gravity = look?.gravity ?? 0;
-      if (gravity < 0) el.style.setProperty("--lift", "-24px");
+      if (gravity < 0) el.style.setProperty("--lift", (look?.rise ?? 0) >= 2 ? "-24px" : "-8px");
       else if (gravity >= 0.2) el.style.setProperty("--lift", "14px");
-      for (let i = 0; i < 12; i++) {
+      const shape = look?.shape;
+      if (shape) el.classList.add(`cos-burst-${shape}`);
+      // Figure : les points là où la salve en jeu les envoie (burstStart),
+      // la plus lointaine à 40 px du centre.
+      const n = shape ? 15 : 12;
+      const start: BurstStart = { x: 0, z: 0, speed: 0, rise: 0, ox: 0, oz: 0 };
+      const ends = shape
+        ? Array.from({ length: n }, (_, i) => {
+            const b = burstStart(shape, i, n, -Math.PI / 2, start);
+            return { x: b.ox + b.x * b.speed, z: b.oz + b.z * b.speed };
+          })
+        : [];
+      const far = Math.max(1e-6, ...ends.map((e) => Math.hypot(e.x, e.z)));
+      for (let i = 0; i < n; i++) {
         const dot = document.createElement("span");
         dot.style.setProperty("--c", hex(colors[i % colors.length]));
-        dot.style.setProperty("--a", `${i * 30}deg`);
-        dot.style.setProperty("--r", `${Math.round((18 + (i % 3) * 9) * reach)}px`);
+        if (shape) {
+          const { x, z } = ends[i];
+          dot.style.setProperty("--a", `${((Math.atan2(z, x) * 180) / Math.PI).toFixed(1)}deg`);
+          dot.style.setProperty("--r", `${Math.round((Math.hypot(x, z) / far) * 40)}px`);
+        } else {
+          dot.style.setProperty("--a", `${i * 30}deg`);
+          dot.style.setProperty("--r", `${Math.round((18 + (i % 3) * 9) * reach)}px`);
+        }
         el.appendChild(dot);
       }
     }

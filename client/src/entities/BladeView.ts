@@ -11,6 +11,7 @@ import { getActiveTheme } from "../themes";
 import { FLASH_COLOR } from "../themes/Theme";
 import { createTierGeometry } from "./bladeGeometries";
 import { TRAIL_PROJECTILE, TRAIL_SUCTION, TrailStyle } from "../fx/BladeTrails";
+import { fxIntensity } from "../fx/flash";
 
 export interface PlayerPositionProvider {
   getRenderPosition(
@@ -136,8 +137,40 @@ float bladeStyle(float s, vec3 p) {
     return mix(1.45, 0.7, edge);
   }
   // 5. Glitch : de brefs décrochages de luminosité, par tranches.
-  float g = fract(sin(floor(p.x * 6.0) * 91.7 + floor(uBladeTime * 8.0) * 13.1) * 4375.85);
-  return g > 0.85 ? 1.5 : (g < 0.1 ? 0.6 : 1.0);
+  if (s < 5.5) {
+    float g = fract(sin(floor(p.x * 6.0) * 91.7 + floor(uBladeTime * 8.0) * 13.1) * 4375.85);
+    return g > 0.85 ? 1.5 : (g < 0.1 ? 0.6 : 1.0);
+  }
+  // Deuxième vague (retours du 2026-10-12). Les parts animées suivent le
+  // réglage des flashs (uStyleFlash : 1, ou 0,35 à 0 %).
+  // 6. Éclat : un reflet vif balaie la lame en biais, de la garde à la
+  // pointe, puis repos (il sort de la lame la moitié du cycle).
+  if (s < 6.5) {
+    float pos = -0.8 + fract(uBladeTime * 0.45) * 3.0;
+    float d = abs(p.x + p.z * 1.5 - pos);
+    return 0.92 + 0.75 * uStyleFlash * (1.0 - smoothstep(0.0, 0.14, d));
+  }
+  // 7. Battement : deux pulsations rapprochées, de la garde vers la pointe,
+  // puis repos (~70 par minute).
+  if (s < 7.5) {
+    float t = fract(uBladeTime * 1.15 - p.x * 0.08);
+    float a = (t - 0.08) * 22.0;
+    float b = (t - 0.3) * 22.0;
+    return 0.88 + 0.55 * uStyleFlash * (exp(-a * a) + 0.6 * exp(-b * b));
+  }
+  // 8. Charge : six crans s'allument un à un de la garde à la pointe,
+  // tiennent, puis tout repart ; de fines rainures marquent les crans.
+  if (s < 8.5) {
+    float u = clamp((p.x + 0.55) / 1.5, 0.0, 0.999);
+    float cell = floor(u * 6.0) / 6.0;
+    float lit = step(cell, fract(uBladeTime * 0.55) * 1.3 - 0.16);
+    float e = fract(u * 6.0);
+    float groove = smoothstep(0.0, 0.08, e) * (1.0 - smoothstep(0.92, 1.0, e));
+    return (0.85 + 0.5 * uStyleFlash * lit) * mix(0.75, 1.0, groove);
+  }
+  // 9. Damas : veines ondulées, figées, comme l'acier de Damas.
+  float w = sin(p.x * 26.0 + sin(p.z * 40.0 + p.x * 6.0) * 2.2 + sin(p.y * 50.0) * 0.6);
+  return 0.8 + 0.42 * smoothstep(-0.2, 0.6, w);
 }
 `;
 
@@ -146,14 +179,15 @@ float bladeStyle(float s, vec3 p) {
 // blanc franc quelle que soit la rareté (multiplier la couleur d'instance
 // ne blanchit pas une teinte saturée). aStyle choisit le motif du style de
 // lame du propriétaire, appliqué juste avant.
-function addInstanceShading(material: THREE.Material, time: { value: number }): void {
+function addInstanceShading(material: THREE.Material, time: { value: number }, styleFlash: { value: number }): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uBladeTime = time;
+    shader.uniforms.uStyleFlash = styleFlash;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float aFlash;\nattribute float aStyle;\nvarying float vFlash;\nvarying float vStyle;\nvarying vec3 vBladePos;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFlash = aFlash;\nvStyle = aStyle;\nvBladePos = position;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform float uBladeTime;\nvarying float vFlash;\nvarying float vStyle;\nvarying vec3 vBladePos;\n" + STYLE_GLSL)
+      .replace("#include <common>", "#include <common>\nuniform float uBladeTime;\nuniform float uStyleFlash;\nvarying float vFlash;\nvarying float vStyle;\nvarying vec3 vBladePos;\n" + STYLE_GLSL)
       .replace(
         "#include <dithering_fragment>",
         "#include <dithering_fragment>\ngl_FragColor.rgb *= bladeStyle(vStyle, vBladePos);\ngl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), vFlash);",
@@ -190,6 +224,8 @@ export class BladeRenderer {
   private dirtyStyles: boolean[] = new Array(BUCKETS).fill(false);
   // Horloge des motifs (secondes), partagée par tous les matériaux.
   private time = { value: 0 };
+  // Part animée des motifs récents, selon le réglage des flashs.
+  private styleFlash = { value: 1 };
   // Index inverse : id de la lame dessinée à chaque instance d'un bucket.
   // Retirer une instance y déplace la dernière : on sait laquelle sans
   // parcourir tout l'index (O(1) au lieu de O(n) par lame, d'où des pics
@@ -252,7 +288,7 @@ export class BladeRenderer {
               shininess: theme.blades.shininess,
               specular: theme.blades.specularColor,
             });
-        addInstanceShading(mat, this.time);
+        addInstanceShading(mat, this.time, this.styleFlash);
         const key = bucketKey(r, t);
         this.materials[key] = mat;
         this.setBucketMesh(key, this.createBucketMesh(key, INITIAL_BUCKET_CAPACITY));
@@ -471,6 +507,7 @@ export class BladeRenderer {
 
   setFlashIntensity(k: number): void {
     this.flashIntensity = k;
+    this.styleFlash.value = fxIntensity(k);
     const rarityColor = getActiveTheme().palette.rarityColor;
     const white = new THREE.Color(FLASH_COLOR);
     for (const r of [BladeRarity.Common, BladeRarity.Rare, BladeRarity.Epic, BladeRarity.Legendary]) {
