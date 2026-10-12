@@ -51,19 +51,24 @@ client/src/
 │   ├── shaderWarmup.ts  Shaders compilés au lobby (tâche 2.9)
 │   ├── renderScale.ts   Tailles en pixels rapportées à la partie dessinée
 │   ├── MapEventView.ts  Zone au sol d'un évènement de carte (pluie, zone dorée)
+│   ├── ProcessorFallView.ts Chute de processeurs : alertes au sol, puces en
+│   │                    chute réglées sur l'heure du tick de rendu
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
 │   └── palette.ts       Façade rétrocompat sur le thème actif
 ├── entities/
-│   ├── BladeView.ts     InstancedMesh×24 (4 raretés × 6 tiers), flash
+│   ├── BladeView.ts     InstancedMesh×40 (4 raretés × 10 paliers),
+│   │                    maillage sans instance caché ; flash
 │   │                    blanc par instance (attribut aFlash) ; capacité
 │   │                    qui double au besoin, retrait en O(1) ; position
 │   │                    dessinée des lames rapides → traînées (setTrailSink)
-│   ├── bladeGeometries.ts Une forme par palier (dague → lame à aura)
+│   ├── bladeGeometries.ts Une forme par palier (dague → lame céleste),
+│   │                    table TIER_SHAPES
 │   ├── PlayerView.ts    Capsule corps + tête + ring + halo + traînée
 │   │                    (ruban échantillonné dans le temps : joueur local,
 │   │                    et tout joueur qui a une traînée équipée)
 │   │                    + dissolution à la mort (shader injecté)
-│   ├── CrateView.ts     Boîte émissive + edges
+│   ├── CrateView.ts     Caisses, coffre-fort et puces (modèles dans
+│   │                    eventModels.ts : VaultKit, ChipKit)
 │   ├── PowerUpView.ts   Octaèdres flottants + pilier vertical + ring sol
 │   ├── FlagView.ts      Drapeaux et bases de la capture du drapeau
 │   └── AimIndicator.ts  Trajectoire du prochain lancer au sol (visée)
@@ -74,6 +79,7 @@ client/src/
 │   │                    (Shockwaves), éclats de lame (Shards), colonnes
 │   │                    de lumière (LightColumns), traînées des lames
 │   │                    (BladeTrails), lignes de vitesse (SpeedLines)
+│   ├── MagnetRing.ts    Anneau d'aimant au sol (power-up Magnet actif)
 │   ├── flash.ts         fxIntensity() : réglage des flashs des effets
 │   └── ScreenShake.ts
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
@@ -96,7 +102,12 @@ client/src/
 │                        (classements à onglets : lobby et profil),
 │                        share (partage natif ou lien copié, invitations),
 │                        MatchUi (minuterie et podium d'une partie à fin,
-│                        tableau par équipe), FlagHud (état des drapeaux)
+│                        tableau par équipe), FlagHud (état des drapeaux),
+│                        QuestsPanel (QUÊTES : défis, niveaux,
+│                        améliorations ; chargé à l'ouverture, bouton et
+│                        compteur dans questsEntry), ranked (emblèmes et
+│                        textes du mode classé), PowerUpToast + powerUpInfo
+│                        (bandeau de ramassage, explications des power-ups)
 ├── i18n/                Textes fr et en (dictionnaires, t(), data-i18n)
 └── quality.ts           Presets ultra/low/medium/high + détection auto + dyn-res
 ```
@@ -516,7 +527,8 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `en.ts` et `fr.ts` (le compilateur exige les trois) ; le sélecteur du
   lobby apparaît dès qu'il y a deux modes à proposer. Colonne `game_mode`
   (migration 0011) écrite seulement hors `ffa`, pour que l'arène
-  s'enregistre aussi sans la migration. Manches (tâche 7.1,
+  s'enregistre aussi sans la migration. Mode classé : voir plus bas.
+  Manches (tâche 7.1,
   `server/src/modes/rounds.ts`) : 5 minutes, points de toutes les vies de
   la manche (`standing`), trophées du podium (`rankBonus`, crédités par la
   room en public), minuterie et podium côté client (`ui/MatchUi.ts`).
@@ -587,20 +599,44 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   face triangulaire), état `ui/FlagHud.ts`, évènements `flag` dans le fil.
 - **Évènements de carte (tâche 4.4)** : `server/src/systems/mapEvents.ts`
   (`MapEventSystem`), réglages dans `shared/src/mapEvents.ts`, dans les
-  modes où `GameModeInfo.mapEvents` est vrai (arène, manches, match à
-  mort). Un à la fois, synchronisé par `state.mapEvent` (type, zone,
-  annonce `startsAt`, fin `endsAt`, caisse `crateId`) : le client en tire
-  bannière, zone au sol (`scene/MapEventView.ts`), marqueur de minimap et
-  badge POINTS ×2. Pluie de lames (lames à échéance, comme le butin),
-  caisse légendaire (`Crate.legendary`, butin fixe dans
-  `CrateSystem.destroyCrate`), zone dorée : `update()` passe après le
-  calcul des scores et ajoute une seconde fois l'écart de score de chaque
-  joueur dedans. La minuterie ne part qu'avec un humain dans la room, sans
-  aucun tirage avant : une room de bots seuls (bancs) joue à l'identique.
-  Chaque évènement fini écrit une ligne `map_events` (migration 0012 ;
-  `select * from map_events_summary;` : part des joueurs venus jusqu'à
-  lui). Les bots y vont par `botGoal`, combiné avec celui du mode (le plus
-  pressant des deux).
+  modes où `GameModeInfo.mapEvents` est vrai (arène, manches, classé,
+  match à mort), toutes les 50 à 70 s (retours du 2026-10-12 : 90 à 120 s
+  avant). Un à la fois, synchronisé par `state.mapEvent` (type, zone,
+  annonce `startsAt`, fin `endsAt`, caisse `crateId`, puces `drops`) : le
+  client en tire bannière, zone au sol (`scene/MapEventView.ts`), marqueur
+  de minimap et badge POINTS ×2. Pluie de lames (lames à échéance, comme
+  le butin) ; coffre-fort (il remplace la caisse légendaire et garde
+  `MapEventKind.Crate` et `'crate'` en télémétrie) à `VAULT_CENTER_DIST`
+  du centre, côté sud (y > 0) pour que le pilier ne le cache jamais à la
+  caméra, 6000 PV mais au plus `VAULT_PLAYER_DPS` (300) dégâts par seconde
+  et par joueur, sinon le temps d'ouverture suivait la taille de l'orbite :
+  **tout dégât à une caisse passe par `damageCrate`**
+  (`systems/crateDamage.ts`) ; un lancer y retombe à son pied
+  (`dropAtFoot`, `throws.ts`), `crateHit` au plus toutes les 60 ms pour
+  lui, butin `eventLoot` / `scatterLoot` (`systems/crates.ts`) ; chute de
+  processeurs (`MapEventKind.Processors`, `MapEvent.drops` : position,
+  `at`, `DropState`, `crateId`), évènement `processorImpact` estampillé du
+  tick, une puce sur deux explose, l'autre reste au sol comme caisse
+  `Chip` (30 PV, 60 s) ; zone dorée : `update()` passe après le calcul des
+  scores et ajoute une seconde fois l'écart de score de chaque joueur
+  dedans. Genres de caisse : `Crate.kind` (`CrateKind` Normal, Vault,
+  Chip), hitbox par `crateHitbox(kind)` (jamais `CRATE_HITBOX` seul),
+  échéance serveur `Crate.expiresAt` ; le plafond des caisses ordinaires ne
+  compte que les `Normal`, et leur butin garde son ordre de tirage (bancs
+  de bots seuls identiques). Client : `entities/eventModels.ts`,
+  `scene/ProcessorFallView.ts` (heure du tick de rendu, `serverRenderMs`),
+  couleurs `palette.mapEvent` des thèmes, caisses d'évènement qui
+  apparaissent et disparaissent sur la ligne de temps (`atTick`). La
+  minuterie ne part qu'avec un humain dans la room, sans aucun tirage
+  avant : une room de bots seuls (bancs) joue à l'identique. Tests et
+  triche : `MapEventSystem.force(state, now, kind)`, `/event
+  vault|processors|rain|golden` (même garde que `/blades`) ;
+  `__bladePerf.event()` à `?debug=perf`. Chaque évènement fini écrit une
+  ligne `map_events` (migrations 0012 et 0014, `kind` 'processors' ; sans
+  0014, seules ces lignes sont refusées ; `select * from
+  map_events_summary;` : part des joueurs venus jusqu'à lui). Les bots y
+  vont par `botGoal`, combiné avec celui du mode (le plus pressant des
+  deux). Le coffre et les puces comptent comme caisses cassées (défis).
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client
@@ -646,6 +682,17 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   poursuivre (perçant) jusqu'aux suivantes ou au corps. La portée d'un
   joueur pour les buissons (`reachOf`) suit la plus longue lame de son
   palier. `?debug=hitbox` trace les deux formes (cercle, axe de la lame).
+  Le test « pointe des formes » (`server/test/bladeShapes.test.ts`) mesure
+  la pointe de chaque forme (x le plus grand, géométrie pleine et légère,
+  three.js compilé par esbuild) et la compare à `BLADE_TIP_REACH`. Paliers
+  6 à 9 (120, 170, 240, 330 lames : éclair, croissant, lame ailée, lame
+  céleste) : clash, rotation, recul et hitlag au plafond de la faux ; seules
+  la forme et l'échelle (+0,05 par palier) changent, donc la portée qui tue
+  un corps. Toute table indexée par palier (shared ou client) a
+  `TIER_COUNT` valeurs (test « tables par palier »), lue côté client par
+  `perTier` (pas de NaN). Ajouter un palier : sa forme dans `TIER_SHAPES`,
+  son seuil, une valeur par table, sa pointe, puis `lobby.marquee` (aussi
+  dans `client/index.html`) et `howto.blades3`.
 - **Butin d'un kill (tâches 4.11 et 4.14)** : le plus haut nombre de lames
   de la victime des `DEATH_LOOT_WINDOW_MS` (15 s) précédentes retourne au
   sol (`deathLootCount`, `systems/bladePeak.ts`, relevé à chaque tick) : son
@@ -705,6 +752,81 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   ambiantes (`countGroundBlades`) compte ces drops : quand les traînées
   s'accumulent, il en apparaît moins ailleurs. `BOOST_DROP_RATIO` règle la
   part qui tombe.
+- **Power-ups (retours du 2026-10-12)** : réglages dans
+  `shared/src/constants.ts`. Vitesse : `POWERUP_SPEED_MULT` (1,6) sur des
+  durées propres (`POWERUP_SPEED_DURATION`, 4 à 8 s), cumul avec le boost
+  plafonné dans `stepMovement` (`POWERUP_SPEED_BOOST_CAP`, 2,3, l'ancien
+  maximum : à garder nettement sous `THROW_PROJECTILE_SPEED`, sinon une
+  cible qui fuit n'est plus rattrapable). Aimant : `POWERUP_MAGNET_MULT`
+  (×3,5), `POWERUP_MAGNET_PULL` et `POWERUP_MAGNET_PULL_EDGE`
+  (`systems/orbitPositions.ts`). Rotation : en plus de l'orbite plus
+  rapide, ×1,5 dégâts arrondis au supérieur (`POWERUP_SPIN_DAMAGE_MULT`,
+  `SPIN_DAMAGE` de `systems/collisions.ts`) en clash et sur les caisses,
+  pas pour les lancers ; le Bouclier d'en face s'applique ensuite. Toute
+  durée d'effet se lit dans `powerUpDurationMs(type, rareté, niveau)`
+  (`shared/src/powerups.ts`), jamais dans `POWERUP_DURATION` ; l'évènement
+  `powerupPickup` porte `durationMs`, que le client affiche sans la
+  recalculer. `Player.activeEffects` (un bit par type, `powerUpBit`) est le
+  seul état d'effet visible des autres joueurs ; les `*Until` restent au
+  joueur lui-même. `startLife` remet les effets à zéro. Client :
+  `ui/powerUpInfo.ts` tire bandeau (`ui/PowerUpToast.ts`), infobulles et
+  icônes de « How to play » des constantes ; ses formes doublent celles de
+  `PowerUpView` (un changement se reporte aux deux, plus `pu.*` et
+  `howto.pu.*`) ; `fx/MagnetRing.ts` est dans la scène dès la
+  construction, pour le préchauffage.
+- **Améliorations des power-ups (QUÊTES)** : chaque niveau est un article
+  de `SHOP_ITEMS` de sorte `"upgrade"` (`upgrade.<slug>.<n>`, généré par
+  `upgradeShopItems()` dans `shared/src/upgrades.ts` ; slugs
+  `UPGRADE_SLUGS` à ne jamais renommer, l'inventaire des comptes les
+  garde), prix dans `UPGRADE_PRICES` (entiers, pour que client et serveur
+  lisent les mêmes), jamais à la une (`drawFeatured`) ni remisés
+  (`priceToday`). Niveau d'un joueur : la suite des niveaux possédés depuis
+  le premier (`upgradeLevelOf`) ; `/api/wallet/purchase` refuse le niveau
+  n sans le n−1 (`upgradeOrderProblem`, 400 `upgrade_order`). Au join,
+  `Player.powerUpLevels` vient de l'inventaire lu dans `onAuth` ; 0 pour
+  un invité, un bot, ou un mode `upgrades: false` (`modeAllowsUpgrades`) ;
+  jamais un niveau envoyé par le client. +2,5 % de durée par niveau,
+  +50 % au plus (`POWERUP_UPGRADE_STEP`, `POWERUP_UPGRADE_MAX_LEVEL`).
+  Panneau QUÊTES : `ui/QuestsPanel.ts` chargé à la première ouverture,
+  `ui/questsEntry.ts` (bouton, compteur des défis du jour,
+  `refreshQuestsBadge` au retour au menu) dans le lobby ; les défis ont
+  quitté PROFIL ; les niveaux affichés viennent de l'inventaire relu à
+  l'ouverture (`wallet.fetchInventoryOrNull`), pas de `listOwned()`, qui
+  peut garder les achats d'un autre compte. Un nouvel emplacement de
+  cosmétique demande sa clé `quests.reward.<emplacement>` (`REWARD_KIND`).
+- **Mode classé** : `ranked` (`shared/src/modes.ts`, `isRankedMode`),
+  partie rapide seulement, sans améliorations ; `RankedMode extends
+  RoundsMode` (`server/src/modes/ranked.ts`). Points de rang dans
+  `shared/src/ranked.ts` : `rankedDelta` (30 × (score − attendu) /
+  attendu, plus le podium 10 / 6 / 3, bots compris, borné à −30 / +50,
+  jamais sous 0), `expectedScore` (120 + 36 par tranche de 100 PR, au
+  prorata du temps joué ; moins d'une minute : manche non classée),
+  `rankOf` (Bronze à Diamant en III / II / I de 100 PR, Maître dès 1500),
+  `seasonStartPr` (la moitié à la saison suivante ; la base reprend la même
+  part, `p_carry`). Fin de manche : hook facultatif
+  `GameMode.onMatchEnd(standings, now)` ; message `rankedResult` (scored,
+  guest, late, unavailable) au seul joueur par `ModeHost.sendTo`, après
+  l'écriture en base (`server/src/ranked.ts`, `trackWrite`, migration
+  0013) : tout littéral `ModeHost` doit fournir `sendTo`. Abandon (départ
+  après une minute de présence en pleine manche, hors entracte et préavis
+  d'arrêt) : −30 dans `RankedMode.onLeave` ; le client confirme le départ
+  volontaire (`leaveByChoice`, `main.ts`). Rien d'écrit en salon privé ni
+  pour un invité. Client : `ui/ranked.ts` (une forme d'emblème par rang
+  plus le chiffre de division), `.rank-*` dans `styles.css` (couleurs
+  `--rarity-*`). API `/api/ranked/me` et `/api/ranked/leaderboard`.
+- **Noms des bots** : `shared/src/botNames.ts` (`BOT_NAMES`, près de 300
+  noms ; `botNameKey`), choix par `pickBotName` (`systems/bots.ts`) :
+  unique contre tous les joueurs présents, sans la marque de champion, la
+  casse, les accents ni les séparateurs ; nom numéroté seulement si la
+  liste est épuisée. Un nom ajouté fait au plus 14 caractères (16 avec la
+  marque de champion), passe `nameProblem`, et n'est ni un personnage, ni
+  une marque, ni une personne réelle (`server/test/botNames.test.ts`).
+- **Essais au navigateur** : sur localhost, le client vise le port 2567 ;
+  pour un serveur sur un autre port, construire avec
+  `VITE_SERVER_URL=ws://localhost:<port>`. Dans un worktree dont les
+  `node_modules` sont des liens, ne jamais commiter ces liens (`.gitignore`
+  dit `node_modules` sans barre finale depuis le 2026-10-12 : un lien
+  commité avait remplacé les dépendances du serveur à la fusion).
 - **Poids du client (tâche 2.7)** : la page ne charge d'abord que
   `boot.ts` et ses imports (~175 Ko : lobby, textes, thèmes) ; le moteur
   (`main.ts`, three.js, Colyseus) est importé dès le démarrage, en
