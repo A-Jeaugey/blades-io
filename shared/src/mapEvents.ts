@@ -116,7 +116,7 @@ export const PROCESSOR_COUNT_MAX = 5;
 export const PROCESSOR_WARNING_MS = 4_000;
 export const PROCESSOR_SPREAD_MS = 5_000;
 // Durée de la chute affichée par le client, avant l'impact.
-export const PROCESSOR_FALL_MS = 1_100;
+export const PROCESSOR_FALL_MS = 1_400;
 export const PROCESSOR_ALERT_RADIUS = 4;
 export const PROCESSOR_EXPLODE_CHANCE = 0.5;
 export const PROCESSOR_LOOT_MIN = 5;

@@ -470,6 +470,32 @@ export class SoundManager {
     this.killSynth.triggerAttackRelease("G2", 0.12, this.nextTime(this.killSynth), 0.6 * gain);
   }
 
+  // Coffre-fort frappé (évènement de carte) : clang métallique grave,
+  // espacé par l'appelant (CrateRenderer.hit).
+  vaultHit(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.hitSynth.triggerAttackRelease(150 + Math.random() * 30, 0.08, this.nextTime(this.hitSynth), 0.8 * gain);
+    this.shatterSynth.triggerAttackRelease(0.03, this.nextTime(this.shatterSynth), 0.35 * gain);
+  }
+
+  // Coffre-fort ouvert : déflagration, puis carillon montant (le trésor).
+  vaultBreak(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.crateSynth.triggerAttackRelease(0.35, this.nextTime(this.crateSynth), gain);
+    this.killSynth.triggerAttackRelease("C2", 0.4, this.nextTime(this.killSynth), gain);
+    this.sequence(this.chimeSynth, [72, 76, 79, 84, 88], 0.06, 0.1, gain);
+  }
+
+  // Puce tombée : coup sourd et salve de statique (le « glitch »).
+  processorImpact(exploded: boolean, gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.killSynth.triggerAttackRelease(exploded ? "E2" : "A2", 0.18, this.nextTime(this.killSynth), 0.8 * gain);
+    const t0 = this.nextTime(this.glitchSynth);
+    this.glitchFilter.frequency.setValueAtTime(exploded ? 2400 : 1500, t0);
+    this.glitchSynth.triggerAttackRelease(0.06, t0, gain);
+    if (exploded) this.crateSynth.triggerAttackRelease(0.15, this.nextTime(this.crateSynth), 0.7 * gain);
+  }
+
   death(): void {
     if (!this.started) return;
     this.deathSynth.triggerAttackRelease(0.4, this.nextTime(this.deathSynth));

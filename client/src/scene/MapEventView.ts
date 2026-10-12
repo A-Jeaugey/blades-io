@@ -6,8 +6,9 @@ import { getActiveTheme } from "../themes";
 // Zone d'un évènement de carte (tâche 4.4) au sol : anneau et disque léger
 // pour la pluie de lames (couleur de la rareté rare) et la zone dorée
 // (couleur de la légendaire, l'or de tous les thèmes). Pendant l'annonce,
-// l'anneau pulse, selon le réglage des flashs ; actif, il est plein. La
-// caisse légendaire, elle, est une caisse (CrateRenderer).
+// l'anneau pulse, selon le réglage des flashs ; actif, il est plein. Le
+// coffre-fort est une caisse (CrateRenderer), la chute de processeurs a sa
+// vue (ProcessorFallView).
 
 export interface MapEventSnapshot {
   kind: number;

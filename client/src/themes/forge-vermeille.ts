@@ -220,6 +220,17 @@ export const FORGE_VERMEILLE_THEME: Theme = {
       powerUpFallback: 0xff8a3e,
       bladeFallback: 0xff8a3e,
     },
+    // Coffre de fer noirci aux joints de braise orangée (pas le rouge du
+    // mur ni la paille dorée des légendaires) ; puce aux broches de laiton.
+    mapEvent: {
+      vaultSteel: 0x4a403a,
+      vaultTrim: 0xb4a494,
+      vaultGlow: 0xff7a30,
+      chipBody: 0x1a110c,
+      chipPins: 0xccb48c,
+      chipCore: 0xff8a3a,
+      chipTrail: 0xffc070,
+    },
   },
 
   lighting: {

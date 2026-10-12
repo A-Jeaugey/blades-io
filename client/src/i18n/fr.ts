@@ -93,8 +93,9 @@ export const fr: Record<keyof typeof en, string> = {
   "flag.toast.conceded": "Ils marquent",
   "arena.shrinkNotice": "Moins de joueurs : l'arène se resserre dans {s} s",
   "event.rain": "Pluie de lames dans 5 s : regarde la carte !",
-  "event.crate": "Une caisse légendaire vient d'apparaître : regarde la carte !",
+  "event.crate": "COFFRE-FORT près du centre : casse-le, son butin ira à qui le ramasse !",
   "event.golden": "Zone dorée au centre dans 5 s : points ×2 pendant 30 s",
+  "event.processors": "Chute de processeurs dans 4 s : regarde la carte !",
 
   // Fil des éliminations
   "feed.border": "BORDURE",
@@ -306,6 +307,10 @@ export const fr: Record<keyof typeof en, string> = {
   "chat.cheatPublic": "Triche réservée aux salons privés.",
   "chat.cheatDead": "Réapparais d'abord.",
   "chat.cheatFull": "Plafond de lames atteint.",
+  "chat.usageEvent": "Usage : /event <vault | processors | rain | golden>",
+  "chat.cheatEvent": "Triche : évènement {name} lancé.",
+  "chat.cheatNoEvents": "Pas d'évènements de carte dans ce mode.",
+  "chat.cheatNoSpot": "Pas de place pour cet évènement maintenant.",
   "chat.usageMute": "Usage : /mute <pseudo>",
   "chat.usageReport": "Usage : /report <pseudo> [motif]",
   "chat.notFound": "Aucun joueur nommé {name} ici.",
@@ -394,7 +399,7 @@ export const fr: Record<keyof typeof en, string> = {
   "howto.trophies2": "Ils sont aussi ton XP : les dépenser ne fait pas baisser ton niveau, affiché à côté de ton pseudo. Nouveaux titres aux niveaux 5, 10, 20, 30, 50, 75 et 100.",
   "howto.rounds": "<b>MANCHES</b> (mode de jeu, au lobby) : des manches de 5 minutes, et l'arène se resserre pendant la dernière. Tes points s'additionnent sur toutes tes vies de la manche ; les trois premiers gagnent 150, 100 et 50 trophées (parties publiques).",
   "howto.teams": "<b>MODES ÉQUIPE</b> (salons privés, bots en option) : deux équipes, ◆ marque la tienne (anneau, pseudo, carte). <b>MATCH À MORT</b> : la première équipe à 30 éliminations. <b>DERNIÈRE ÉQUIPE</b> : sans réapparition, l'arène se resserre pendant la dernière minute ; éliminé, tu suis un coéquipier. <b>CAPTURE DU DRAPEAU</b> : prends leur drapeau et rapporte-le à ta base pendant que le tien y est ; touche ton drapeau tombé pour le renvoyer chez toi. 3 captures pour gagner.",
-  "howto.events": "<b>ÉVÈNEMENTS DE CARTE</b> (arène, manches, match à mort), toutes les 90 à 120 s, avec une bannière : une <b>pluie de lames</b> sur une zone montrée 5 s avant (cercle en pointillés sur la minimap), une <b>caisse légendaire</b> (★ sur la minimap, dix fois plus solide, une légendaire et un paquet de lames rares dedans) ou une <b>zone dorée</b> au centre (double cercle) : pendant 30 s, tout point gagné dedans compte double.",
+  "howto.events": "<b>ÉVÈNEMENTS DE CARTE</b> (arène, manches, match à mort), toutes les 50 à 70 s, avec une bannière : une <b>pluie de lames</b> sur une zone montrée 5 s avant (cercle en pointillés sur la minimap) ; un <b>coffre-fort</b> près du centre (carré à porte ronde sur la minimap), très solide : tes lames ne s'y cassent pas, tes lancers retombent à son pied, et il lâche 24 à 30 lames rares, épiques ou légendaires, à qui les ramasse ; une <b>chute de processeurs</b> (puces sur la minimap, points d'impact montrés au sol) : chaque puce explose en 5 à 10 lames rares ou mieux, ou reste entière, à casser ; ou une <b>zone dorée</b> au centre (double cercle) : pendant 30 s, tout point gagné dedans compte double.",
   "howto.cosmetics": "Cosmétiques : skins, styles de lames, traînées et effets d'élimination, vus de tous. Ils se débloquent en montant de niveau (du niveau 2 au 30) ou s'achètent en <b>BOUTIQUE</b>, où trois sont à -20\u00a0% chaque jour (À LA UNE) et où tout s'essaie en 3D. Ils ne changent jamais les hitbox, les couleurs de rareté ni les anneaux au sol.",
   "howto.resetTips": "REVOIR LES CONSEILS EN JEU",
 

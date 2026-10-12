@@ -173,6 +173,19 @@ export const TEMPLATE_THEME: Theme = {
       powerUpFallback:         0xff00ff,
       bladeFallback:           0xff00ff,
     },
+    // Évènements de carte : coffre-fort (acier, garnitures, joints
+    // lumineux) et puces de la chute de processeurs (boîtier, broches,
+    // cœur, traînée). Loin de la couleur du mur (boundary) ; évite la
+    // teinte exacte d'une rareté.
+    mapEvent: {
+      vaultSteel: 0xff00ff, // ← TODO : caisson d'acier, sombre
+      vaultTrim:  0xff00ff, // ← TODO : porte, cadran, rivets, plus clair
+      vaultGlow:  0xff00ff, // ← TODO : joints lumineux, jauge au sol
+      chipBody:   0xff00ff, // ← TODO : boîtier de la puce, sombre
+      chipPins:   0xff00ff, // ← TODO : broches
+      chipCore:   0xff00ff, // ← TODO : cœur lumineux, cercle d'alerte
+      chipTrail:  0xff00ff, // ← TODO : traînée de chute
+    },
   },
 
   // ─── Lumières ───

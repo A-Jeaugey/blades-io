@@ -215,6 +215,17 @@ export const SANCTUAIRE_THEME: Theme = {
       powerUpFallback: 0xf5e8d8,
       bladeFallback: 0xf5e8d8,
     },
+    // Reliquaire de pierre de nuit aux liserés lavande, joints ambre ;
+    // puce sombre aux broches pâles, cœur ambre (pas l'or des légendaires).
+    mapEvent: {
+      vaultSteel: 0x4e4170,
+      vaultTrim: 0xc4b4e4,
+      vaultGlow: 0xffa860,
+      chipBody: 0x1c1430,
+      chipPins: 0xd4c6ee,
+      chipCore: 0xffa060,
+      chipTrail: 0xffd09a,
+    },
   },
 
   lighting: {

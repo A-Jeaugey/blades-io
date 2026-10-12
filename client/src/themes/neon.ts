@@ -130,6 +130,19 @@ export const NEON_THEME: Theme = {
       powerUpFallback: 0xffffff,
       bladeFallback: 0xffffff,
     },
+    // Coffre en acier bleuté aux joints ambre (le trésor), plus clair que
+    // le sol pour se détacher même sans éclairage (potato) ; puce noire aux
+    // broches argent, cœur incandescent : ni le rose du mur ni le cyan des
+    // rares.
+    mapEvent: {
+      vaultSteel: 0x4a5672,
+      vaultTrim: 0x98a2ba,
+      vaultGlow: 0xff8a2a,
+      chipBody: 0x141828,
+      chipPins: 0xb4bed2,
+      chipCore: 0xff7a1f,
+      chipTrail: 0xffb04a,
+    },
   },
 
   lighting: {

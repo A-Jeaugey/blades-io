@@ -19,7 +19,8 @@ export interface MinimapPlayer {
   side?: "ally" | "foe";
 }
 
-// Évènement de carte (tâche 4.4) : zone (pluie, zone dorée) ou caisse.
+// Évènement de carte (tâche 4.4) : zone (pluie, zone dorée), coffre-fort ou
+// puce d'une chute de processeurs (une par puce).
 export interface MinimapEvent {
   kind: number;
   x: number;
@@ -60,6 +61,8 @@ export class Minimap {
   private foeFill: string;
   private rainColor: number;
   private goldColor: number;
+  private vaultColor: number;
+  private chipColor: number;
 
   constructor() {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
@@ -82,6 +85,9 @@ export class Minimap {
     // Évènements : couleurs de rareté, comme leur zone au sol.
     this.rainColor = theme.palette.rarityColor[BladeRarity.Rare];
     this.goldColor = theme.palette.rarityColor[BladeRarity.Legendary];
+    // Coffre et puces : leurs couleurs au sol (jauge, cercles d'alerte).
+    this.vaultColor = theme.palette.mapEvent.vaultGlow;
+    this.chipColor = theme.palette.mapEvent.chipCore;
   }
 
   // arenaRadius : rayon de l'arène du moment (resserrée en fin de manche,
@@ -257,9 +263,12 @@ export class Minimap {
     ctx.fill();
   }
 
-  // Pluie : cercle en pointillés ; zone dorée : double cercle ; caisse
-  // légendaire : étoile. Pleins une fois actifs ; ramenés au bord quand ils
-  // sont hors de portée de la minimap (direction à suivre).
+  // Pluie : cercle en pointillés ; zone dorée : double cercle ; coffre-fort :
+  // carré à porte ronde ; puce : petit carré à broches, en contour tant
+  // qu'elle tombe, plein une fois au sol. Zones pleines une fois actives ;
+  // marques ramenées au bord quand elles sont hors de portée de la minimap
+  // (direction à suivre). Formes distinctes : rien ne passe par la seule
+  // couleur.
   private drawEvent(ev: MinimapEvent, me: MinimapPlayer, scale: number): void {
     const ctx = this.ctx;
     const S = this.size;
@@ -274,20 +283,35 @@ export class Minimap {
     }
     const x = S / 2 + dx;
     const y = S / 2 + dy;
-    const color = ev.kind === MapEventKind.Rain ? this.rainColor : this.goldColor;
     if (ev.kind === MapEventKind.Crate) {
-      ctx.fillStyle = rgba(color, 1);
+      ctx.fillStyle = rgba(this.vaultColor, 1);
+      ctx.fillRect(x - 5.5, y - 5, 11, 10);
+      ctx.strokeStyle = this.background;
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        const r = i % 2 === 0 ? 6 : 2.6;
-        if (i === 0) ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-        else ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-      }
-      ctx.closePath();
-      ctx.fill();
+      ctx.arc(x, y, 2.8, 0, Math.PI * 2);
+      ctx.stroke();
       return;
     }
+    if (ev.kind === MapEventKind.Processors) {
+      const c = rgba(this.chipColor, 1);
+      ctx.strokeStyle = c;
+      ctx.fillStyle = c;
+      ctx.lineWidth = 1.2;
+      if (ev.active) ctx.fillRect(x - 3, y - 3, 6, 6);
+      else ctx.strokeRect(x - 3, y - 3, 6, 6);
+      // Broches : deux par côté.
+      ctx.beginPath();
+      for (const o of [-1.5, 1.5]) {
+        ctx.moveTo(x + o, y - 3); ctx.lineTo(x + o, y - 5.5);
+        ctx.moveTo(x + o, y + 3); ctx.lineTo(x + o, y + 5.5);
+        ctx.moveTo(x - 3, y + o); ctx.lineTo(x - 5.5, y + o);
+        ctx.moveTo(x + 3, y + o); ctx.lineTo(x + 5.5, y + o);
+      }
+      ctx.stroke();
+      return;
+    }
+    const color = ev.kind === MapEventKind.Rain ? this.rainColor : this.goldColor;
     const r = clamped ? 5 : Math.max(4, ev.radius * scale);
     ctx.strokeStyle = rgba(color, 1);
     ctx.lineWidth = 1.5;

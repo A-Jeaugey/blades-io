@@ -20,6 +20,11 @@ const KILL_WAVE: WaveSpec = { radius: 7, width: 0.9, alpha: 0.6, duration: 0.55 
 const KILL_ECHO: WaveSpec = { radius: 4.5, width: 0.4, alpha: 0.45, duration: 0.45 };
 // Palier : au pied de la colonne.
 const TIER_WAVE: WaveSpec = { radius: 4.2, width: 0.6, alpha: 0.55, duration: 0.5 };
+// Évènements de carte (retours du 2026-10-12) : impact d'une puce, brève
+// onde au sol ; ouverture du coffre-fort, large onde et son écho.
+const IMPACT_WAVE: WaveSpec = { radius: 6, width: 0.8, alpha: 0.6, duration: 0.45 };
+const VAULT_WAVE: WaveSpec = { radius: 11, width: 1.1, alpha: 0.65, duration: 0.65 };
+const VAULT_ECHO: WaveSpec = { radius: 7, width: 0.5, alpha: 0.5, duration: 0.5 };
 const BLADE_Y = 0.9;
 const GROUND_Y = 0.06;
 
@@ -83,6 +88,22 @@ export class CombatFx {
   tierUp(playerId: string, x: number, z: number, tier: number, color: number): void {
     this.columns.spawn(playerId, x, z, tier, color);
     this.shockwaves.spawn(x, GROUND_Y, z, color, TIER_WAVE);
+  }
+
+  // Puce tombée en (x, z) : onde au sol ; éclats de son boîtier si elle
+  // explose.
+  processorImpact(x: number, z: number, color: number, shardColor: number, exploded: boolean): void {
+    this.shockwaves.spawn(x, GROUND_Y, z, color, IMPACT_WAVE);
+    if (exploded) this.shards.burst(x, z, shardColor, 0, 0, 1.3);
+  }
+
+  // Coffre-fort ouvert en (x, z) : large onde, écho en haute qualité,
+  // éclats d'acier dans toutes les directions.
+  vaultBurst(x: number, z: number, color: number, shardColor: number): void {
+    this.shockwaves.spawn(x, GROUND_Y, z, color, VAULT_WAVE);
+    if (this.rich) this.shockwaves.spawn(x, GROUND_Y + 0.01, z, color, VAULT_ECHO, 0.12);
+    this.shards.burst(x, z, shardColor, 0, 0, 1.8);
+    this.shards.burst(x, z, color, 0, 0, 1.2);
   }
 
   setFlashIntensity(k: number): void {
