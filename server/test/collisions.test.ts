@@ -156,6 +156,20 @@ test("un clash applique hitlag et knockback aux deux joueurs", () => {
   assert.equal(b.knockbackVx, tierKnockback(0));
 });
 
+// Hauts paliers (retours du 2026-10-12) : la forme change, pas le clash.
+test("clash entre deux joueurs du dernier palier : hitlag et recul de la faux", () => {
+  const { a, b } = duel(BladeRarity.Legendary, BladeRarity.Legendary);
+  a.tier = 9;
+  b.tier = 9;
+  const r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(r.clashes.length, 1);
+  assert.equal(r.clashes[0].tier, 9);
+  assert.equal(a.hitlagUntil, clock.now + tierHitlagMs(2));
+  assert.equal(a.knockbackVx, -Math.min(tierKnockback(2), KNOCKBACK_MAX_SPEED));
+  assert.equal(b.knockbackVx, Math.min(tierKnockback(2), KNOCKBACK_MAX_SPEED));
+});
+
 test("hitlag : un seul gel à la fois, puis 250 ms de liberté", () => {
   const { a, b } = duel(BladeRarity.Legendary, BladeRarity.Common);
   // La Common de B casse à chaque clash : on lui en redonne une au même
@@ -259,15 +273,15 @@ test("débutant en grâce : les bots ne le tuent pas, un humain si ; après, si"
 
 // Une lame en orbite tue ce que sa forme dessinée touche : au palier 5, une
 // légendaire se dessine jusqu'à 3,65 u de son point d'anneau, bien au-delà
-// de sa hitbox ronde (2,1 u).
-test("lame dessinée : la pointe d'une grosse lame tue, pas à côté d'elle", () => {
+// de sa hitbox ronde (2,1 u) ; au palier 9, jusqu'à 4,18 u.
+for (const tier of [5, 9]) test(`lame dessinée : la pointe d'une grosse lame tue, pas à côté d'elle (palier ${tier})`, () => {
   const a = addPlayer(state, { x: 0, y: 0, rarity: BladeRarity.Legendary, blades: 1 });
-  a.tier = 5;
+  a.tier = tier;
   const blade = ownedBlades(state, a)[0];
   cache.set(blade.id, 1.8, 0);
-  const tip = bladeTipReach(5, BladeRarity.Legendary);
-  const edge = bladeEdgeRadius(5, BladeRarity.Legendary);
-  assert.ok(tip + edge > tierBladeHitbox(5) + 1, "lame dessinée plus longue que la hitbox ronde");
+  const tip = bladeTipReach(tier, BladeRarity.Legendary);
+  const edge = bladeEdgeRadius(tier, BladeRarity.Legendary);
+  assert.ok(tip + edge > tierBladeHitbox(tier) + 1, "lame dessinée plus longue que la hitbox ronde");
   // Dans l'axe, au-delà de la hitbox ronde mais au contact de la pointe.
   const target = addPlayer(state, { x: 1.8 + tip + edge + PLAYER_BODY_RADIUS - 0.05, y: 0 });
   let r = recorder();

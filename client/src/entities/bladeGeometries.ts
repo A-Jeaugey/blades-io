@@ -3,7 +3,10 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 
 // Une forme de lame par palier (tâche 4.1) : dague, épée, faux, scie, lame
 // runique, lame à aura. Avant, les trois paliers partageaient l'épée et ne
-// se distinguaient que par la taille.
+// se distinguaient que par la taille. Retours du 2026-10-12 : quatre paliers
+// de plus (éclair, croissant, lame ailée, lame céleste), un bon joueur
+// dépassant couramment 200 lames, et la lame à aura retouchée (un anneau au
+// bout d'une tige se lisait comme une clé).
 //
 // Conventions communes, celles de l'épée d'origine : pointe vers +x (vers
 // l'extérieur de l'orbite), largeur selon z, épaisseur selon y, longueur
@@ -185,40 +188,192 @@ function runicGeometry(seg: number): THREE.BufferGeometry {
   return assemble([blade, ...hiltBoxes(-0.36, 0.24, 0.14)]);
 }
 
-// Lame à aura : lame fine couronnée d'un halo à la pointe. Les halos voisins
-// forment un anneau lumineux autour de l'amas.
+// Lame à aura : la pointe enveloppée d'une flamme d'aura, un contour en
+// amande fermé et pointu. Les flammes voisines forment une couronne autour
+// de l'amas. Avant, un anneau au bout d'une tige fine : vue de près, une clé
+// (retour du 2026-10-12). Pointe inchangée (1,16) : même portée qu'avant.
 function auraGeometry(seg: number): THREE.BufferGeometry {
   const s = new THREE.Shape([
-    new THREE.Vector2(-0.3, -0.08), new THREE.Vector2(0.7, -0.06),
-    new THREE.Vector2(0.78, 0), new THREE.Vector2(0.7, 0.06),
-    new THREE.Vector2(-0.3, 0.08),
+    new THREE.Vector2(-0.3, -0.075), new THREE.Vector2(0.58, -0.06),
+    new THREE.Vector2(1.04, 0), new THREE.Vector2(0.58, 0.06),
+    new THREE.Vector2(-0.3, 0.075),
   ]);
-  const blade = flatGeometry([s], 0.06, seg);
-  const halo = new THREE.Shape();
-  halo.absarc(0.92, 0, 0.24, 0, Math.PI * 2, false);
+  // Plus épaisse que la flamme : la lame passe par-dessus, sans faces
+  // confondues.
+  const blade = flatGeometry([s], 0.07, seg);
+  const flame = new THREE.Shape();
+  flame.moveTo(1.16, 0);
+  flame.quadraticCurveTo(0.9, 0.28, 0.58, 0.19);
+  flame.quadraticCurveTo(0.44, 0.13, 0.48, 0);
+  flame.quadraticCurveTo(0.44, -0.13, 0.58, -0.19);
+  flame.quadraticCurveTo(0.9, -0.28, 1.16, 0);
   const inner = new THREE.Path();
-  inner.absarc(0.92, 0, 0.15, 0, Math.PI * 2, true);
-  halo.holes.push(inner);
-  const ring = flatGeometry([halo], 0.05, Math.max(seg * 2, 12));
-  return assemble([blade, ring, ...hiltBoxes(-0.36, 0.2, 0.14)]);
+  inner.moveTo(1.05, 0);
+  inner.quadraticCurveTo(0.87, -0.19, 0.63, -0.125);
+  inner.quadraticCurveTo(0.555, -0.095, 0.575, 0);
+  inner.quadraticCurveTo(0.555, 0.095, 0.63, 0.125);
+  inner.quadraticCurveTo(0.87, 0.19, 1.05, 0);
+  flame.holes.push(inner);
+  const aura = flatGeometry([flame], 0.05, seg);
+  return assemble([blade, aura, ...hiltBoxes(-0.36, 0.2, 0.14)]);
 }
 
-// Géométrie d'un palier (0 à 5). `simple` : courbes moins découpées, pour
-// les presets légers.
+// Paliers 6 à 9 : même règle (corps fin, signature dans la pointe), pointe
+// à 1,2. Chaque silhouette se lit au bord de l'amas : zigzag, croissant,
+// ailes, étoile.
+
+// Lame fine, épaule à shoulderX puis pointe à tipX : base des paliers 7 à 9.
+function slimBlade(seg: number, shoulderX: number, tipX: number): THREE.BufferGeometry {
+  const s = new THREE.Shape([
+    new THREE.Vector2(-0.3, -0.075), new THREE.Vector2(shoulderX, -0.065),
+    new THREE.Vector2(tipX, 0), new THREE.Vector2(shoulderX, 0.065),
+    new THREE.Vector2(-0.3, 0.075),
+  ]);
+  return flatGeometry([s], 0.06, seg);
+}
+
+// Ruban le long d'une ligne brisée (points du contour, x vers la pointe),
+// demi-largeur donnée à chaque point : contour décalé de part et d'autre,
+// raccords en onglet (angles vifs). Une demi-largeur nulle au dernier point
+// fait la pointe.
+function ribbonShape(points: ReadonlyArray<readonly [number, number]>, half: readonly number[]): THREE.Shape {
+  const n = points.length;
+  const left: THREE.Vector2[] = [];
+  const right: THREE.Vector2[] = [];
+  const normal = (a: readonly [number, number], b: readonly [number, number]): [number, number] => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    return [-dy / len, dx / len];
+  };
+  for (let i = 0; i < n; i++) {
+    const [x, y] = points[i];
+    let nx: number;
+    let ny: number;
+    let miter = 1;
+    if (i === 0) [nx, ny] = normal(points[0], points[1]);
+    else if (i === n - 1) [nx, ny] = normal(points[n - 2], points[n - 1]);
+    else {
+      // Bissectrice des deux normales, allongée pour garder la largeur des
+      // deux segments (plafonnée : un virage serré pointerait à l'infini).
+      const a = normal(points[i - 1], points[i]);
+      const b = normal(points[i], points[i + 1]);
+      nx = a[0] + b[0];
+      ny = a[1] + b[1];
+      const len = Math.hypot(nx, ny);
+      nx /= len;
+      ny /= len;
+      miter = 1 / Math.max(0.5, nx * a[0] + ny * a[1]);
+    }
+    const h = half[i] * miter;
+    if (h === 0) {
+      left.push(new THREE.Vector2(x, y));
+      continue;
+    }
+    left.push(new THREE.Vector2(x + nx * h, y + ny * h));
+    right.push(new THREE.Vector2(x - nx * h, y - ny * h));
+  }
+  return new THREE.Shape([...left, ...right.reverse()]);
+}
+
+// Éclair : la lame part droite puis se brise en zigzag jusqu'à la pointe.
+// Au bord de l'amas, une rangée d'éclairs.
+function lightningGeometry(seg: number): THREE.BufferGeometry {
+  const s = ribbonShape(
+    [[-0.3, 0], [0.25, 0], [0.5, 0.2], [0.68, -0.14], [0.92, 0.16], [1.2, -0.06]],
+    [0.075, 0.065, 0.08, 0.08, 0.07, 0],
+  );
+  const blade = flatGeometry([s], 0.06, seg);
+  return assemble([blade, ...hiltBoxes(-0.36, 0.22, 0.14)]);
+}
+
+// Croissant entre deux cercles (centres sur l'axe, le second en avant) :
+// cornes tournées vers la pointe, à l'intersection des deux cercles.
+function crescentShape(cx1: number, r1: number, cx2: number, r2: number): THREE.Shape {
+  const hornX = (r1 * r1 - r2 * r2 - cx1 * cx1 + cx2 * cx2) / (2 * (cx2 - cx1));
+  const hornY = Math.sqrt(r1 * r1 - (hornX - cx1) * (hornX - cx1));
+  const a1 = Math.atan2(hornY, hornX - cx1);
+  const a2 = Math.atan2(hornY, hornX - cx2);
+  const s = new THREE.Shape();
+  // Dos du croissant (premier cercle, par l'arrière), puis creux (second
+  // cercle, en sens inverse).
+  s.absarc(cx1, 0, r1, a1, Math.PI * 2 - a1, false);
+  s.absarc(cx2, 0, r2, Math.PI * 2 - a2, a2, true);
+  return s;
+}
+
+// Croissant de lune : la lame traverse un croissant aux cornes tournées vers
+// la pointe, qui les dépasse à peine. Au bord de l'amas, une rangée de lunes
+// (plus en retrait, le croissant disparaissait sous les lames voisines).
+function crescentGeometry(seg: number): THREE.BufferGeometry {
+  const blade = slimBlade(seg, 0.6, 1.2);
+  const moon = flatGeometry([crescentShape(0.9, 0.27, 1.05, 0.245)], 0.05, Math.max(seg * 2, 12));
+  return assemble([blade, moon, ...hiltBoxes(-0.36, 0.22, 0.14)]);
+}
+
+// Lame ailée : deux ailes repliées vers la garde, bord d'attaque bombé et
+// trois plumes chacune. Au bord de l'amas, des pointes empennées.
+function wingedGeometry(seg: number): THREE.BufferGeometry {
+  const blade = slimBlade(seg, 0.6, 1.2);
+  const wing = (side: number): THREE.Shape => {
+    const w = new THREE.Shape();
+    w.moveTo(0.92, 0.02 * side);
+    w.quadraticCurveTo(0.78, 0.28 * side, 0.42, 0.31 * side);
+    w.lineTo(0.55, 0.23 * side);
+    w.lineTo(0.39, 0.22 * side);
+    w.lineTo(0.54, 0.15 * side);
+    w.lineTo(0.42, 0.12 * side);
+    w.lineTo(0.6, 0.02 * side);
+    w.lineTo(0.92, 0.02 * side);
+    return w;
+  };
+  const wings = flatGeometry([wing(1), wing(-1)], 0.05, seg);
+  return assemble([blade, wings, ...hiltBoxes(-0.36, 0.22, 0.14)]);
+}
+
+// Étoile à branches de longueurs `rays` (dans l'ordre, réparties sur le
+// tour, la première vers la pointe), creux entre deux branches à `inner`.
+function starShape(cx: number, rays: readonly number[], inner: number): THREE.Shape {
+  const pts: THREE.Vector2[] = [];
+  const step = (Math.PI * 2) / rays.length;
+  for (let i = 0; i < rays.length; i++) {
+    const a = i * step;
+    pts.push(new THREE.Vector2(cx + Math.cos(a) * rays[i], Math.sin(a) * rays[i]));
+    const m = a + step / 2;
+    pts.push(new THREE.Vector2(cx + Math.cos(m) * inner, Math.sin(m) * inner));
+  }
+  return new THREE.Shape(pts);
+}
+
+// Lame céleste : lame fine couronnée d'une étoile à huit branches, dont la
+// plus longue fait la pointe. Au bord de l'amas, une couronne d'étoiles.
+function celestialGeometry(seg: number): THREE.BufferGeometry {
+  const blade = slimBlade(seg, 0.6, 0.92);
+  // Plus épaisse que la lame : l'étoile passe par-dessus.
+  const star = flatGeometry([starShape(0.9, [0.3, 0.15, 0.3, 0.15, 0.3, 0.15, 0.3, 0.15], 0.07)], 0.07, seg);
+  return assemble([blade, star, ...hiltBoxes(-0.36, 0.24, 0.14)]);
+}
+
+// Formes dans l'ordre des paliers (TIER_THRESHOLDS) : une par palier, test
+// « une forme par palier » de server/test/bladeShapes.test.ts. Leur pointe
+// (x le plus grand) est BLADE_TIP_REACH, vérifié par le même test.
+const TIER_SHAPES: ReadonlyArray<(seg: number) => THREE.BufferGeometry> = [
+  () => swordGeometry({ tipX: 0.55, midX: -0.02, baseX: -0.2, bladeHalfW: 0.085, guardHalfZ: 0.16, handleX: -0.33, pommelX: -0.45 }),
+  () => swordGeometry({ tipX: 0.95, midX: 0.05, baseX: -0.2, bladeHalfW: 0.07, guardHalfZ: 0.26, handleX: -0.35, pommelX: -0.48 }),
+  scytheGeometry,
+  sawGeometry,
+  runicGeometry,
+  auraGeometry,
+  lightningGeometry,
+  crescentGeometry,
+  wingedGeometry,
+  celestialGeometry,
+];
+export const TIER_SHAPE_COUNT = TIER_SHAPES.length;
+
+// Géométrie d'un palier (0 à TIER_SHAPE_COUNT - 1). `simple` : courbes
+// moins découpées, pour les presets légers.
 export function createTierGeometry(tier: number, simple: boolean): THREE.BufferGeometry {
   const seg = simple ? 5 : 10;
-  switch (Math.max(0, Math.min(5, tier))) {
-    case 0:
-      return swordGeometry({ tipX: 0.55, midX: -0.02, baseX: -0.2, bladeHalfW: 0.085, guardHalfZ: 0.16, handleX: -0.33, pommelX: -0.45 });
-    case 1:
-      return swordGeometry({ tipX: 0.95, midX: 0.05, baseX: -0.2, bladeHalfW: 0.07, guardHalfZ: 0.26, handleX: -0.35, pommelX: -0.48 });
-    case 2:
-      return scytheGeometry(seg);
-    case 3:
-      return sawGeometry(seg);
-    case 4:
-      return runicGeometry(seg);
-    default:
-      return auraGeometry(seg);
-  }
+  return TIER_SHAPES[Math.max(0, Math.min(TIER_SHAPES.length - 1, tier))](seg);
 }

@@ -59,7 +59,7 @@ export class Player extends Schema {
   // ni infliger de dégât tant que cette date est dans le futur (cf.
   // SPAWN_PROTECTION_MS dans shared/constants).
   @type("float64") spawnProtectionUntil: number = 0;
-  // Tier dérivé de bladeCount (0..2). Synchronisé pour que le client
+  // Tier dérivé de bladeCount (0 à TIER_COUNT - 1). Synchronisé pour que le client
   // puisse adapter la taille/forme/glow des lames sans avoir à recompter.
   @type("uint8") tier: number = 0;
   // Hitlag : pendant cette fenêtre (ms epoch), le déplacement du joueur est

@@ -1103,9 +1103,12 @@ export class Game {
       this.atTick(msg.tick, () => {
         if (this.debugHitboxes) this.clashChecks.push(this.clashCheckOf(msg));
         // Sparks au point d'impact, tier-scaled. Couleur cyan/violet pour ne
-        // pas confondre avec les drops (sparks couleur rareté).
-        const count = 6 + msg.tier * 6;
-        const speed = 4 + msg.tier * 2.5;
+        // pas confondre avec les drops (sparks couleur rareté). Plafonnés au
+        // palier 5 : deux grosses orbites au contact clashent des dizaines de
+        // fois par seconde, et les paliers suivants n'y ajoutaient que du bruit.
+        const sparkTier = Math.min(msg.tier, 5);
+        const count = 6 + sparkTier * 6;
+        const speed = 4 + sparkTier * 2.5;
         this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
         this.combatFx.clash(msg.x, msg.y, msg.tier, msg.destroyed, this.theme.palette.fx.clashSpark);
         // Flash blanc des deux lames au contact (une lame brisée disparaît

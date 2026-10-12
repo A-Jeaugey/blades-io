@@ -392,7 +392,7 @@ export const en = {
   "lobby.loadFailed": "The game could not load. Check your connection: the page will reload.",
   "lobby.boutique": "BOUTIQUE",
   "lobby.howToPlay": "HOW TO PLAY",
-  "lobby.marquee": "THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   ",
+  "lobby.marquee": "THROW · SPACE / RIGHT-CLICK   //   BOOST · SHIFT / HOLD LEFT-CLICK · COSTS 1 BLADE / 0.5s   //   TIER UP AT 10 · 20 · 35 · 55 · 80 · 120 · 170 · 240 · 330 BLADES   //   BORDER KILLS   //   BUSHES HIDE YOU   //   POWERUPS · SPEED · SPIN · MAGNET · SHIELD · BLADES   //   ",
 
   // Comment jouer
   "howto.controls": "Controls",
@@ -409,7 +409,7 @@ export const en = {
   "howto.blades": "Blades",
   "howto.blades1": "Your blades orbit around you and clash with enemy blades. Each rarity deals and withstands the same amount: <b>Common</b> 1, <b>Rare</b> 2, <b>Epic</b> 4, <b>Legendary</b> 8. Equal rarities break each other; a Legendary survives 7 Common hits.",
   "howto.blades2": "A blade touching a player's body kills. Your orbit is your shield: keep it full.",
-  "howto.blades3": "Grab loose blades to grow. At 10, 20, 35, 55 and 80 blades you tier up: a new blade shape (dagger, sword, scythe, saw, runic blade, aura) and, up to the scythe, a bigger reach and a harder knockback.",
+  "howto.blades3": "Grab loose blades to grow. At 10, 20, 35, 55, 80, 120, 170, 240 and 330 blades you tier up: a new blade shape (dagger, sword, scythe, saw, runic blade, aura, lightning, crescent, winged blade, celestial blade) and, up to the scythe, a bigger reach and a harder knockback.",
   "howto.throwBoost": "Throw and boost",
   "howto.throw1": "Throwing launches your outermost blade (0.5 s cooldown). It can hit 1 target, 2 if Epic, 3 if Legendary, and lands after 30 u where anyone can pick it up.",
   "howto.throw2": "Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first. They drop right behind you: anyone can grab them, you included.",

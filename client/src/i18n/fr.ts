@@ -394,7 +394,7 @@ export const fr: Record<keyof typeof en, string> = {
   "lobby.loadFailed": "Le jeu n'a pas pu se charger. Vérifie ta connexion : la page va se recharger.",
   "lobby.boutique": "BOUTIQUE",
   "lobby.howToPlay": "COMMENT JOUER",
-  "lobby.marquee": "LANCER · ESPACE / CLIC DROIT   //   BOOST · MAJ / CLIC GAUCHE MAINTENU · COÛTE 1 LAME / 0,5 s   //   PALIERS À 10 · 20 · 35 · 55 · 80 LAMES   //   LA BORDURE TUE   //   LES BUISSONS TE CACHENT   //   BONUS · VITESSE · ROTATION · AIMANT · BOUCLIER · LAMES   //   ",
+  "lobby.marquee": "LANCER · ESPACE / CLIC DROIT   //   BOOST · MAJ / CLIC GAUCHE MAINTENU · COÛTE 1 LAME / 0,5 s   //   PALIERS À 10 · 20 · 35 · 55 · 80 · 120 · 170 · 240 · 330 LAMES   //   LA BORDURE TUE   //   LES BUISSONS TE CACHENT   //   BONUS · VITESSE · ROTATION · AIMANT · BOUCLIER · LAMES   //   ",
 
   // Comment jouer
   "howto.controls": "Contrôles",
@@ -411,7 +411,7 @@ export const fr: Record<keyof typeof en, string> = {
   "howto.blades": "Lames",
   "howto.blades1": "Tes lames tournent autour de toi et s'entrechoquent avec les lames ennemies. Chaque rareté inflige et encaisse autant : <b>Commune</b> 1, <b>Rare</b> 2, <b>Épique</b> 4, <b>Légendaire</b> 8. Deux raretés égales se brisent l'une l'autre ; une Légendaire encaisse 7 coups de Communes.",
   "howto.blades2": "Une lame qui touche le corps d'un joueur le tue. Ton orbite est ton bouclier : garde-la pleine.",
-  "howto.blades3": "Ramasse des lames pour grossir. À 10, 20, 35, 55 et 80 lames, tu passes un palier : une nouvelle forme de lame (dague, épée, faux, scie, lame runique, aura) et, jusqu'à la faux, plus d'allonge et un recul plus fort.",
+  "howto.blades3": "Ramasse des lames pour grossir. À 10, 20, 35, 55, 80, 120, 170, 240 et 330 lames, tu passes un palier : une nouvelle forme de lame (dague, épée, faux, scie, lame runique, aura, éclair, croissant, lame ailée, lame céleste) et, jusqu'à la faux, plus d'allonge et un recul plus fort.",
   "howto.throwBoost": "Lancer et boost",
   "howto.throw1": "Lancer envoie ta lame la plus extérieure (recharge de 0,5 s). Elle touche 1 cible, 2 si Épique, 3 si Légendaire, et retombe après 30 u, où n'importe qui peut la ramasser.",
   "howto.throw2": "Le boost te rend 70 % plus rapide mais consomme 1 lame toutes les 0,5 s, les moins rares d'abord. Elles se posent juste derrière toi : tout le monde peut les ramasser, toi compris.",

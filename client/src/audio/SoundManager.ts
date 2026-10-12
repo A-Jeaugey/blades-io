@@ -446,8 +446,11 @@ export class SoundManager {
   }
 
   // Passage de palier (tâche 4.1) : arpège montant, plus long et plus aigu
-  // à chaque palier, et coup sourd pour les trois derniers. À distinguer à
-  // l'oreille du carillon d'élimination (sauts d'octave).
+  // à chaque palier, et coup sourd à partir de la scie. À distinguer à
+  // l'oreille du carillon d'élimination (sauts d'octave). Paliers 6 à 9 :
+  // l'arpège du palier 5, puis le sommet (do 7) frappé une fois de plus par
+  // palier, la dernière fois tenue, et un second coup sourd plus grave :
+  // plus long sans monter dans le suraigu.
   tierUp(tier: number): void {
     if (!this.started) return;
     const scale = ["C5", "D5", "E5", "G5", "A5", "C6", "D6", "E6", "G6", "A6"];
@@ -459,7 +462,20 @@ export class SoundManager {
       this.lastTriggerTime.set(this.chimeSynth, t);
       t += 0.07;
     }
-    if (tier >= 3) this.killSynth.triggerAttackRelease("C2", 0.3, this.nextTime(this.killSynth), 0.7);
+    const crowns = Math.max(0, tier - 5);
+    for (let i = 0; i < crowns; i++) {
+      this.chimeSynth.triggerAttackRelease("C7", i === crowns - 1 ? 0.3 : 0.08, t);
+      this.lastTriggerTime.set(this.chimeSynth, t);
+      t += 0.09;
+    }
+    if (tier >= 3) {
+      const boom = this.nextTime(this.killSynth);
+      this.killSynth.triggerAttackRelease("C2", 0.3, boom, 0.7);
+      if (crowns > 0) {
+        this.killSynth.triggerAttackRelease("G1", 0.4, boom + 0.35, 0.6);
+        this.lastTriggerTime.set(this.killSynth, boom + 0.35);
+      }
+    }
   }
 
   // Caisse brisée : craquement et coup sourd plus aigu que celui d'une

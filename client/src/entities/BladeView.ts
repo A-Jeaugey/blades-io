@@ -85,11 +85,15 @@ const BUCKETS = 4 * TIER_BUCKETS;
 // sans craindre le washout du matériau partagé d'avant. Les hauts tiers ont
 // des formes plus grandes (disque de scie, halo) et des orbites plus
 // pleines : leur glow baisse d'un cran par tier pour que la somme sous bloom
-// reste lisible.
-const TIER_EMISSIVE: readonly number[] = [0.90, 0.75, 0.60, 0.52, 0.46, 0.42];
+// reste lisible. Paliers 6 à 9 (120 à 330 lames et plus) : la baisse
+// continue, plus doucement.
+const TIER_EMISSIVE: readonly number[] = [0.90, 0.75, 0.60, 0.52, 0.46, 0.42, 0.40, 0.38, 0.36, 0.35];
 // Couleur "body" légèrement atténuée à haut tier pour limiter la sommation
 // sous bloom additif, mais sans assombrir.
-const TIER_COLOR_MULT: readonly number[] = [1.0, 0.92, 0.85, 0.82, 0.8, 0.78];
+const TIER_COLOR_MULT: readonly number[] = [1.0, 0.92, 0.85, 0.82, 0.8, 0.78, 0.77, 0.76, 0.75, 0.74];
+// Valeur d'une table par tier, la dernière au-delà : un palier ajouté sans
+// sa valeur hérite de celle du précédent au lieu d'un matériau NaN.
+const perTier = (table: readonly number[], t: number): number => table[Math.min(t, table.length - 1)];
 // Compensation de luminance par rareté : voir palette.ts (calculée
 // dynamiquement à partir des couleurs courantes). Permet à toutes les raretés
 // de franchir le threshold UnrealBloom de manière équilibrée — sinon les
@@ -159,6 +163,16 @@ function addInstanceShading(material: THREE.Material, time: { value: number }): 
 
 type OwnerPose = NonNullable<ReturnType<PlayerPositionProvider["getRenderPosition"]>>;
 
+// Nombre d'instances d'un maillage, caché quand il n'en a aucune. Vide,
+// three.js ne le dessine pas mais choisit encore son programme et envoie
+// ses uniforms à chaque image : 4 raretés × TIER_COUNT paliers, presque tous
+// vides en partie. Caché, il sort de la liste de rendu ; renderer.compile le
+// prépare quand même (préchauffage des shaders, au lobby).
+function setInstanceCount(mesh: THREE.InstancedMesh, count: number): void {
+  mesh.count = count;
+  mesh.visible = count > 0;
+}
+
 export class BladeRenderer {
   // 4 raretés × TIER_COUNT tiers InstancedMesh, indexés à plat par bucketKey().
   // Chaque bucket a son propre matériau avec emissiveIntensity tier-aware,
@@ -220,8 +234,8 @@ export class BladeRenderer {
     for (const r of rarities) {
       for (let t = 0; t < TIER_BUCKETS; t++) {
         const baseColor = new THREE.Color(theme.palette.rarityColor[r]);
-        const tintedColor = baseColor.clone().multiplyScalar(TIER_COLOR_MULT[t]);
-        const tintedEmissive = baseColor.clone().multiplyScalar(TIER_COLOR_MULT[t]);
+        const tintedColor = baseColor.clone().multiplyScalar(perTier(TIER_COLOR_MULT, t));
+        const tintedEmissive = baseColor.clone().multiplyScalar(perTier(TIER_COLOR_MULT, t));
         const mat = simpleMaterials
           ? new THREE.MeshBasicMaterial({ color: tintedColor })
           : new THREE.MeshPhongMaterial({
@@ -232,7 +246,7 @@ export class BladeRenderer {
               // glow (1.15) tandis que neon reste à 1.0 pour préserver
               // les reflets net cyberpunk d'origine.
               emissiveIntensity:
-                TIER_EMISSIVE[t] *
+                perTier(TIER_EMISSIVE, t) *
                 theme.palette.rarityGlowComp[r] *
                 theme.blades.emissiveBoost,
               shininess: theme.blades.shininess,
@@ -249,6 +263,7 @@ export class BladeRenderer {
     for (let t = 0; t < TIER_BUCKETS; t++) {
       const ghosts = new THREE.InstancedMesh(geos[t], ghostMat, MAX_GHOSTS);
       ghosts.count = 0;
+      ghosts.visible = false;
       ghosts.frustumCulled = false;
       ghosts.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       // Couleur par instance créée d'emblée : le shader l'inclut dès sa
@@ -328,12 +343,12 @@ export class BladeRenderer {
     this.idToIndex.clear();
     this.perOwnerRingCount.clear();
     this.ghostList.length = 0;
-    for (const g of this.ghosts) g.count = 0;
+    for (const g of this.ghosts) setInstanceCount(g, 0);
     for (let i = 0; i < this.meshes.length; i++) {
       this.counts[i] = 0;
       this.slots[i].length = 0;
       const m = this.meshes[i];
-      m.count = 0;
+      setInstanceCount(m, 0);
       m.instanceMatrix.needsUpdate = true;
     }
   }
@@ -357,7 +372,7 @@ export class BladeRenderer {
     style.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute("aStyle", style);
     const mesh = new THREE.InstancedMesh(geo, this.materials[key], capacity);
-    mesh.count = 0;
+    setInstanceCount(mesh, 0);
     mesh.frustumCulled = false;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     return mesh;
@@ -383,7 +398,7 @@ export class BladeRenderer {
     (flash.array as Float32Array).set((this.flashes[key].array as Float32Array).subarray(0, count));
     const style = mesh.geometry.getAttribute("aStyle") as THREE.InstancedBufferAttribute;
     (style.array as Float32Array).set((this.styles[key].array as Float32Array).subarray(0, count));
-    mesh.count = count;
+    setInstanceCount(mesh, count);
     this.root.remove(old);
     old.geometry.dispose();
     old.dispose();
@@ -395,7 +410,7 @@ export class BladeRenderer {
     const key = bucketKey(rarity, t);
     if (this.counts[key] >= this.capacity[key]) this.grow(key);
     const index = this.counts[key]++;
-    this.meshes[key].count = this.counts[key];
+    setInstanceCount(this.meshes[key], this.counts[key]);
     this.slots[key][index] = id;
     this.idToIndex.set(id, { rarity, tier: t, index });
   }
@@ -421,7 +436,7 @@ export class BladeRenderer {
       if (movedRef) movedRef.index = ref.index;
     }
     this.counts[key] = last;
-    mesh.count = last;
+    setInstanceCount(mesh, last);
     mesh.instanceMatrix.needsUpdate = true;
     this.idToIndex.delete(id);
   }
@@ -632,6 +647,7 @@ export class BladeRenderer {
         mesh.setMatrixAt(mesh.count++, ghost.matrix);
       }
       for (const g of this.ghosts) {
+        setInstanceCount(g, g.count);
         g.instanceMatrix.needsUpdate = true;
         g.instanceColor!.needsUpdate = true;
       }

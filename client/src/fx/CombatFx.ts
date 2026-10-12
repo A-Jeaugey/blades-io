@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { TIER_THRESHOLDS, outerOrbitRadius } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { BladeTrails } from "./BladeTrails";
 import { LightColumns } from "./LightColumns";
@@ -18,8 +19,12 @@ const CLASH_WAVE: WaveSpec = { radius: 1.6, width: 0.3, alpha: 0.5, duration: 0.
 // Élimination : large anneau au sol, doublé en haute qualité.
 const KILL_WAVE: WaveSpec = { radius: 7, width: 0.9, alpha: 0.6, duration: 0.55 };
 const KILL_ECHO: WaveSpec = { radius: 4.5, width: 0.4, alpha: 0.45, duration: 0.45 };
-// Palier : au pied de la colonne.
+// Palier : onde au pied de la colonne, jusqu'au-delà de l'orbite (son rayon
+// au seuil du palier + TIER_WAVE_MARGIN). Au sol sous les lames, l'onde de
+// 4,2 u restait cachée dès le palier 3 ; une orbite de 330 lames fait 8,2 u
+// de rayon.
 const TIER_WAVE: WaveSpec = { radius: 4.2, width: 0.6, alpha: 0.55, duration: 0.5 };
+const TIER_WAVE_MARGIN = 3;
 const BLADE_Y = 0.9;
 const GROUND_Y = 0.06;
 
@@ -32,6 +37,7 @@ export class CombatFx {
   private columns: LightColumns;
   private readonly rich: boolean;
   private clashWave: WaveSpec = { ...CLASH_WAVE };
+  private tierWave: WaveSpec = { ...TIER_WAVE };
   // Préchauffage : à la première frame (au lobby), chaque effet dessine une
   // instance invisible (sous le sol, de taille ou d'opacité nulle). Son
   // shader se compile et son pipeline se prépare au chargement, et non au
@@ -82,7 +88,10 @@ export class CombatFx {
   // Palier atteint par un joueur.
   tierUp(playerId: string, x: number, z: number, tier: number, color: number): void {
     this.columns.spawn(playerId, x, z, tier, color);
-    this.shockwaves.spawn(x, GROUND_Y, z, color, TIER_WAVE);
+    const w = this.tierWave;
+    const orbit = outerOrbitRadius(TIER_THRESHOLDS[Math.min(tier, TIER_THRESHOLDS.length - 1)] ?? 0);
+    w.radius = Math.max(TIER_WAVE.radius, orbit + TIER_WAVE_MARGIN);
+    this.shockwaves.spawn(x, GROUND_Y, z, color, w);
   }
 
   setFlashIntensity(k: number): void {
