@@ -112,15 +112,15 @@ export interface ClashEvent extends TickStamped {
   bOwnerId: string;
   x: number;        // point d'impact (milieu)
   y: number;
-  tier: number;     // 0..2, max des deux protagonistes
+  tier: number;     // 0 à TIER_COUNT - 1, max des deux protagonistes
   destroyed: number; // 0, 1 ou 2 lames cassées (info FX uniquement)
 }
 
-// Émis quand un joueur change de palier (passage Tier 1 → 2 → 3). Le client
+// Émis quand un joueur monte d'un palier (cf. TIER_THRESHOLDS). Le client
 // déclenche la VFX de tier-up + son + shake si c'est le joueur local.
 export interface TierUpEvent extends TickStamped {
   playerId: string;
-  tier: number;     // nouveau tier (1 ou 2 ; tier 0 ne déclenche rien)
+  tier: number;     // nouveau tier (1 à TIER_COUNT - 1 ; tier 0 ne déclenche rien)
   x: number;
   y: number;
 }

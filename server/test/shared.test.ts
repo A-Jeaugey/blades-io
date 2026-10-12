@@ -52,20 +52,23 @@ test("rotation : sens alterné, -12 % par anneau, multiplicateur appliqué", () 
   close(orbitThetaAt(3, 2, 100, 160), 3 + 2 * 1);
 });
 
-test("tiers : paliers à 10, 20, 35, 55 et 80 lames", () => {
+test("tiers : paliers à 10, 20, 35, 55, 80, 120, 170, 240 et 330 lames", () => {
   assert.deepEqual(
-    [0, 1, 9, 10, 19, 20, 34, 35, 54, 55, 79, 80, 500].map(tierFromBladeCount),
-    [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+    [0, 1, 9, 10, 19, 20, 34, 35, 54, 55, 79, 80, 119, 120, 169, 170, 239, 240, 329, 330, 2000]
+      .map(tierFromBladeCount),
+    [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9],
   );
   close(tierBladeHitbox(0), 0.7 * 1.5);
   close(tierBladeHitbox(2), 0.7 * 3.0);
   // Plafonnée au tier 2 : les paliers suivants ne changent que l'apparence.
   close(tierBladeHitbox(5), 0.7 * 3.0);
-  // Tier hors bornes : ramené dans [0, 5].
-  close(tierBladeHitbox(9), tierBladeHitbox(5));
+  close(tierBladeHitbox(9), 0.7 * 3.0);
+  // Tier hors bornes : ramené dans [0, 9].
+  close(tierBladeHitbox(12), tierBladeHitbox(9));
   close(tierBladeHitbox(-1), tierBladeHitbox(0));
   close(tierRotationMult(1), 1.15);
   close(tierRotationMult(5), tierRotationMult(2));
+  close(tierRotationMult(9), tierRotationMult(2));
 });
 
 test("bonus de rotation selon le nombre de lames, plafonné à ×2,5", () => {
