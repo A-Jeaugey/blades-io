@@ -78,7 +78,8 @@ export function shopPrice(id: string): number {
 // ─── Mise en avant du jour (tâche 6.4) ──────────────────────────────────────
 // Trois cosmétiques vendus, les mêmes pour tous, renouvelés à minuit (heure de
 // Paris) : un skin et deux articles de sortes différentes, jamais ceux de la
-// veille. Remise de 20 %, arrondie à 50 trophées. Le serveur applique la même
+// veille, et chaque article d'une sorte une fois avant qu'un autre revienne.
+// Remise de 20 %, arrondie à 50 trophées. Le serveur applique la même
 // règle au moment de l'achat (prix du jour) ; le client ne fait que l'afficher.
 // Les thèmes de carte n'y passent pas : la vitrine sert les cosmétiques que
 // les autres voient.
@@ -99,50 +100,89 @@ function nextDay(dayKey: string): string {
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
-function drawFeatured(dayKey: string, exclude: ReadonlySet<string>): string[] {
-  const next = seededRandom(`shop:${dayKey}`);
-  const cosmetics = Object.values(SHOP_ITEMS).filter((i) => i.kind !== "theme");
-  const pickFrom = (pool: ShopItem[]): ShopItem | undefined => pool[Math.floor(next() * pool.length)];
-  const fresh = (i: ShopItem) => !exclude.has(i.id);
-  const picked: ShopItem[] = [];
-  const skin = pickFrom(cosmetics.filter((i) => i.kind === "skin" && fresh(i)))
-    ?? pickFrom(cosmetics.filter((i) => i.kind === "skin"));
-  if (skin) picked.push(skin);
-  // Les autres sortes dans un ordre tiré au sort, une par article.
-  const kinds: ShopItemKind[] = ["bladeSkin", "trail", "killFx"];
-  for (let i = kinds.length - 1; i > 0; i--) {
+// Sortes de la vitrine : les quatre emplacements cosmétiques, jamais les
+// thèmes de carte ni une autre sorte d'article du catalogue.
+const FEATURED_KINDS: readonly ShopItemKind[] = ["skin", "bladeSkin", "trail", "killFx"];
+// Sortes des deux articles qui accompagnent le skin : une reste dehors.
+const SIDE_KINDS: readonly ShopItemKind[] = ["bladeSkin", "trail", "killFx"];
+
+// Vitrine d'un jour et ses pioches. Chaque sorte tire ses articles d'un
+// paquet mélangé, sans remise, rebattu une fois vide ; la sorte laissée
+// dehors aussi. Tous les articles d'une sorte passent donc à la une avant
+// qu'un seul revienne. Avec un tirage libre (tout sauf la veille), sur deux
+// ans et quatorze skins, un skin restait jusqu'à 83 jours sans passer et les
+// passages allaient de 38 à 63 selon le skin.
+interface FeaturedDay {
+  day: string;
+  featured: string[];
+  // Sorte laissée dehors ce jour-là.
+  out: string | undefined;
+  // Articles restants de chaque paquet (et "out" : sortes restantes).
+  decks: Readonly<Record<string, readonly string[]>>;
+}
+
+function idsOfKind(kind: ShopItemKind): string[] {
+  return Object.values(SHOP_ITEMS).filter((i) => i.kind === kind).map((i) => i.id);
+}
+
+function shuffled(items: readonly string[], next: () => number): string[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(next() * (i + 1));
-    [kinds[i], kinds[j]] = [kinds[j], kinds[i]];
+    [out[i], out[j]] = [out[j], out[i]];
   }
-  for (const kind of kinds) {
-    if (picked.length >= FEATURED_COUNT) break;
-    const item = pickFrom(cosmetics.filter((i) => i.kind === kind && fresh(i)));
-    if (item) picked.push(item);
+  return out;
+}
+
+function featuredDay(day: string, prev: FeaturedDay | null): FeaturedDay {
+  const next = seededRandom(`shop:${day}`);
+  const yesterday = new Set(prev?.featured ?? []);
+  const decks: Record<string, readonly string[]> = { ...prev?.decks };
+  // Prochain article d'un paquet. Un paquet neuf ne commence pas par ce qui
+  // était à la une la veille (la fin du paquet précédent) : jamais deux
+  // jours de suite, même d'un cycle à l'autre.
+  const take = (name: string, pool: readonly string[], avoid: ReadonlySet<string>): string | undefined => {
+    let deck = decks[name] ?? [];
+    if (deck.length === 0) {
+      const fresh = shuffled(pool, next);
+      const i = fresh.findIndex((id) => !avoid.has(id));
+      if (i > 0) [fresh[0], fresh[i]] = [fresh[i], fresh[0]];
+      deck = fresh;
+    }
+    decks[name] = deck.slice(1);
+    return deck[0];
+  };
+  const picked: string[] = [];
+  const skin = take("skin", idsOfKind("skin"), yesterday);
+  if (skin) picked.push(skin);
+  const out = take("out", SIDE_KINDS, new Set(prev?.out ? [prev.out] : []));
+  const sides = SIDE_KINDS.filter((k) => k !== out);
+  if (next() < 0.5) sides.reverse();
+  for (const kind of sides) {
+    const id = take(kind, idsOfKind(kind), yesterday);
+    if (id && picked.length < FEATURED_COUNT) picked.push(id);
   }
   // Catalogue trop petit pour tout respecter : on complète sans la règle de
   // la veille, jamais avec un doublon.
-  for (const item of cosmetics) {
-    if (picked.length >= FEATURED_COUNT) break;
-    if (!picked.includes(item)) picked.push(item);
+  for (const kind of FEATURED_KINDS) {
+    for (const id of idsOfKind(kind)) {
+      if (picked.length < FEATURED_COUNT && !picked.includes(id)) picked.push(id);
+    }
   }
-  return picked.map((i) => i.id);
+  return { day, featured: picked, out, decks };
 }
 
-// « Jamais ceux de la veille » demande la vitrine réelle de la veille, qui
-// dépend elle-même de l'avant-veille : chaîne depuis le premier jour de la
-// vitrine, avec le dernier jour calculé en cache (un pas par jour ensuite).
+// « Jamais ceux de la veille » et les pioches demandent la vitrine réelle de
+// la veille, qui dépend elle-même de l'avant-veille : chaîne depuis le
+// premier jour de la vitrine, avec le dernier jour calculé en cache (un pas
+// par jour ensuite).
 const FEATURED_EPOCH = "2026-10-01";
-let lastFeatured: { day: string; featured: string[] } | null = null;
+let lastFeatured: FeaturedDay | null = null;
 
 export function featuredItems(dayKey: string): string[] {
-  if (dayKey <= FEATURED_EPOCH) return drawFeatured(dayKey, new Set());
-  let current = lastFeatured && lastFeatured.day <= dayKey
-    ? lastFeatured
-    : { day: FEATURED_EPOCH, featured: drawFeatured(FEATURED_EPOCH, new Set()) };
-  while (current.day < dayKey) {
-    const day = nextDay(current.day);
-    current = { day, featured: drawFeatured(day, new Set(current.featured)) };
-  }
+  if (dayKey <= FEATURED_EPOCH) return [...featuredDay(dayKey, null).featured];
+  let current = lastFeatured && lastFeatured.day <= dayKey ? lastFeatured : featuredDay(FEATURED_EPOCH, null);
+  while (current.day < dayKey) current = featuredDay(nextDay(current.day), current);
   lastFeatured = current;
   return [...current.featured];
 }
