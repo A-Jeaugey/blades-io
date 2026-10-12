@@ -78,9 +78,9 @@ test("catalogue : chaque cosmétique se débloque au niveau ou s'achète, jamais
     }
   }
   // Les articles cosmétiques de la boutique existent, au bon emplacement ;
-  // les thèmes de carte n'en sont pas.
+  // les thèmes de carte et les améliorations des power-ups n'en sont pas.
   for (const item of Object.values(SHOP_ITEMS)) {
-    if (item.kind === "theme") assert.equal(getCosmetic(item.id), undefined, item.id);
+    if (item.kind === "theme" || item.kind === "upgrade") assert.equal(getCosmetic(item.id), undefined, item.id);
     else assert.equal(getCosmetic(item.id)?.slot, item.kind, item.id);
   }
   // Identifiants uniques : un doublon serait écrasé en silence.

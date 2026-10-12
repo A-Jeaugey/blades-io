@@ -10,10 +10,12 @@
 // ici, sinon il sera distribué gratuitement.
 
 import { nextParisMidnight, parisDayKey, seededRandom } from "./challenges";
+import { upgradeShopItems } from "./upgrades";
 
 // Thème de carte (vu par son acheteur seul) ou cosmétique visible par tous
-// (cf. cosmetics.ts, dont les emplacements donnent les autres sortes).
-export type ShopItemKind = "theme" | "skin" | "bladeSkin" | "trail" | "killFx";
+// (cf. cosmetics.ts, dont les emplacements donnent les autres sortes), ou
+// niveau d'amélioration d'un power-up (cf. upgrades.ts).
+export type ShopItemKind = "theme" | "skin" | "bladeSkin" | "trail" | "killFx" | "upgrade";
 
 export interface ShopItem {
   id: string;
@@ -24,6 +26,9 @@ export interface ShopItem {
 }
 
 export const SHOP_ITEMS: Readonly<Record<string, ShopItem>> = {
+  // Améliorations des power-ups : bloc généré (upgrades.ts), un article par
+  // niveau et par power-up, jamais à la une ni remisé.
+  ...upgradeShopItems(),
   sanctuaire: { id: "sanctuaire", kind: "theme", price: 1500 },
   "forge-vermeille": { id: "forge-vermeille", kind: "theme", price: 3500 },
   "profondeurs-glacees": { id: "profondeurs-glacees", kind: "theme", price: 6000 },
@@ -77,7 +82,7 @@ function nextDay(dayKey: string): string {
 
 function drawFeatured(dayKey: string, exclude: ReadonlySet<string>): string[] {
   const next = seededRandom(`shop:${dayKey}`);
-  const cosmetics = Object.values(SHOP_ITEMS).filter((i) => i.kind !== "theme");
+  const cosmetics = Object.values(SHOP_ITEMS).filter((i) => i.kind !== "theme" && i.kind !== "upgrade");
   const pickFrom = (pool: ShopItem[]): ShopItem | undefined => pool[Math.floor(next() * pool.length)];
   const fresh = (i: ShopItem) => !exclude.has(i.id);
   const picked: ShopItem[] = [];
@@ -133,9 +138,11 @@ export function featuredPrice(price: number): number {
 }
 
 // Prix d'un article ce jour-là (remise s'il est à la une) ; 0 s'il n'est pas
-// vendu.
+// vendu. Une amélioration n'est jamais remisée, même glissée dans une
+// vitrine : son prix suit sa courbe (upgrades.ts).
 export function priceToday(id: string, offer: ShopOffer): number {
   const item = getShopItem(id);
   if (!item) return 0;
+  if (item.kind === "upgrade") return item.price;
   return offer.featured.includes(id) ? featuredPrice(item.price) : item.price;
 }

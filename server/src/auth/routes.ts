@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, nameProblem, seasonAt } from "@bladeio/shared";
+import { upgradeOrderProblem } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
 import { getProfileStats } from "./profileStats";
@@ -271,6 +272,7 @@ export function buildAuthRouter(): Router {
   //   400 { error: 'insufficient_funds', new_balance }           → solde insuffisant
   //   400 { error: 'already_owned', new_balance }                → idempotent (déjà dans inventaire)
   //   400 { error: 'invalid_item' }                              → item inconnu du catalogue
+  //   400 { error: 'upgrade_order' }                             → amélioration : niveau précédent pas possédé
   //   409 { error: 'price_changed', price }                      → prix affiché périmé, rien débité
   //   401 { error: 'unauthorized' }                              → non authed
   //   503 { error: 'auth_unavailable' }                          → Supabase off
@@ -289,6 +291,18 @@ export function buildAuthRouter(): Router {
     if (!quote.ok) {
       res.status(quote.status).json({ error: quote.error, price: quote.price });
       return;
+    }
+    // Amélioration d'un power-up : le niveau n ne se vend qu'à qui possède
+    // le n − 1, d'après l'inventaire du compte relu ici (jamais d'après un
+    // niveau envoyé par le client). Inventaire illisible : refusé, rien
+    // n'est débité. Deux achats simultanés ne contournent pas la règle :
+    // un niveau possédé ne disparaît jamais de l'inventaire.
+    if (quote.item.kind === "upgrade") {
+      const problem = upgradeOrderProblem(quote.item.id, await getInventory(user.id));
+      if (problem) {
+        res.status(400).json({ error: problem });
+        return;
+      }
     }
     const result = await purchaseItem(user.id, quote.item.id, quote.price);
     if (!result.ok) {

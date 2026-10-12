@@ -104,6 +104,7 @@ import {
   updateProjectiles,
 } from "../systems/throws";
 import { BladeThrownEvent, ChallengeDoneEvent, GameModeId, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
+import { modeAllowsUpgrades, upgradeLevelsFromInventory } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -460,6 +461,13 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.bladeSkin = loadout.bladeSkin;
     p.trail = loadout.trail;
     p.killFx = loadout.killFx;
+    // Améliorations des power-ups (QUÊTES › AMÉLIORATIONS) : niveaux tirés
+    // de l'inventaire du compte lu à l'authentification, jamais d'un niveau
+    // envoyé par le client. Aucune pour un invité (il n'achète rien) ni dans
+    // un mode où tout le monde part à égalité.
+    p.powerUpLevels = p.userId !== null && modeAllowsUpgrades(this.mode.id)
+      ? upgradeLevelsFromInventory(owned)
+      : [0, 0, 0, 0, 0];
     // Première partie sur l'appareil, selon le client : sert seulement à la
     // télémétrie.
     p.newcomer = options?.newcomer === true;
