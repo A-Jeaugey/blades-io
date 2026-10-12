@@ -3123,6 +3123,173 @@ body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0
   100% { transform: translateY(var(--lift, 0px)) rotate(var(--a)) translateX(calc(var(--r) * 1.15)) scale(.6); opacity: 0; }
 }
 
+/* Deuxième vague de cosmétiques (retours du 2026-10-12) : mêmes aperçus,
+   d'après cosmetics/looks.ts. Accessoires de la silhouette (tête : cercle de
+   30 px en haut de la figure de 44 px). */
+.cos-fig-gem { filter: drop-shadow(0 0 6px var(--glow)); }
+.cos-fig-gem::after {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, .6), transparent 45%),
+    linear-gradient(30deg, transparent 55%, rgba(255, 255, 255, .25) 55%),
+    var(--head);
+}
+.cos-acc-cap {
+  left: 6px; top: -2px; width: 32px; height: 15px;
+  border-radius: 16px 16px 2px 2px / 15px 15px 2px 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.cos-acc-cap::after {
+  left: 24px; top: 10px; width: 16px; height: 4px;
+  border-radius: 0 4px 4px 0; background: var(--accent);
+}
+.cos-acc-wizard { left: -4px; top: -31px; width: 52px; height: 39px; }
+.cos-acc-wizard::before {
+  left: 14px; top: 0; width: 26px; height: 35px;
+  background: var(--accent);
+  clip-path: polygon(88% 0, 72% 30%, 92% 100%, 8% 100%, 40% 30%);
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+.cos-acc-wizard::after {
+  left: 0; bottom: 0; width: 52px; height: 7px;
+  border-radius: 50%; background: var(--accent);
+}
+.cos-acc-headphones {
+  left: 3px; top: -4px; width: 38px; height: 22px;
+  box-sizing: border-box;
+  border: 3px solid var(--accent); border-bottom: none;
+  border-radius: 19px 19px 0 0;
+}
+.cos-acc-headphones::before, .cos-acc-headphones::after {
+  top: 13px; width: 8px; height: 13px;
+  border-radius: 4px; background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.cos-acc-headphones::before { left: -6px; }
+.cos-acc-headphones::after { right: -6px; }
+.cos-acc-beak {
+  left: 16px; top: 14px; width: 12px; height: 11px;
+  background: var(--accent);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.cos-acc-twinAntenna { left: 0; top: -17px; width: 44px; height: 19px; }
+.cos-acc-twinAntenna::before, .cos-acc-twinAntenna::after {
+  top: 0; width: 9px; height: 19px;
+  background:
+    radial-gradient(circle at 50% 4px, var(--accent) 3.5px, transparent 4px),
+    linear-gradient(var(--accent), var(--accent)) 50% 100% / 2px 13px no-repeat;
+  transform-origin: 50% 100%;
+}
+.cos-acc-twinAntenna::before { left: 12px; transform: rotate(-22deg); }
+.cos-acc-twinAntenna::after { right: 12px; transform: rotate(22deg); }
+.cos-acc-topHat {
+  left: 11px; top: -17px; width: 22px; height: 20px;
+  border-radius: 2px; background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+.cos-acc-topHat::after {
+  left: -7px; bottom: -3px; width: 36px; height: 5px;
+  border-radius: 3px; background: var(--accent);
+}
+.cos-acc-crescent {
+  left: 9px; top: -13px; width: 26px; height: 15px;
+  box-sizing: border-box;
+  border: 3px solid var(--accent); border-top: none;
+  border-radius: 0 0 13px 13px / 0 0 15px 15px;
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+.cos-acc-crescent::after {
+  left: 50%; bottom: -5px; width: 6px; height: 6px; margin-left: -3px;
+  border-radius: 50%; background: var(--accent);
+}
+.cos-acc-goggles {
+  left: 6px; top: 10px; width: 32px; height: 3px;
+  background: var(--accent);
+}
+.cos-acc-goggles::before, .cos-acc-goggles::after {
+  top: -4px; width: 11px; height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, .7), var(--accent) 55%);
+  box-shadow: 0 0 6px var(--accent);
+}
+.cos-acc-goggles::before { left: 4px; }
+.cos-acc-goggles::after { right: 4px; }
+.cos-acc-sprout {
+  left: 18px; top: -13px; width: 8px; height: 15px;
+  background: linear-gradient(var(--accent), var(--accent)) 50% 100% / 2px 10px no-repeat;
+}
+.cos-acc-sprout::before, .cos-acc-sprout::after {
+  top: 0; width: 11px; height: 6px;
+  background: var(--accent);
+  box-shadow: 0 0 5px var(--accent);
+}
+.cos-acc-sprout::before { right: 4px; border-radius: 0 100% 0 100%; transform: rotate(-24deg); }
+.cos-acc-sprout::after { left: 4px; border-radius: 100% 0 100% 0; transform: rotate(24deg); }
+
+/* Styles de lames 6 à 9 (STYLE_GLSL, BladeView.ts). */
+.cos-style-6 .cos-blade::after {
+  background: linear-gradient(165deg, transparent 46%, rgba(255, 255, 255, .9) 50%, transparent 54%);
+  background-size: 100% 300%;
+  animation: cos-sheen 2.2s ease-in-out infinite;
+}
+.cos-style-7 .cos-blade::after {
+  background: rgba(255, 255, 255, .55);
+  opacity: 0;
+  animation: cos-beat .87s linear infinite;
+}
+.cos-style-8 .cos-blade::after {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 11px, rgba(0, 0, 0, .4) 11px 12.33px),
+    linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, .55)) 0 100% / 100% 0 no-repeat;
+  animation: cos-charge 1.8s infinite;
+}
+.cos-style-9 .cos-blade::after {
+  background:
+    repeating-radial-gradient(ellipse 140% 60% at 20% 110%, rgba(255, 255, 255, .32) 0 1.5px, transparent 1.5px 4.5px),
+    repeating-radial-gradient(ellipse 120% 70% at 90% -10%, rgba(0, 0, 0, .25) 0 1.5px, transparent 1.5px 5px);
+}
+@keyframes cos-sheen { 0% { background-position: 0 0; } 55%, 100% { background-position: 0 100%; } }
+@keyframes cos-beat {
+  0%, 40%, 100% { opacity: 0; }
+  8% { opacity: 1; }
+  18% { opacity: 0; }
+  28% { opacity: .6; }
+}
+@keyframes cos-charge {
+  0% { background-size: 100% 100%, 100% 0; animation-timing-function: steps(6, end); }
+  80%, 100% { background-size: 100% 100%, 100% 100%; }
+}
+
+/* Traînées : dégradé à trois couleurs, onde (axe sinueux, nul aux pieds du
+   joueur, comme en jeu) et torsade en perles qui défilent. */
+.cos-trail-mid::before {
+  background:
+    linear-gradient(90deg, transparent 0 40%, rgba(255, 255, 255, .35) 50%, transparent 60% 100%) 0 0 / 50% 100%,
+    linear-gradient(90deg, transparent, var(--tail) 30%, var(--mid) 62%, var(--head));
+}
+.cos-trail-wave::before {
+  height: 40px;
+  clip-path: polygon(0% 68%, 4.2% 61.8%, 8.3% 54.1%, 12.5% 45.6%, 16.7% 37.1%, 20.8% 29.2%, 25% 22.5%, 29.2% 17.6%, 33.3% 14.8%, 37.5% 14.4%, 41.7% 16.2%, 45.8% 20.1%, 50% 25.7%, 54.2% 32.3%, 58.3% 39.3%, 62.5% 46%, 66.7% 51.7%, 70.8% 55.9%, 75% 58%, 79.2% 53.6%, 83.3% 47.3%, 87.5% 40.6%, 91.7% 34.5%, 95.8% 30.1%, 100% 28%, 100% 72%, 95.8% 72.5%, 91.7% 75.3%, 87.5% 79.8%, 83.3% 85%, 79.2% 89.7%, 75% 92.5%, 70.8% 88.8%, 66.7% 83.1%, 62.5% 75.8%, 58.3% 67.5%, 54.2% 58.9%, 50% 50.7%, 45.8% 43.6%, 41.7% 38.1%, 37.5% 34.6%, 33.3% 33.5%, 29.2% 34.7%, 25% 38%, 20.8% 43.1%, 16.7% 49.4%, 12.5% 56.4%, 8.3% 63.3%, 4.2% 69.3%, 0% 74%);
+}
+.cos-trail-helix::before {
+  -webkit-mask: radial-gradient(closest-side, #000 70%, transparent) 0 50% / 22px 100% repeat-x;
+  mask: radial-gradient(closest-side, #000 70%, transparent) 0 50% / 22px 100% repeat-x;
+  animation: cos-flow 1.2s linear infinite, cos-beads .9s linear infinite;
+}
+@keyframes cos-beads { to { -webkit-mask-position: 22px 50%; mask-position: 22px 50%; } }
+
+/* Salves en figure : points placés d'après burstStart ; la spirale tourne. */
+.cos-burst-whirl { animation: cos-spin 2.4s linear infinite; }
+@keyframes cos-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cos-style-6 .cos-blade::after { background-position: 0 50%; }
+  .cos-style-7 .cos-blade::after { opacity: .3; }
+  .cos-style-8 .cos-blade::after { background-size: 100% 100%, 100% 60%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cos-preview *, .cos-preview *::before, .cos-preview *::after { animation: none !important; }
   .cos-style-3 .cos-blade::after { opacity: .7; }

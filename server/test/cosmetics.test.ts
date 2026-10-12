@@ -86,9 +86,10 @@ test("catalogue : chaque cosmétique se débloque au niveau ou s'achète, jamais
   // Identifiants uniques : un doublon serait écrasé en silence.
   const total = COSMETIC_SLOTS.reduce((n, slot) => n + cosmeticsOf(slot).length, 0);
   assert.equal(Object.keys(COSMETICS).length, total);
-  // Volumes de la tâche 6.2, dont au moins un item gratuit et un vendu par
-  // emplacement.
-  const range: Record<string, [number, number]> = { skin: [6, 10], bladeSkin: [4, 6], trail: [4, 4], killFx: [3, 3] };
+  // Volumes de la tâche 6.2 et de la deuxième vague (retours du
+  // 2026-10-12 : de quoi faire tourner la vitrine), dont au moins un item
+  // gratuit et un vendu par emplacement.
+  const range: Record<string, [number, number]> = { skin: [19, 24], bladeSkin: [9, 12], trail: [7, 9], killFx: [6, 8] };
   for (const slot of COSMETIC_SLOTS) {
     const defs = cosmeticsOf(slot);
     assert.ok(defs.length >= range[slot][0] && defs.length <= range[slot][1], `${slot} : ${defs.length}`);
@@ -105,4 +106,27 @@ test("déblocages d'un passage de niveau (carte de fin de vie)", () => {
   assert.deepEqual(ids(4, 12), ["sentinelle", "ninja", "stries", "aurore"]);
   // Rien d'acheté ne se débloque.
   assert.ok(cosmeticsUnlocked(1, 1000).every((d) => getShopItem(d.id) === undefined));
+});
+
+test("catalogue : chaque emplacement montre ses items vendus par prix croissant", () => {
+  // Ordre d'affichage de la boutique (cosmeticsOf) : débloqués par niveau
+  // croissant, puis les items vendus du moins cher au plus cher.
+  for (const slot of COSMETIC_SLOTS) {
+    const defs = cosmeticsOf(slot);
+    const levels = defs.filter((d) => d.level !== undefined).map((d) => d.level!);
+    assert.deepEqual(levels, [...levels].sort((a, b) => a - b), slot);
+    const prices = defs.filter((d) => d.level === undefined).map((d) => getShopItem(d.id)!.price);
+    assert.deepEqual(prices, [...prices].sort((a, b) => a - b), slot);
+    assert.ok(defs.findIndex((d) => d.level === undefined) >= levels.length, `${slot} : un item vendu avant un débloqué`);
+  }
+});
+
+test("au join : un cosmétique vendu n'est porté que par qui l'a acheté, quel que soit son niveau", () => {
+  // Tout le catalogue vendu (dont la deuxième vague) : refusé à un vétéran
+  // qui ne l'a pas, gardé pour un joueur de niveau 1 qui l'a acheté.
+  for (const def of Object.values(COSMETICS).filter((d) => d.level === undefined)) {
+    const wanted = { [def.slot]: def.id };
+    assert.equal(validateLoadout(wanted, { level: 99, owns: () => false })[def.slot], "", def.id);
+    assert.equal(validateLoadout(wanted, { level: 1, owns: (id) => id === def.id })[def.slot], def.id, def.id);
+  }
 });

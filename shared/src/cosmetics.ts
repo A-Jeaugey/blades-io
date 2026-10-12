@@ -24,7 +24,10 @@ export const DEFAULT_LOADOUT: Readonly<Loadout> = { skin: "", bladeSkin: "", tra
 
 // Premiers cosmétiques (tâche 6.2) : la moitié se débloque en jouant (les
 // récompenses de niveau promises en 5.2), l'autre s'achète. Prix dans
-// SHOP_ITEMS (shop.ts), seule source de vérité.
+// SHOP_ITEMS (shop.ts), seule source de vérité. Deuxième vague (retours du
+// 2026-10-12) : vingt articles, tous vendus, pour que la vitrine du jour
+// ait de quoi tourner. Dans un emplacement, les items vendus suivent l'ordre
+// des prix (affichage de la boutique).
 const DEFS = [
   // Skins du personnage.
   { id: "recrue", slot: "skin", level: 2 },
@@ -33,24 +36,44 @@ const DEFS = [
   { id: "astronaute", slot: "skin", level: 20 },
   { id: "spectre", slot: "skin", level: 30 },
   { id: "robot", slot: "skin" },
+  { id: "skateur", slot: "skin" },
+  { id: "pousse", slot: "skin" },
   { id: "renard", slot: "skin" },
+  { id: "martien", slot: "skin" },
+  { id: "pilote", slot: "skin" },
+  { id: "dj", slot: "skin" },
   { id: "chevalier", slot: "skin" },
+  { id: "corbeau", slot: "skin" },
+  { id: "dandy", slot: "skin" },
+  { id: "samourai", slot: "skin" },
+  { id: "sorcier", slot: "skin" },
   { id: "demon", slot: "skin" },
+  { id: "golem", slot: "skin" },
   // Styles de lames.
   { id: "pulse", slot: "bladeSkin", level: 2 },
   { id: "stries", slot: "bladeSkin", level: 8 },
   { id: "etincelles", slot: "bladeSkin", level: 15 },
   { id: "noyau", slot: "bladeSkin" },
+  { id: "eclat", slot: "bladeSkin" },
+  { id: "battement", slot: "bladeSkin" },
+  { id: "charge", slot: "bladeSkin" },
   { id: "glitch", slot: "bladeSkin" },
+  { id: "damas", slot: "bladeSkin" },
   // Traînées.
   { id: "comete", slot: "trail", level: 2 },
   { id: "aurore", slot: "trail", level: 12 },
   { id: "plasma", slot: "trail" },
+  { id: "prisme", slot: "trail" },
   { id: "braise", slot: "trail" },
+  { id: "onde", slot: "trail" },
+  { id: "helice", slot: "trail" },
   // Effets d'élimination.
   { id: "confettis", slot: "killFx", level: 2 },
   { id: "ames", slot: "killFx", level: 25 },
+  { id: "etoile", slot: "killFx" },
   { id: "nova", slot: "killFx" },
+  { id: "coeur", slot: "killFx" },
+  { id: "tourbillon", slot: "killFx" },
 ] as const satisfies readonly CosmeticDef[];
 
 // Identifiants d'un emplacement : le client s'en sert pour exiger une

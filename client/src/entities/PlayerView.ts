@@ -16,6 +16,15 @@ const TRAIL_Y = 0.05;
 // Saut d'une frame à l'autre au-delà duquel la traînée repart de zéro
 // (apparition, recalage) : sinon un long trait relierait les deux points.
 const TRAIL_JUMP = 6;
+// Formes de traînée équipée (TrailLook.pattern) : phase selon l'âge du point
+// (rad/ms), défilement dans le temps (rad/ms) ; amplitude de l'onde (u).
+// L'onde part des pieds du joueur ; la torsade fait deux tours sur la
+// longueur (quatre perles).
+const WAVE_K = 0.018;
+const WAVE_W = 0.012;
+const WAVE_AMP = 0.42;
+const HELIX_K = (Math.PI * 4) / TRAIL_MS;
+const HELIX_W = 0.01;
 
 // Dissolution à la mort (tâche 4.9) : le corps part en morceaux suivant un
 // bruit, la tête d'abord, avec un liseré lumineux au bord de ce qui
@@ -131,7 +140,6 @@ export class PlayerView {
   private bodyMats: Array<THREE.MeshStandardMaterial | THREE.MeshBasicMaterial> = [];
   private baseColors: Array<{ color: number; emissive: number; intensity: number }> = [];
   private sphereHeadGeo: THREE.BufferGeometry;
-  private boxHeadGeo: THREE.BufferGeometry | null = null;
   private accessory: THREE.Group | null = null;
   private accessoryDisposables: Array<THREE.BufferGeometry | THREE.Material> = [];
   private skinId = "";
@@ -139,6 +147,7 @@ export class PlayerView {
   private trailLook: TrailLook | null = null;
   private baseTrailColor = new THREE.Color();
   private trailTail = new THREE.Color();
+  private trailMid = new THREE.Color();
   // Modes équipe (tâche 7.2) : un allié prend la couleur d'anneau du joueur
   // local, avec quatre losanges autour (la forme en plus de la couleur,
   // tâche 3.8). Repères créés au premier allié seulement.
@@ -299,9 +308,15 @@ export class PlayerView {
         m.color.setHex(look ? look.flat : base.color);
       }
     });
-    const box = look?.headShape === "box";
-    if (box && !this.boxHeadGeo) this.boxHeadGeo = sharedGeo("boxHead", () => new THREE.BoxGeometry(0.42, 0.42, 0.42));
-    this.head.geometry = box ? this.boxHeadGeo! : this.sphereHeadGeo;
+    // Tête carrée, ou de cristal : un icosaèdre sans subdivision, dont les
+    // faces gardent chacune leur normale (facettes sans flatShading, qui
+    // ferait compiler un autre programme en pleine partie).
+    const shape = look?.headShape ?? "sphere";
+    this.head.geometry = shape === "box"
+      ? sharedGeo("boxHead", () => new THREE.BoxGeometry(0.42, 0.42, 0.42))
+      : shape === "gem"
+        ? sharedGeo("gemHead", () => new THREE.IcosahedronGeometry(0.29, 0))
+        : this.sphereHeadGeo;
     this.clearAccessory();
     // Accessoires absents en qualité potato : le corps et la tête suffisent.
     if (look && look.accessory !== "none" && this.q.playerDetail !== "minimal") this.buildAccessory(look);
@@ -351,6 +366,58 @@ export class PlayerView {
         add(() => new THREE.ConeGeometry(0.08, 0.22, 4), -0.15, 0.25, 0, 0, 0.3);
         add(() => new THREE.ConeGeometry(0.08, 0.22, 4), 0.15, 0.25, 0, 0, -0.3);
         break;
+      // Deuxième vague (retours du 2026-10-12). Volumes fermés ou vus de
+      // l'extérieur seulement : un matériau double face changerait de
+      // programme (compilé en pleine partie).
+      case "cap":
+        // Calotte un peu plus large que la tête, visière inclinée vers l'avant.
+        add(() => new THREE.SphereGeometry(0.28, seg, Math.max(4, seg >> 2), 0, Math.PI * 2, 0, 1.25), 0, 0.01, 0);
+        add(() => new THREE.BoxGeometry(0.34, 0.025, 0.22), 0, 0.09, 0.3, 0.15);
+        break;
+      case "wizard":
+        // Bord, cône tronqué, pointe qui retombe en arrière.
+        add(() => new THREE.CylinderGeometry(0.42, 0.42, 0.025, seg), 0, 0.16, 0);
+        add(() => new THREE.CylinderGeometry(0.13, 0.24, 0.32, seg, 1), 0, 0.33, 0);
+        add(() => new THREE.ConeGeometry(0.13, 0.34, seg), 0, 0.6, -0.08, -0.55);
+        break;
+      case "headphones":
+        // Arceau en demi-tore par-dessus la tête, écouteurs sur les côtés.
+        add(() => new THREE.TorusGeometry(0.29, 0.025, 6, seg, Math.PI), 0, 0, 0);
+        add(() => new THREE.CylinderGeometry(0.1, 0.1, 0.08, seg), -0.29, 0, 0, 0, Math.PI / 2);
+        add(() => new THREE.CylinderGeometry(0.1, 0.1, 0.08, seg), 0.29, 0, 0, 0, Math.PI / 2);
+        break;
+      case "beak":
+        // Bec pointé vers l'avant, un peu vers le bas.
+        add(() => new THREE.ConeGeometry(0.09, 0.3, 8), 0, -0.03, 0.3, Math.PI / 2 + 0.2);
+        break;
+      case "twinAntenna":
+        // Deux tiges qui s'écartent, une boule au bout de chacune.
+        add(() => new THREE.CylinderGeometry(0.015, 0.015, 0.32, 6), -0.1, 0.39, 0, 0, 0.35);
+        add(() => new THREE.CylinderGeometry(0.015, 0.015, 0.32, 6), 0.1, 0.39, 0, 0, -0.35);
+        add(() => new THREE.SphereGeometry(0.055, 8, 6), -0.16, 0.56, 0);
+        add(() => new THREE.SphereGeometry(0.055, 8, 6), 0.16, 0.56, 0);
+        break;
+      case "topHat":
+        add(() => new THREE.CylinderGeometry(0.34, 0.34, 0.025, seg), 0, 0.2, 0);
+        add(() => new THREE.CylinderGeometry(0.2, 0.2, 0.34, seg), 0, 0.38, 0);
+        break;
+      case "crescent":
+        // Croissant de kabuto ouvert vers le haut, au front, et son attache.
+        add(() => new THREE.TorusGeometry(0.2, 0.022, 6, seg, Math.PI), 0, 0.42, 0.15, -0.2, Math.PI);
+        add(() => new THREE.SphereGeometry(0.045, 8, 6), 0, 0.22, 0.2);
+        break;
+      case "goggles":
+        // Sangle autour de la tête, deux verres ronds devant les yeux.
+        add(() => new THREE.TorusGeometry(0.265, 0.02, 6, seg), 0, 0.06, 0, Math.PI / 2);
+        add(() => new THREE.CylinderGeometry(0.075, 0.075, 0.07, seg), -0.1, 0.07, 0.24, Math.PI / 2);
+        add(() => new THREE.CylinderGeometry(0.075, 0.075, 0.07, seg), 0.1, 0.07, 0.24, Math.PI / 2);
+        break;
+      case "sprout":
+        // Tige et deux feuilles (sphères aplaties) relevées vers l'extérieur.
+        add(() => new THREE.CylinderGeometry(0.018, 0.024, 0.2, 6), 0, 0.34, 0, 0, 0.15);
+        add(() => new THREE.SphereGeometry(0.09, 8, 6).scale(1.6, 0.35, 0.8), -0.1, 0.45, 0, 0, -0.5);
+        add(() => new THREE.SphereGeometry(0.09, 8, 6).scale(1.6, 0.35, 0.8), 0.1, 0.45, 0, 0, 0.5);
+        break;
       case "none":
         break;
     }
@@ -379,6 +446,7 @@ export class PlayerView {
     if (look) {
       this.trailColor.setHex(look.head);
       this.trailTail.setHex(look.tail);
+      if (look.mid !== undefined) this.trailMid.setHex(look.mid);
     } else {
       this.trailColor.copy(this.baseTrailColor);
       this.trailTail.copy(this.baseTrailColor);
@@ -671,6 +739,7 @@ export class PlayerView {
     }
     let perpX = 0;
     let perpZ = 0;
+    const look = this.trailLook;
     for (let i = 0; i < n; i++) {
       const x = pts[i * 3];
       const z = pts[i * 3 + 1];
@@ -684,19 +753,42 @@ export class PlayerView {
         perpX = -dz / len;
         perpZ = dx / len;
       }
-      const f = Math.min(1, pts[i * 3 + 2] / TRAIL_MS);
-      const w = TRAIL_HALF_WIDTH * (1 - f) * (this.trailLook?.width ?? 1);
-      const a = TRAIL_ALPHA * (1 - f) * (1 - f) * (this.trailLook?.alpha ?? 1);
+      const age = pts[i * 3 + 2];
+      const f = Math.min(1, age / TRAIL_MS);
+      let w = TRAIL_HALF_WIDTH * (1 - f) * (look?.width ?? 1);
+      const a = TRAIL_ALPHA * (1 - f) * (1 - f) * (look?.alpha ?? 1);
+      // Formes : l'onde déplace l'axe du ruban (nulle aux pieds du joueur) ;
+      // la torsade change le signe de la largeur, d'où des perles.
+      let cx = x;
+      let cz = z;
+      if (look?.pattern === "wave") {
+        const off = Math.sin(age * WAVE_K - now * WAVE_W) * WAVE_AMP * Math.min(1, f * 4);
+        cx += perpX * off;
+        cz += perpZ * off;
+      } else if (look?.pattern === "helix") {
+        w *= Math.cos(age * HELIX_K - now * HELIX_W);
+      }
       const v = i * 2 * 3;
-      px[v] = x + perpX * w; px[v + 1] = TRAIL_Y; px[v + 2] = z + perpZ * w;
-      px[v + 3] = x - perpX * w; px[v + 4] = TRAIL_Y; px[v + 5] = z - perpZ * w;
-      // Dégradé de la tête au bout (uni pour la traînée de base).
+      px[v] = cx + perpX * w; px[v + 1] = TRAIL_Y; px[v + 2] = cz + perpZ * w;
+      px[v + 3] = cx - perpX * w; px[v + 4] = TRAIL_Y; px[v + 5] = cz - perpZ * w;
+      // Dégradé de la tête au bout (uni pour la traînée de base), par le
+      // milieu s'il y en a un.
       const c = i * 2 * 4;
-      const head = this.trailColor;
-      const tail = this.trailTail;
-      cc[c] = cc[c + 4] = head.r + (tail.r - head.r) * f;
-      cc[c + 1] = cc[c + 5] = head.g + (tail.g - head.g) * f;
-      cc[c + 2] = cc[c + 6] = head.b + (tail.b - head.b) * f;
+      let from = this.trailColor;
+      let to = this.trailTail;
+      let k = f;
+      if (look?.mid !== undefined) {
+        if (f < 0.5) {
+          to = this.trailMid;
+          k = f * 2;
+        } else {
+          from = this.trailMid;
+          k = f * 2 - 1;
+        }
+      }
+      cc[c] = cc[c + 4] = from.r + (to.r - from.r) * k;
+      cc[c + 1] = cc[c + 5] = from.g + (to.g - from.g) * k;
+      cc[c + 2] = cc[c + 6] = from.b + (to.b - from.b) * k;
       cc[c + 3] = cc[c + 7] = a;
     }
     geo.setDrawRange(0, (n - 1) * 6);

@@ -3,6 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   FEATURED_COUNT,
+  SHOP_ITEMS,
+  ShopItemKind,
   featuredItems,
   featuredPrice,
   getShopItem,
@@ -16,6 +18,9 @@ const dayAfter = (day: string, n: number) => {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 };
 
+// Sortes que la vitrine met en avant : les cosmétiques visibles par tous.
+const COSMETIC_KINDS: readonly ShopItemKind[] = ["skin", "bladeSkin", "trail", "killFx"];
+
 test("vitrine : trois cosmétiques, un skin et deux autres sortes, jamais ceux de la veille", () => {
   let prev = featuredItems("2026-10-01");
   const seen = new Set(prev);
@@ -25,7 +30,7 @@ test("vitrine : trois cosmétiques, un skin et deux autres sortes, jamais ceux d
     assert.equal(f.length, FEATURED_COUNT, day);
     assert.equal(new Set(f).size, FEATURED_COUNT, day);
     const kinds = f.map((id) => getShopItem(id)!.kind);
-    assert.ok(!kinds.includes("theme"), `${day} : pas de thème de carte`);
+    assert.ok(kinds.every((k) => COSMETIC_KINDS.includes(k)), `${day} : que des cosmétiques (${kinds})`);
     assert.equal(kinds[0], "skin", day);
     assert.equal(new Set(kinds).size, FEATURED_COUNT, `${day} : sortes différentes`);
     for (const id of f) assert.ok(!prev.includes(id), `${day} : ${id} était déjà à la une la veille`);
@@ -33,7 +38,8 @@ test("vitrine : trois cosmétiques, un skin et deux autres sortes, jamais ceux d
     prev = f;
   }
   // Tout le catalogue cosmétique finit par passer en vitrine.
-  assert.equal(seen.size, 9);
+  const sold = Object.values(SHOP_ITEMS).filter((i) => COSMETIC_KINDS.includes(i.kind));
+  assert.equal(seen.size, sold.length);
   // Mêmes articles pour tous, quel que soit l'ordre des appels (cache).
   assert.deepEqual(featuredItems("2026-11-15"), featuredItems("2026-11-15"));
   const late = featuredItems("2027-03-01");

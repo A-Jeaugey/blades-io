@@ -32,10 +32,34 @@ export const SHOP_ITEMS: Readonly<Record<string, ShopItem>> = {
   renard: { id: "renard", kind: "skin", price: 2000 },
   chevalier: { id: "chevalier", kind: "skin", price: 2500 },
   demon: { id: "demon", kind: "skin", price: 3500 },
+  // Deuxième vague (retours du 2026-10-12) : même échelle de prix que la
+  // première, par pas de 500, selon le travail de la silhouette (un
+  // accessoire simple au bas de l'échelle ; chapeau en trois pièces ou tête
+  // de cristal en haut).
+  skateur: { id: "skateur", kind: "skin", price: 1500 },
+  pousse: { id: "pousse", kind: "skin", price: 1500 },
+  martien: { id: "martien", kind: "skin", price: 2000 },
+  pilote: { id: "pilote", kind: "skin", price: 2000 },
+  dj: { id: "dj", kind: "skin", price: 2000 },
+  corbeau: { id: "corbeau", kind: "skin", price: 2500 },
+  dandy: { id: "dandy", kind: "skin", price: 2500 },
+  samourai: { id: "samourai", kind: "skin", price: 2500 },
+  sorcier: { id: "sorcier", kind: "skin", price: 3000 },
+  golem: { id: "golem", kind: "skin", price: 3500 },
   noyau: { id: "noyau", kind: "bladeSkin", price: 1200 },
   glitch: { id: "glitch", kind: "bladeSkin", price: 2500 },
+  eclat: { id: "eclat", kind: "bladeSkin", price: 1500 },
+  battement: { id: "battement", kind: "bladeSkin", price: 2000 },
+  charge: { id: "charge", kind: "bladeSkin", price: 2000 },
+  damas: { id: "damas", kind: "bladeSkin", price: 2500 },
   plasma: { id: "plasma", kind: "trail", price: 1500 },
   braise: { id: "braise", kind: "trail", price: 2500 },
+  prisme: { id: "prisme", kind: "trail", price: 2000 },
+  onde: { id: "onde", kind: "trail", price: 2500 },
+  helice: { id: "helice", kind: "trail", price: 3000 },
+  etoile: { id: "etoile", kind: "killFx", price: 2500 },
+  coeur: { id: "coeur", kind: "killFx", price: 3000 },
+  tourbillon: { id: "tourbillon", kind: "killFx", price: 3500 },
   nova: { id: "nova", kind: "killFx", price: 3000 },
 };
 
