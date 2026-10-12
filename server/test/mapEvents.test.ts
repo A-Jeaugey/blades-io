@@ -202,15 +202,15 @@ test("pluie : annoncée 5 s avant, puis 28 lames dans la zone en 6 s, qui expire
   assert.ok(Math.abs(records[0].durationMs - (RAIN_WARNING_MS + RAIN_DURATION_MS)) < 20);
 });
 
-test("coffre-fort : à côté du pilier central, hors du décor, dans l'arène ; très solide ; retiré au bout de 120 s", () => {
+test("coffre-fort : à côté du pilier central, côté caméra, hors du décor, dans l'arène ; très solide ; retiré au bout de 120 s", () => {
   for (let seed = 1; seed <= 12; seed++) {
     restoreRandom();
     restoreRandom = seedRandom(seed);
     const r = new TestRoom(clock);
     // Un joueur là où le coffre pourrait tomber : il se pose à côté.
     const h = r.join("h");
-    h.x = VAULT_CENTER_DIST;
-    h.y = 0;
+    h.x = 0;
+    h.y = VAULT_CENTER_DIST;
     startEvent(r, MapEventKind.Crate);
     const ev = r.state.mapEvent;
     const c = r.state.crates.get(ev.crateId)!;
@@ -219,6 +219,8 @@ test("coffre-fort : à côté du pilier central, hors du décor, dans l'arène ;
     assert.deepEqual([ev.x, ev.y], [c.x, c.y]);
     const d = Math.hypot(c.x, c.y);
     assert.ok(Math.abs(d - VAULT_CENTER_DIST) < 0.01, `à ${d} u du centre`);
+    // Côté caméra (sud) : le pilier central ne le cache pas.
+    assert.ok(c.y >= VAULT_CENTER_DIST * 0.49, `au nord du pilier (y = ${c.y})`);
     for (const col of DECOR_COLLIDERS) {
       assert.ok(Math.hypot(c.x - col.x, c.y - col.y) >= col.radius + VAULT_HITBOX, `dans le décor (${col.x}, ${col.y})`);
     }

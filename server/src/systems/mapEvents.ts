@@ -307,16 +307,21 @@ export class MapEventSystem {
   }
 
   // Coffre-fort : à VAULT_CENTER_DIST du centre, à côté du pilier central,
-  // dans une direction tirée au hasard. Hors de tout collider du décor
-  // (son pied aussi, où retombent les lancers), de préférence ni sur un
-  // joueur ni sur une caisse ; à défaut, la première direction libre de
-  // décor.
+  // du côté de la caméra (sud, y > 0 : la caméra regarde vers -y depuis le
+  // sud) : le pilier, haut de 6 u, ne le cache jamais, d'où qu'on arrive.
+  // Direction tirée au hasard dans ce demi-cercle, hors de tout collider du
+  // décor (son pied aussi, où retombent les lancers), de préférence ni sur
+  // un joueur ni sur une caisse ; à défaut, la première direction libre de
+  // décor, puis le reste du cercle.
   private pickVaultSpot(state: ArenaState): { x: number; y: number } | null {
     if (VAULT_CENTER_DIST + VAULT_HITBOX > zoneInner(state, 0)) return null;
-    const a0 = Math.random() * Math.PI * 2;
+    const STEPS = 9;
+    const first = Math.floor(Math.random() * STEPS);
     let fallback: { x: number; y: number } | null = null;
-    for (let i = 0; i < 12; i++) {
-      const a = a0 + (i * Math.PI * 2) / 12;
+    for (let i = 0; i < STEPS * 2; i++) {
+      // D'abord le demi-cercle côté caméra (30° à 150°), puis l'autre.
+      const k = (first + i) % STEPS;
+      const a = Math.PI / 6 + (k * (2 * Math.PI / 3)) / (STEPS - 1) + (i >= STEPS ? Math.PI : 0);
       const x = Math.cos(a) * VAULT_CENTER_DIST;
       const y = Math.sin(a) * VAULT_CENTER_DIST;
       if (insideAnyDecor(x, y, VAULT_HITBOX + 1.5)) continue;
