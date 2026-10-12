@@ -173,7 +173,14 @@ function join(r: TestRoom, id: string, auth: { userId?: string | null; guestId?:
 test("join : niveaux tirés de l'inventaire du compte ; invité, bot et mode sans améliorations à 0", () => {
   const owned = [...chain(SPEED, 10), ...chain(PowerUpType.Shield, 20), "upgrade.spin.4"];
   const r = new TestRoom(clock, { bots: true });
-  assert.deepEqual(join(r, "acc", { userId: "u1", owned }).powerUpLevels, [10, 0, 0, 20, 0]);
+  const acc = join(r, "acc", { userId: "u1", owned });
+  assert.deepEqual(acc.powerUpLevels, [10, 0, 0, 20, 0]);
+  // Gardés d'une vie à l'autre (même Player à la réapparition).
+  acc.spawnProtectionUntil = 0;
+  r.room.killPlayer(acc, null, "wall");
+  r.room.handleRespawn({ sessionId: "acc", leave: () => {} }, {});
+  assert.ok(acc.alive);
+  assert.deepEqual(acc.powerUpLevels, [10, 0, 0, 20, 0]);
   // Un invité n'a pas d'inventaire ; même si on lui en passait un, rien.
   assert.deepEqual(join(r, "guest", { guestId: "g1", owned }).powerUpLevels, [0, 0, 0, 0, 0]);
   r.tick(2);
