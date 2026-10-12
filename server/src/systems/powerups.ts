@@ -2,7 +2,6 @@ import {
   BladeRarity,
   DECOR_COLLIDERS,
   POWERUP_BLADES_COUNT,
-  POWERUP_DURATION,
   POWERUP_HITBOX,
   POWERUP_MAX_TOTAL,
   POWERUP_MIN_DIST_FROM_PLAYER,
@@ -14,6 +13,7 @@ import {
   PRIVATE_ROOM_DENSITY_MULT,
   PowerUpType,
   RARITY_HP,
+  powerUpDurationMs,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
 import { LOOT_WALL_MARGIN, areaShare, zoneInner } from "./spawnPoint";
@@ -145,7 +145,7 @@ export class PowerUpSystem {
 
   private applyEffect(state: ArenaState, p: Player, pu: PowerUp): void {
     const rarity = pu.rarity as BladeRarity;
-    const durationMs = POWERUP_DURATION[rarity] * 1000;
+    const durationMs = powerUpDurationMs(pu.type as PowerUpType, rarity, p.powerUpLevels[pu.type] ?? 0);
     const now = Date.now();
     // On étend toujours : si on ramasse un SPEED alors qu'on a déjà SPEED,
     // on prolonge jusqu'à max(currentUntil, now + duration) plutôt que de

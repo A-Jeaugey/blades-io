@@ -41,6 +41,11 @@ export class Player extends Schema {
   @type("float32") spinPhase: number = 0;
   // Pas synchronisé : le client reçoit orbitRate, qui l'intègre.
   spinScale: number = 1;
+  // Niveaux d'amélioration des power-ups (index PowerUpType), lus à
+  // l'application d'un effet (powerUpDurationMs). Posés au join d'après
+  // l'inventaire du compte ; 0 pour un invité, un bot, ou dans un mode sans
+  // améliorations (modeAllowsUpgrades). Champ serveur, non synchronisé.
+  powerUpLevels: number[] = [0, 0, 0, 0, 0];
   // Les bots ne reçoivent pas d'input réseau, ils tournent en local.
   @type("boolean") isBot: boolean = false;
   // Fins d'effets actifs (timestamps ms, 0 si inactif). Lus par le moteur

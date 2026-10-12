@@ -23,23 +23,26 @@ export interface GameModeInfo {
   // Arène dont la taille suit la population (tâche 4.5) ; les modes équipe
   // gardent la carte entière, pour leurs camps à 160 u du centre.
   adaptiveArena: boolean;
+  // Améliorations des power-ups achetées en trophées appliquées : pas dans
+  // un mode où tout le monde doit partir à égalité.
+  upgrades: boolean;
 }
 
 // L'arène sans fin, le jeu d'origine.
 export const DEFAULT_GAME_MODE: GameModeId = "ffa";
 
 export const GAME_MODES: readonly GameModeInfo[] = [
-  { id: "ffa", quickPlay: true, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: true },
+  { id: "ffa", quickPlay: true, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: true },
   // Manches chronométrées (tâche 7.1). Décision D5 : en salon privé et dans
   // une file publique à part, en attendant la télémétrie
   // (life_stats_by_mode, migration 0011).
-  { id: "rounds", quickPlay: true, privateRoom: true, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true },
+  { id: "rounds", quickPlay: true, privateRoom: true, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: true },
   // Modes équipe (tâche 7.2) : en salon privé, entre amis, bots en option
   // (le remplissage par des bots rééquilibre les équipes). La partie rapide
   // garde l'arène et les manches, pour ne pas disperser les joueurs.
-  { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: false },
-  { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false, mapEvents: false, adaptiveArena: false },
-  { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false },
+  { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: false, upgrades: true },
+  { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false, mapEvents: false, adaptiveArena: false, upgrades: true },
+  { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true },
 ];
 
 export function modeShrinks(id: string): boolean {
@@ -52,6 +55,10 @@ export function modeHasAdaptiveArena(id: string): boolean {
 
 export function modeHasMapEvents(id: string): boolean {
   return GAME_MODES.some((m) => m.id === id && m.mapEvents);
+}
+
+export function modeAllowsUpgrades(id: string): boolean {
+  return GAME_MODES.some((m) => m.id === id && m.upgrades);
 }
 
 export function modeRespawns(id: string): boolean {
