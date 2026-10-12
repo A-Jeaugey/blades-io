@@ -1,4 +1,4 @@
-import { BladeRarity, CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent, CheatResult, ReportAck } from "@bladeio/shared";
+import { BladeRarity, CHAT_LOG_CAP, CHAT_MESSAGE_MAX_LENGTH, ChatEvent, CheatEventName, CheatMessage, CheatResult, ReportAck } from "@bladeio/shared";
 import { I18nKey, onLangChange, t } from "../i18n";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,6 +47,14 @@ const RARITY_NAMES = new Map<string, BladeRarity>([
   ["l", BladeRarity.Legendary], ["legendary", BladeRarity.Legendary], ["legendaire", BladeRarity.Legendary],
 ]);
 
+// Triche de test (/event) : évènements de carte, noms anglais et français.
+const EVENT_NAMES = new Map<string, CheatEventName>([
+  ["vault", "vault"], ["coffre", "vault"], ["coffre-fort", "vault"],
+  ["processors", "processors"], ["processeurs", "processors"], ["cpu", "processors"],
+  ["rain", "rain"], ["pluie", "rain"],
+  ["golden", "golden"], ["doree", "golden"], ["zone", "golden"],
+]);
+
 export class ChatPanel {
   private root: HTMLElement;
   private logEl: HTMLElement;
@@ -63,7 +71,7 @@ export class ChatPanel {
   private players: () => ChatPlayer[] = () => [];
   private report: (targetId: string, reason: string) => void = () => {};
   // Triche de test, que le serveur n'accepte qu'en salon privé.
-  private cheat: (blades: number | undefined, rarity: BladeRarity | undefined) => void = () => {};
+  private cheat: (msg: CheatMessage) => void = () => {};
   private muted = new Map<string, string>();
   private fadeTimer: number | null = null;
   private isOpenFlag = false;
@@ -177,7 +185,7 @@ export class ChatPanel {
     this.report = fn;
   }
 
-  setCheatCallback(fn: (blades: number | undefined, rarity: BladeRarity | undefined) => void): void {
+  setCheatCallback(fn: (msg: CheatMessage) => void): void {
     this.cheat = fn;
   }
 
@@ -285,7 +293,15 @@ export class ChatPanel {
         else if (RARITY_NAMES.has(key)) rarity = RARITY_NAMES.get(key);
         else return this.system(t("chat.usageBlades"));
       }
-      try { this.cheat(blades, rarity); } catch { /* noop */ }
+      const msg: CheatMessage = {};
+      if (blades !== undefined) msg.blades = blades;
+      if (rarity !== undefined) msg.rarity = rarity;
+      try { this.cheat(msg); } catch { /* noop */ }
+    } else if (cmd === "event" || cmd === "evenement") {
+      // Triche de test aussi : un évènement de carte tout de suite.
+      const event = EVENT_NAMES.get(name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase());
+      if (!event) return this.system(t("chat.usageEvent"));
+      try { this.cheat({ event }); } catch { /* noop */ }
     } else {
       this.system(t("chat.unknownCommand", { cmd: head }));
     }
@@ -321,12 +337,15 @@ export class ChatPanel {
   }
 
   onCheat(result: CheatResult): void {
+    if (result.ok && result.event) return this.system(t("chat.cheatEvent", { name: result.event }));
     if (result.ok) return this.system(t("chat.cheatOk", { n: result.blades ?? 0 }));
     const key: Record<NonNullable<CheatResult["reason"]>, I18nKey> = {
       disabled: "chat.cheatDisabled",
       public: "chat.cheatPublic",
       dead: "chat.cheatDead",
       full: "chat.cheatFull",
+      noEvents: "chat.cheatNoEvents",
+      noSpot: "chat.cheatNoSpot",
     };
     this.system(t(key[result.reason ?? "disabled"]));
   }

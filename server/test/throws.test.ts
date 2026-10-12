@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import {
   BladeRarity,
   CRATE_HP,
+  CrateKind,
   PLAYER_BODY_RADIUS,
+  RARITY_DAMAGE,
+  VAULT_HITBOX,
+  VAULT_HP,
   THROW_PROJECTILE_HITBOX,
   bladeTipReach,
   GROUND_BLADE_TTL_MS,
@@ -315,6 +319,38 @@ test("un projectile Legendary traverse une caisse", () => {
   assert.equal(proj.pierceLeft, 2);
   assert.deepEqual(r.impacts.map((i) => [i.kind, i.destroyed]), [[2, false]]);
   assert.equal(r.crateHits.length, 1);
+});
+
+// Coffre-fort (retours du 2026-10-12) : un lancer y fait ses dégâts puis
+// retombe à son pied, du côté du lanceur, au lieu d'être englouti.
+test("un lancer sur le coffre-fort y fait ses dégâts puis retombe à son pied", () => {
+  const a = addPlayer(state, { x: 0, y: 0 });
+  const vault = new Crate();
+  vault.id = uid("v");
+  vault.kind = CrateKind.Vault;
+  vault.x = 20;
+  vault.y = 0;
+  vault.hp = VAULT_HP;
+  vault.maxHp = VAULT_HP;
+  state.crates.set(vault.id, vault);
+  // Hors de la hitbox d'une caisse ordinaire, dans celle du coffre.
+  const proj = projectile({ x: 20 - VAULT_HITBOX - 1.2, y: 0, vx: THROW_PROJECTILE_SPEED, rarity: BladeRarity.Epic, pierce: 2, by: a });
+  const r = recorder();
+  resolveProjectileCollisions(state, r, new OrbitPositionCache());
+  assert.equal(vault.hp, VAULT_HP - RARITY_DAMAGE[BladeRarity.Epic]);
+  assert.equal(r.crateHits.length, 1);
+  assert.deepEqual(r.impacts.map((i) => [i.kind, i.destroyed]), [[2, false]]);
+  assert.equal(r.destroyed.length, 0);
+  assert.equal(state.blades.get(proj.id), proj);
+  assert.equal(proj.isProjectile, false);
+  assert.equal(proj.thrownBy, "");
+  assert.deepEqual([proj.vx, proj.vy], [0, 0]);
+  assert.ok(Math.abs(proj.x - (20 - VAULT_HITBOX - 0.6)) < 1e-3 && Math.abs(proj.y) < 1e-3, `posée en (${proj.x}, ${proj.y})`);
+  assert.equal(proj.pickupLockUntil, clock.now + THROW_LANDED_PICKUP_LOCK_MS);
+  assert.equal(proj.expiresAt, clock.now + GROUND_BLADE_TTL_MS);
+  // Elle ne frappe plus : un second passage ne touche rien.
+  resolveProjectileCollisions(state, r, new OrbitPositionCache());
+  assert.equal(vault.hp, VAULT_HP - RARITY_DAMAGE[BladeRarity.Epic]);
 });
 
 // Contact testé sur tout le trajet du tick : un projectile qui frôle un

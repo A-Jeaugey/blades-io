@@ -104,7 +104,7 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ChallengeDoneEvent, GameModeId, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, CrateKind, GameModeId, MapEventKind, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
 import { modeAllowsUpgrades, upgradeLevelsFromInventory } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
@@ -142,6 +142,15 @@ Encoder.BUFFER_SIZE = 1024 * 1024;
 
 // Triche de test : lames données par /blades sans nombre.
 const CHEAT_DEFAULT_BLADES = 50;
+// Coffre-fort : intervalle minimal entre deux évènements crateHit.
+const VAULT_HIT_EVENT_MS = 60;
+// Triche de test : évènements de carte que /event lance.
+const CHEAT_EVENTS: Record<string, number> = {
+  vault: MapEventKind.Crate,
+  processors: MapEventKind.Processors,
+  rain: MapEventKind.Rain,
+  golden: MapEventKind.Golden,
+};
 
 // Lames d'un joueur au début d'un échange : en orbite, plus celles perdues
 // dans les FIGHT_WINDOW_MS précédentes (cassées, ou lancées et consommées
@@ -357,6 +366,14 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (process.env.CHEATS !== "1") return reply({ ok: false, reason: "disabled" });
     if (!this.isPrivate) return reply({ ok: false, reason: "public" });
     if (!p.alive) return reply({ ok: false, reason: "dead" });
+    // /event : l'évènement de carte voulu, tout de suite (essais au
+    // navigateur sans attendre la minuterie).
+    if (msg?.event !== undefined) {
+      const kind = CHEAT_EVENTS[msg.event];
+      if (kind === undefined || !this.mapEventsOn) return reply({ ok: false, reason: "noEvents" });
+      if (!this.mapEvents.force(this.state, Date.now(), kind)) return reply({ ok: false, reason: "noSpot" });
+      return reply({ ok: true, event: msg.event });
+    }
     // Même plafond que le ramassage (bladeCount suit chaque ajout).
     const space = MAX_BLADES_PER_PLAYER - p.bladeCount;
     if (space <= 0) return reply({ ok: false, reason: "full" });
@@ -995,7 +1012,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
         ...o,
         roomPrivate: this.isPrivate,
         gameMode: this.mode.id,
-      }));
+      }), (ev) => this.emit("processorImpact", ev, { at: { x: ev.x, y: ev.y } }));
     }
     this.updateLeader(dt);
     if (!this.mode.keepsEliminatedBots?.()) this.bots.cleanupDead(this.state);
@@ -1202,6 +1219,14 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   }
 
   private handleCrateHit(crate: Crate, attacker: Player | null): void {
+    // Coffre-fort : une orbite de 40 lames le frappe ~200 fois par seconde.
+    // Un évènement toutes les VAULT_HIT_EVENT_MS suffit au client (effets
+    // espacés, PV de la jauge lus dans le suivant).
+    if (crate.kind === CrateKind.Vault) {
+      const now = Date.now();
+      if (now - crate.lastHitEventAt < VAULT_HIT_EVENT_MS) return;
+      crate.lastHitEventAt = now;
+    }
     this.emit("crateHit", { crateId: crate.id, x: crate.x, y: crate.y, hp: crate.hp },
       { to: [attacker?.id], at: { x: crate.x, y: crate.y } });
   }

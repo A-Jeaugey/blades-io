@@ -265,6 +265,18 @@ export const PROFONDEURS_GLACEES_THEME: Theme = {
       powerUpFallback: CRYSTAL_BRIGHT,
       bladeFallback: ICE_PALE,
     },
+    // Coffre d'acier givré aux joints chauds (la chaleur dans le froid,
+    // comme l'ambre des légendaires, en plus orangé) ; puce aux broches de
+    // glace pâle.
+    mapEvent: {
+      vaultSteel: 0x34506c,
+      vaultTrim: ICE_PALE,
+      vaultGlow: 0xff9a5a,
+      chipBody: 0x0e1c2c,
+      chipPins: ICE_PALE,
+      chipCore: 0xff9a5a,
+      chipTrail: 0xffc89a,
+    },
   },
 
   lighting: {

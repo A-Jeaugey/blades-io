@@ -104,8 +104,9 @@ export const en = {
   "flag.toast.conceded": "They scored",
   "arena.shrinkNotice": "Fewer players: the arena shrinks in {s} s",
   "event.rain": "Blade rain in 5 s: check the map!",
-  "event.crate": "A legendary crate just appeared: check the map!",
+  "event.crate": "VAULT near the center: crack it open, its loot goes to whoever grabs it!",
   "event.golden": "Golden zone in the center in 5 s: points ×2 for 30 s",
+  "event.processors": "Processor drop in 4 s: check the map!",
 
   // Fil des éliminations
   "feed.border": "BORDER",
@@ -317,6 +318,10 @@ export const en = {
   "chat.cheatPublic": "Cheats only work in private rooms.",
   "chat.cheatDead": "Respawn first.",
   "chat.cheatFull": "Blade cap reached.",
+  "chat.usageEvent": "Usage: /event <vault | processors | rain | golden>",
+  "chat.cheatEvent": "Cheat: {name} event started.",
+  "chat.cheatNoEvents": "No map events in this mode.",
+  "chat.cheatNoSpot": "No room for this event right now.",
   "chat.usageMute": "Usage: /mute <name>",
   "chat.usageReport": "Usage: /report <name> [reason]",
   "chat.notFound": "No player named {name} here.",
@@ -448,7 +453,7 @@ export const en = {
   "howto.trophies2": "They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.",
   "howto.rounds": "<b>ROUNDS</b> (game mode, in the lobby): 5-minute rounds, and the arena shrinks during the last minute. Your points add up over all your lives in the round; the top 3 earn 150, 100 and 50 trophies (public games).",
   "howto.teams": "<b>TEAM MODES</b> (private rooms, bots optional): two teams, ◆ marks yours (ring, name, map). <b>TEAM DEATHMATCH</b>: first team to 30 kills. <b>LAST TEAM STANDING</b>: no respawn, the arena shrinks in the last minute; when you are out, you watch a teammate. <b>CAPTURE THE FLAG</b>: take their flag and bring it to your base while yours is home; touch your dropped flag to send it back. 3 captures win.",
-  "howto.events": "<b>MAP EVENTS</b> (arena, rounds, team deathmatch), every 90 to 120 s, with a banner: a <b>blade rain</b> on a zone shown 5 s before (dashed circle on the minimap), a <b>legendary crate</b> (★ on the minimap, ten times sturdier, a legendary and a pile of rare blades inside), or a <b>golden zone</b> in the center (double circle): for 30 s, every point you earn inside counts double.",
+  "howto.events": "<b>MAP EVENTS</b> (arena, rounds, team deathmatch), every 50 to 70 s, with a banner: a <b>blade rain</b> on a zone shown 5 s before (dashed circle on the minimap); a <b>vault</b> near the center (square with a round door on the minimap), very sturdy: your blades don't break on it, your throws drop at its foot, and it releases 24 to 30 rare, epic or legendary blades, up for grabs; a <b>processor drop</b> (chips on the minimap, impact points shown on the ground): each chip bursts into 5 to 10 rare or better blades, or lands whole, to be broken; or a <b>golden zone</b> in the center (double circle): for 30 s, every point you earn inside counts double.",
   "howto.cosmetics": "Cosmetics: skins, blade styles, trails and elimination effects, seen by everyone. Unlock them by leveling up (levels 2 to 30) or buy them in the <b>BOUTIQUE</b>, where three are 20% off each day (FEATURED) and every item can be tried on in 3D. They never change hitboxes, rarity colors or the rings on the ground.",
   "howto.resetTips": "SHOW IN-GAME TIPS AGAIN",
 

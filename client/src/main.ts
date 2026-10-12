@@ -48,7 +48,11 @@ import {
   powerUpDurationMs,
   CTF_BASE_RADIUS,
   FlagEvent,
+  CrateKind,
+  DropState,
   MapEventKind,
+  PROCESSOR_COUNT_MAX,
+  ProcessorImpactEvent,
   TEAM_NONE,
   bushAt,
   isInBush,
@@ -79,6 +83,7 @@ import { CrateRenderer } from "./entities/CrateView";
 import { PowerUpRenderer } from "./entities/PowerUpView";
 import { FlagRenderer, FlagSnapshot } from "./entities/FlagView";
 import { MapEventSnapshot, MapEventView } from "./scene/MapEventView";
+import { DropSnapshot, ProcessorFallView } from "./scene/ProcessorFallView";
 import { ParticlePool } from "./fx/Particles";
 import { CombatFx } from "./fx/CombatFx";
 import { MagnetRing } from "./fx/MagnetRing";
@@ -234,6 +239,10 @@ export class Game {
   private needHomeShown = false;
   // Évènements de carte (tâche 4.4) : zone au sol, type annoncé en dernier.
   private mapEventView!: MapEventView;
+  // Chute de processeurs : cercles d'alerte et puces qui tombent.
+  private processorFall!: ProcessorFallView;
+  private readonly dropSnaps: DropSnapshot[] = [];
+  private readonly dropPool: DropSnapshot[] = Array.from({ length: PROCESSOR_COUNT_MAX }, () => ({ x: 0, y: 0, at: 0 }));
   private mapEventSnap: MapEventSnapshot = { kind: MapEventKind.None, x: 0, y: 0, radius: 0, startsAt: 0, endsAt: 0 };
   private lastEventKind: number = MapEventKind.None;
   // Resserrement de l'arène annoncé (tâche 4.5) : échéance déjà signalée,
@@ -490,6 +499,8 @@ export class Game {
     // préchauffage, pas au premier Aimant.
     this.magnetRing = new MagnetRing(this.quality, this.theme.palette.powerUpColor[PowerUpType.Magnet]);
     this.sceneStack.scene.add(this.magnetRing.root);
+    this.processorFall = new ProcessorFallView(this.quality, this.crates.chipKit);
+    this.sceneStack.scene.add(this.processorFall.root);
     this.particles = new ParticlePool(this.quality.maxParticles, this.quality.particleScale);
     this.combatFx = new CombatFx(this.quality);
     this.blades.setTrailSink(this.combatFx.trails);
@@ -519,6 +530,16 @@ export class Game {
         me: () => {
           const p = this.room?.state?.players?.get(this.myId);
           return p ? { x: p.x, y: p.y, alive: !!p.alive, blades: p.bladeCount } : null;
+        },
+        // Évènement de carte en cours (bancs et essais scriptés : aller au
+        // coffre, aux puces).
+        event: () => {
+          const ev = this.room?.state?.mapEvent;
+          if (!ev) return null;
+          const crate = ev.crateId ? this.room?.state?.crates?.get(ev.crateId) : null;
+          const drops: Array<{ x: number; y: number; at: number; state: number }> = [];
+          ev.drops?.forEach((d: any) => drops.push({ x: d.x, y: d.y, at: d.at, state: d.state }));
+          return { kind: ev.kind, x: ev.x, y: ev.y, hp: crate?.hp ?? 0, drops, serverNow: this.serverNow() };
         },
       };
     }
@@ -594,11 +615,9 @@ export class Game {
     this.chat.setReportCallback((targetId, reason) => {
       try { this.room?.send("report", { targetId, reason }); } catch { /* noop */ }
     });
-    // Triche de test (/blades) : le serveur décide (salon privé, CHEATS=1).
-    this.chat.setCheatCallback((blades, rarity) => {
-      const msg: CheatMessage = {};
-      if (blades !== undefined) msg.blades = blades;
-      if (rarity !== undefined) msg.rarity = rarity;
+    // Triche de test (/blades, /event) : le serveur décide (salon privé,
+    // CHEATS=1).
+    this.chat.setCheatCallback((msg: CheatMessage) => {
       try { this.room?.send("cheat", msg); } catch { /* noop */ }
     });
     this.death = new DeathScreen(
@@ -657,6 +676,8 @@ export class Game {
       this.blades.setFlashIntensity(s.flashes);
       this.mapEventView.setFlashIntensity(s.flashes);
       this.magnetRing.setFlashIntensity(s.flashes);
+      this.processorFall.setFlashIntensity(s.flashes);
+      this.crates.setFlashIntensity(s.flashes);
       this.particles.setFlashIntensity(s.flashes);
       this.combatFx.setFlashIntensity(s.flashes);
       this.flashK = s.flashes;
@@ -696,8 +717,9 @@ export class Game {
       ids.push(id);
       return id;
     };
-    this.crates.add(sample("crate"), 0, 0, 1, 1, false);
-    this.crates.add(sample("legendary"), 0, 0, 1, 1, true);
+    this.crates.add(sample("crate"), 0, 0, 1, 1, CrateKind.Normal);
+    this.crates.add(sample("vault"), 0, 0, 1, 1, CrateKind.Vault);
+    this.crates.add(sample("chip"), 0, 0, 1, 1, CrateKind.Chip);
     for (const type of POWERUP_TYPE_VALUES) {
       this.powerups.add(sample(`pu${type}`), type, BladeRarity.Common, 0, 0);
       this.powerups.add(sample(`pu${type}e`), type, BladeRarity.Epic, 0, 0);
@@ -991,11 +1013,20 @@ export class Game {
       else this.blades.remove(key);
     });
 
+    // Coffre et puces des évènements de carte : apparition et retrait sur
+    // la ligne de temps du rendu. La puce restée entière apparaît ainsi à
+    // l'image où elle touche le sol, et le coffre disparaît avec son
+    // explosion, jouée à son tick.
     callbacks.onAdd(state, "crates", (c, key) => {
-      this.crates.add(key, c.x, c.y, c.hp, c.maxHp, !!c.legendary);
+      const kind = c.kind ?? CrateKind.Normal;
+      if (kind === CrateKind.Normal) return this.crates.add(key, c.x, c.y, c.hp, c.maxHp, kind);
+      this.atTick(state.tick, () => {
+        if (this.room?.state?.crates?.get(key) === c) this.crates.add(key, c.x, c.y, c.hp, c.maxHp, kind);
+      }, false);
     }, true);
     callbacks.onRemove(state, "crates", (_c, key) => {
-      this.crates.remove(key);
+      if (this.crates.kindOf(key) === CrateKind.Normal) this.crates.remove(key);
+      else this.atTick(state.tick, () => this.crates.remove(key), false);
     });
 
     callbacks.onAdd(state, "powerups", (pu, key) => {
@@ -1054,13 +1085,26 @@ export class Game {
     // Caisses : sur la ligne de temps du rendu, comme les autres coups (la
     // lame qui frappe est dessinée 80 ms dans le passé).
     room.onMessage("crateHit", (msg: CrateHitEvent) => this.atTick(msg.tick, () => {
-      this.crates.hit(msg.crateId, msg.hp);
-      this.particles.spawnSparks(msg.x, 1.0, msg.y, this.theme.palette.fx.crateHitSpark, 8, 4);
+      const kind = this.crates.kindOf(msg.crateId);
+      if (!this.crates.hit(msg.crateId, msg.hp)) return;
+      if (kind === CrateKind.Vault) return this.vaultHitFx(msg.x, msg.y);
+      const color = kind === CrateKind.Chip ? this.theme.palette.mapEvent.chipCore : this.theme.palette.fx.crateHitSpark;
+      this.particles.spawnSparks(msg.x, 1.0, msg.y, color, 8, 4);
     }));
     room.onMessage("crateDestroyed", (msg: CrateDestroyedEvent) => this.atTick(msg.tick, () => {
-      this.particles.spawnExplosion(msg.x, 1.0, msg.y, this.theme.palette.fx.crateDestroyExplosion, 28);
-      this.sound.crateBreak(this.audibleGain(msg.x, msg.y));
+      const kind = this.crates.kindOf(msg.crateId);
+      if (kind === CrateKind.Vault) this.vaultBurstFx(msg.x, msg.y);
+      else if (kind === CrateKind.Chip) this.chipBurstFx(msg.x, msg.y, true);
+      else this.particles.spawnExplosion(msg.x, 1.0, msg.y, this.theme.palette.fx.crateDestroyExplosion, 28);
+      if (kind !== CrateKind.Vault) this.sound.crateBreak(this.audibleGain(msg.x, msg.y));
       if (msg.byId === this.myId) this.scorePop(msg.x, msg.y, SCORE_CRATE, "small");
+    }));
+    // Chute de processeurs : la puce touche le sol, à son tick (la puce qui
+    // tombe est réglée sur la même heure, cf. ProcessorFallView).
+    room.onMessage("processorImpact", (msg: ProcessorImpactEvent) => this.atTick(msg.tick, () => {
+      this.chipBurstFx(msg.x, msg.y, msg.exploded);
+      this.sound.processorImpact(msg.exploded, this.audibleGain(msg.x, msg.y));
+      this.nearShake(msg.x, msg.y, 0.25, 20);
     }));
     room.onMessage("powerupPickup", (msg: PowerUpPickupEvent) => {
       // Effet visuel coloré selon le type, et son propre au type.
@@ -1859,8 +1903,9 @@ export class Game {
   }
 
   // Évènement de carte (tâche 4.4) : bannière et son à son annonce (ou à
-  // l'arrivée en cours d'évènement), zone au sol à chaque image.
-  private updateMapEvent(serverNowMs: number): void {
+  // l'arrivée en cours d'évènement), zone au sol et chute de processeurs à
+  // chaque image (celle-ci à l'heure du tick de rendu, comme les entités).
+  private updateMapEvent(serverNowMs: number, serverRenderMs: number, dt: number): void {
     const src = this.room?.state?.mapEvent;
     const ev = this.mapEventSnap;
     ev.kind = src?.kind ?? MapEventKind.None;
@@ -1870,12 +1915,68 @@ export class Game {
     ev.startsAt = src?.startsAt ?? 0;
     ev.endsAt = src?.endsAt ?? 0;
     this.mapEventView.update(ev, serverNowMs, this.elapsed * 0.001);
+    this.processorFall.update(this.readDrops(), serverRenderMs, dt, this.elapsed * 0.001);
     if (ev.kind === this.lastEventKind) return;
     this.lastEventKind = ev.kind;
     const key = MAP_EVENT_TOASTS[ev.kind];
     if (!key || this.matchOver()) return;
     this.toasts.push(t(key));
     this.sound.tierUp(1);
+  }
+
+  // Puces de la chute de processeurs en cours (tableau et fiches
+  // réutilisés : lu à chaque image).
+  private readDrops(): DropSnapshot[] {
+    const out = this.dropSnaps;
+    out.length = 0;
+    const ev = this.room?.state?.mapEvent;
+    if (!ev || ev.kind !== MapEventKind.Processors || !ev.drops) return out;
+    ev.drops.forEach((d: any) => {
+      const snap = this.dropPool[out.length];
+      if (!snap) return;
+      snap.x = d.x;
+      snap.y = d.y;
+      snap.at = d.at;
+      out.push(snap);
+    });
+    return out;
+  }
+
+  // Coup sur le coffre-fort : étincelles sur une face au hasard (l'évènement
+  // ne dit pas d'où vient la lame), son métallique. Espacés par
+  // CrateRenderer.hit.
+  private vaultHitFx(x: number, y: number): void {
+    const c = this.theme.palette.mapEvent;
+    const a = Math.random() * Math.PI * 2;
+    this.particles.spawnSparks(x + Math.cos(a) * 1.9, 0.6 + Math.random() * 2.4, y + Math.sin(a) * 1.9, Math.random() < 0.5 ? c.vaultGlow : c.vaultTrim, 7, 5);
+    this.sound.vaultHit(this.audibleGain(x, y));
+  }
+
+  // Coffre-fort ouvert : explosion, onde et éclats d'acier, secousse pour
+  // qui est tout près (camera.shake : le réglage du joueur s'y applique).
+  private vaultBurstFx(x: number, y: number): void {
+    const c = this.theme.palette.mapEvent;
+    this.particles.spawnExplosion(x, 1.6, y, c.vaultGlow, 64);
+    this.particles.spawnSparks(x, 2.2, y, c.vaultTrim, 24, 9);
+    this.combatFx.vaultBurst(x, y, c.vaultGlow, c.vaultTrim);
+    this.sound.vaultBreak(this.audibleGain(x, y));
+    this.nearShake(x, y, 0.5, 30);
+  }
+
+  // Puce : impact au sol ou ouverture (exploded : lames éparpillées).
+  private chipBurstFx(x: number, y: number, exploded: boolean): void {
+    const c = this.theme.palette.mapEvent;
+    this.combatFx.processorImpact(x, y, c.chipCore, c.chipPins, exploded);
+    if (exploded) this.particles.spawnExplosion(x, 0.8, y, c.chipCore, 36);
+    this.particles.spawnSparks(x, 0.6, y, exploded ? c.chipPins : c.chipTrail, exploded ? 16 : 22, exploded ? 6 : 8);
+  }
+
+  // Secousse d'un effet proche du joueur local, nulle au-delà de range.
+  private nearShake(x: number, y: number, intensity: number, range: number): void {
+    const me = this.players.get(this.myId);
+    if (!me || this.dead) return;
+    const d = Math.hypot(x - me.renderX, y - me.renderY);
+    if (d < range) this.camera.shake.add(intensity * (1 - d / range));
   }
 
   private rainSpark(x: number, y: number, rarity: BladeRarity): void {
@@ -1985,6 +2086,7 @@ export class Game {
     this.lastEventKind = MapEventKind.None;
     this.mapEventSnap.kind = MapEventKind.None;
     this.mapEventView.update(this.mapEventSnap, 0, 0);
+    this.processorFall.clear();
     this.dead = false;
     // Bloque ici jusqu'à confirmation de fermeture (timeout 1.5s pour ne
     // pas geler indéfiniment si la connexion est cassée). Le login n'est
@@ -2391,7 +2493,15 @@ export class Game {
     }
     const events: MinimapEvent[] = [];
     const mev = this.mapEventSnap;
-    if (mev.kind !== MapEventKind.None) {
+    if (mev.kind === MapEventKind.Processors) {
+      // Une marque par puce : annoncée (contour), entière au sol (pleine) ;
+      // plus rien une fois explosée ou cassée.
+      this.room?.state?.mapEvent?.drops?.forEach((d: any) => {
+        if (d.state === DropState.Falling || d.state === DropState.Standing) {
+          events.push({ kind: mev.kind, x: d.x, y: d.y, radius: 0, active: d.state === DropState.Standing });
+        }
+      });
+    } else if (mev.kind !== MapEventKind.None) {
       events.push({ kind: mev.kind, x: mev.x, y: mev.y, radius: mev.radius, active: this.serverNow() >= mev.startsAt });
     }
     this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events, this.shownArenaTarget);
@@ -2664,7 +2774,7 @@ export class Game {
       this.updateArenaShrink(serverNowMs);
       this.updateMatchUi(serverNowMs);
       this.updateFlags(myTeam, dt, serverNowMs);
-      this.updateMapEvent(serverNowMs);
+      this.updateMapEvent(serverNowMs, serverRenderMs, dt);
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));
@@ -2764,6 +2874,7 @@ const MAP_EVENT_TOASTS: Partial<Record<number, I18nKey>> = {
   [MapEventKind.Rain]: "event.rain",
   [MapEventKind.Crate]: "event.crate",
   [MapEventKind.Golden]: "event.golden",
+  [MapEventKind.Processors]: "event.processors",
 };
 
 // Libellé du score des équipes dans la minuterie, par mode.

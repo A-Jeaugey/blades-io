@@ -104,6 +104,20 @@ export interface ThemePalette {
     powerUpFallback: number;
     bladeFallback: number;
   };
+  // Évènements de carte (retours du 2026-10-12) : coffre-fort (acier du
+  // caisson, garnitures, rivets et cadran, joints lumineux et jauge de
+  // ses PV au sol) et puces de la chute de processeurs (boîtier, broches,
+  // cœur lumineux et cercle d'alerte au sol, traînée de chute). Loin du
+  // rouge du mur ; le butin, lui, garde les couleurs des raretés.
+  mapEvent: {
+    vaultSteel: number;
+    vaultTrim: number;
+    vaultGlow: number;
+    chipBody: number;
+    chipPins: number;
+    chipCore: number;
+    chipTrail: number;
+  };
 }
 
 export interface ThemeLighting {

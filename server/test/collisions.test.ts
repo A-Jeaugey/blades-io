@@ -3,11 +3,16 @@ import assert from "node:assert/strict";
 import {
   BladeRarity,
   CRATE_HP,
+  CrateKind,
   HITLAG_COOLDOWN_MS,
   KILL_LAG_ALLOWANCE_MS,
   KILL_LAG_REACH_MAX,
   KNOCKBACK_MAX_SPEED,
   PLAYER_BODY_RADIUS,
+  RARITY_HP,
+  VAULT_HITBOX,
+  VAULT_HP,
+  VAULT_PLAYER_DPS,
   bladeEdgeRadius,
   bladeTipReach,
   outerOrbitRadius,
@@ -364,6 +369,38 @@ test("caisse : dégâts de la rareté, destruction à 0 PV", () => {
   resolveCollisions(state, cache, r, cooldowns);
   assert.equal(crate.hp, 0);
   assert.equal(r.cratesDestroyed.length, 1);
+});
+
+// Coffre-fort (retours du 2026-10-12) : touché de plus loin qu'une caisse,
+// sans abîmer les lames ; un même joueur n'y fait pas plus de
+// VAULT_PLAYER_DPS par seconde, un second joueur a son propre plafond.
+test("coffre-fort : lames intactes, plafond de dégâts par joueur", () => {
+  const vault = new Crate();
+  vault.id = uid("v");
+  vault.kind = CrateKind.Vault;
+  vault.x = 0;
+  vault.y = 0;
+  vault.hp = VAULT_HP;
+  vault.maxHp = VAULT_HP;
+  state.crates.set(vault.id, vault);
+  const a = addPlayer(state, { x: -3, y: 0, rarity: BladeRarity.Legendary, blades: 60 });
+  const b = addPlayer(state, { x: 0, y: 5, rarity: BladeRarity.Legendary, blades: 1 });
+  // Toutes les lames de a contre le coffre (bien plus que le plafond :
+  // 60 × 8 par coup) ; celle de b juste à portée, hors de la hitbox d'une
+  // caisse ordinaire.
+  for (const blade of ownedBlades(state, a)) cache.set(blade.id, -1, 0);
+  const reach = VAULT_HITBOX + tierBladeHitbox(b.tier) - 0.05;
+  cache.set(ownedBlades(state, b)[0].id, 0, reach);
+  const r = recorder();
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(vault.hp, VAULT_HP - VAULT_PLAYER_DPS - 8);
+  // Une seconde plus tard : a a regagné une seconde de dégâts, pas plus.
+  clock.advance(1000);
+  resolveCollisions(state, cache, r, cooldowns);
+  assert.equal(vault.hp, VAULT_HP - 2 * VAULT_PLAYER_DPS - 16);
+  for (const blade of [...ownedBlades(state, a), ...ownedBlades(state, b)]) assert.equal(blade.hp, RARITY_HP[BladeRarity.Legendary]);
+  assert.equal(r.destroyed.length, 0);
+  assert.ok(a.alive && b.alive);
 });
 
 // Le filtre de la zone de contact (narrowPhaseClash) ne doit écarter
