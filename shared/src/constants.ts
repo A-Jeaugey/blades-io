@@ -611,10 +611,7 @@ export const CHAMPION_RARITY_WEIGHTS: Array<{ rarity: BladeRarity; weight: numbe
 ];
 // Marque devant le nom d'un champion (nametag, classement, fil des kills).
 export const CHAMPION_NAME_MARK = "★ ";
-export const BOT_NAMES = [
-  "Courgette", "Ananas", "Poulet", "Saucisson", "Baguette", "Fromage",
-  "Tomate", "Brocoli", "Fraise", "Steak", "Raclette", "Croissant"
-];
+// Noms des bots : shared/src/botNames.ts.
 
 export const RARITY_SCALE: Record<BladeRarity, number> = {
   [BladeRarity.Common]: 1.0,

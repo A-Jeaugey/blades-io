@@ -13,6 +13,7 @@ export * from "./levels";
 export * from "./challenges";
 export * from "./seasons";
 export * from "./moderation";
+export * from "./botNames";
 export * from "./cosmetics";
 export * from "./modes";
 export * from "./mapEvents";

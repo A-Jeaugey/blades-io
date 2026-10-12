@@ -65,7 +65,7 @@ Each bot also gets a skill level at spawn, which sets how it goes after human pl
 - **Normal** — the behavior described above
 - **Hard** — tighter aim, spots players from further away (95 u)
 
-Usually 30 % easy, 40 % normal and 30 % hard. While a beginner (first game on that device) is in the room, new bots are 60 % easy and never hard, and hard bots already there leave beginners alone. A newcomer (a beginner, or anyone in the 50 s after spawning) is chased by one bot at a time. Bots keep their silly names and are marked **BOT** in the leaderboard.
+Usually 30 % easy, 40 % normal and 30 % hard. While a beginner (first game on that device) is in the room, new bots are 60 % easy and never hard, and hard bots already there leave beginners alone. A newcomer (a beginner, or anyone in the 50 s after spawning) is chased by one bot at a time. Bots keep silly names, about 300 French ones (food, animals, everyday objects, gamer nods; no protected characters, brands or real people): never two alike in a room, champions included, nor the name of a player already there (case, accents and the ★ aside); they are marked **BOT** in the leaderboard.
 
 ---
 
