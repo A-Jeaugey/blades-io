@@ -921,6 +921,20 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `ParticlePool`, un seul canvas déplacé d'onglet en onglet, boucle active
   boutique ouverte seulement, absent en potato. Un nouveau cosmétique y
   apparaît sans rien ajouter, s'il passe par ces modules.
+  Deuxième vague (tâche 6.6) : une traînée peut donner `mid` (dégradé à
+  trois couleurs) et `pattern` (`"wave"`, `"helix"`) dans `TrailLook`
+  (même ruban, même matériau) ; un effet d'élimination, une figure
+  `shape` (`"star"`, `"heart"`, `"whirl"`), placée par `burstStart`
+  (`looks.ts`) en jeu comme en aperçu CSS, au moins 24 particules même en
+  potato. Une nouvelle forme de tête (`HeadShape`) demande sa géométrie dans
+  `applySkin` et sa classe `.cos-fig-<forme>` (tête de cristal : facettes
+  sans `flatShading`, qui recompilerait un shader en partie). Un
+  accessoire se place sur la tête, au-dessus de 1,3 u, sans matériau double
+  face : une cape masquait l'anneau au sol de profil. La partie animée d'un
+  style de lame se multiplie par `uStyleFlash` (réglage des flashs). La
+  vitrine pioche sans remise dans chaque sorte (chaque skin revient en au
+  plus 2n − 1 jours pour n skins) : toute modification du catalogue change
+  la vitrine du jour.
 - **Partage (tâche 5.5)** : les balises d'aperçu des liens (Open Graph)
   sont écrites par le serveur à chaque requête de page, entre
   `<!-- og:start -->` et `<!-- og:end -->` dans `client/index.html`
