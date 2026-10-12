@@ -103,7 +103,7 @@ import {
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
-import { BladeThrownEvent, ChallengeDoneEvent, GameModeId, MapEventKind, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
+import { BladeThrownEvent, ChallengeDoneEvent, CrateKind, GameModeId, MapEventKind, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -140,6 +140,8 @@ Encoder.BUFFER_SIZE = 1024 * 1024;
 
 // Triche de test : lames données par /blades sans nombre.
 const CHEAT_DEFAULT_BLADES = 50;
+// Coffre-fort : intervalle minimal entre deux évènements crateHit.
+const VAULT_HIT_EVENT_MS = 60;
 // Triche de test : évènements de carte que /event lance.
 const CHEAT_EVENTS: Record<string, number> = {
   vault: MapEventKind.Crate,
@@ -1201,6 +1203,14 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   }
 
   private handleCrateHit(crate: Crate, attacker: Player | null): void {
+    // Coffre-fort : une orbite de 40 lames le frappe ~200 fois par seconde.
+    // Un évènement toutes les VAULT_HIT_EVENT_MS suffit au client (effets
+    // espacés, PV de la jauge lus dans le suivant).
+    if (crate.kind === CrateKind.Vault) {
+      const now = Date.now();
+      if (now - crate.lastHitEventAt < VAULT_HIT_EVENT_MS) return;
+      crate.lastHitEventAt = now;
+    }
     this.emit("crateHit", { crateId: crate.id, x: crate.x, y: crate.y, hp: crate.hp },
       { to: [attacker?.id], at: { x: crate.x, y: crate.y } });
   }

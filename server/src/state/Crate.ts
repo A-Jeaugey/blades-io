@@ -20,4 +20,7 @@ export class Crate extends Schema {
   // Coffre-fort : réserve de dégâts de chaque joueur (cf. damageCrate).
   // Champ serveur.
   credits = new Map<string, { credit: number; at: number }>();
+  // Coffre-fort : heure du dernier évènement crateHit envoyé (cf.
+  // ArenaRoom.handleCrateHit). Champ serveur.
+  lastHitEventAt = 0;
 }

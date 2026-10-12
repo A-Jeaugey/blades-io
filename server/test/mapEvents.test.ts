@@ -286,7 +286,9 @@ test("coffre-fort : 24 à 30 lames, rares, épiques ou légendaires, projetées 
 });
 
 // Temps d'ouverture pour des joueurs posés sur le coffre (comme les bots,
-// qui vont à sa position), lames du mélange donné.
+// qui vont à sa position), lames du mélange donné ; hitEvents : évènements
+// crateHit envoyés pendant ce temps.
+let hitEvents = 0;
 function vaultBreakSeconds(mixes: Array<Array<[BladeRarity, number]>>): number {
   const r = new TestRoom(clock);
   const players: Player[] = mixes.map((mix, i) => {
@@ -309,6 +311,7 @@ function vaultBreakSeconds(mixes: Array<Array<[BladeRarity, number]>>): number {
     });
     r.tick();
   }
+  hitEvents = r.eventsOf("crateHit").length;
   return (clock.now - t0) / 1000;
 }
 
@@ -325,6 +328,9 @@ const MIX_20: Array<[BladeRarity, number]> = [[BladeRarity.Common, 14], [BladeRa
 test("coffre-fort : calibrage, ~20 s seul à 40 lames, pas plus vite avec une plus grosse orbite, bien plus vite à deux", () => {
   const alone = vaultBreakSeconds([MIX_40]);
   assert.ok(alone >= 15 && alone <= 25, `seul à 40 lames : ${alone} s`);
+  // Des centaines de coups par seconde, au plus un évènement toutes les
+  // 60 ms (ArenaRoom.handleCrateHit).
+  assert.ok(hitEvents > 0 && hitEvents <= (alone * 1000) / 60 + 2, `${hitEvents} évènements crateHit en ${alone} s`);
   const big = vaultBreakSeconds([MIX_80]);
   assert.ok(big >= 15, `seul à 80 lames : ${big} s`);
   const small = vaultBreakSeconds([MIX_20]);
