@@ -13,6 +13,7 @@ import {
   PRIVATE_ROOM_DENSITY_MULT,
   PowerUpType,
   RARITY_HP,
+  powerUpBit,
   powerUpDurationMs,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -96,8 +97,15 @@ export class PowerUpSystem {
 
   // Spawn + pickup + expiration des effets. Le pickup applique l'effet
   // directement via setFields sur le Player : le client lit les `*Until`
-  // sur son propre state et affiche les badges d'effet.
-  update(dt: number, state: ArenaState, isPrivate: boolean, onPickup: (p: Player, pu: PowerUp) => void): void {
+  // sur son propre state et affiche les badges d'effet. onPickup reçoit la
+  // durée appliquée (ms, améliorations comprises ; 0 pour Blades), que le
+  // client du joueur affiche.
+  update(
+    dt: number,
+    state: ArenaState,
+    isPrivate: boolean,
+    onPickup: (p: Player, pu: PowerUp, durationMs: number) => void,
+  ): void {
     this.timer += dt;
     if (this.timer >= POWERUP_SPAWN_INTERVAL) {
       this.timer = 0;
@@ -133,18 +141,40 @@ export class PowerUpSystem {
         const dx = p.x - pu.x;
         const dy = p.y - pu.y;
         if (dx * dx + dy * dy <= hitSq) {
-          this.applyEffect(state, p, pu);
-          onPickup(p, pu);
+          const durationMs = this.applyEffect(state, p, pu);
+          onPickup(p, pu, durationMs);
           picked.push(pu.id);
           alreadyPicked = true;
         }
       });
     });
     for (const id of picked) state.powerups.delete(id);
+
+    // Effets visibles de tous : écrit seulement quand le masque change (un
+    // effet commence ou finit), pas à chaque tick.
+    const now = Date.now();
+    state.players.forEach((p) => {
+      const mask = p.alive ? activeEffectMask(p, now) : 0;
+      if (mask !== p.activeEffects) p.activeEffects = mask;
+    });
   }
 
-  private applyEffect(state: ArenaState, p: Player, pu: PowerUp): void {
+  // Applique l'effet et renvoie sa durée (ms), 0 pour un effet instantané.
+  private applyEffect(state: ArenaState, p: Player, pu: PowerUp): number {
     const rarity = pu.rarity as BladeRarity;
+    if (pu.type === PowerUpType.Blades) {
+      // Instant : attache N lames de la rareté du power-up.
+      const n = POWERUP_BLADES_COUNT[rarity];
+      for (let i = 0; i < n; i++) {
+        const b = new Blade();
+        b.id = randomId();
+        b.rarity = rarity;
+        b.hp = RARITY_HP[rarity];
+        state.blades.set(b.id, b);
+        attachBladeToPlayer(state, p, b);
+      }
+      return 0;
+    }
     const durationMs = powerUpDurationMs(pu.type as PowerUpType, rarity, p.powerUpLevels[pu.type] ?? 0);
     const now = Date.now();
     // On étend toujours : si on ramasse un SPEED alors qu'on a déjà SPEED,
@@ -167,19 +197,17 @@ export class PowerUpSystem {
           if (b.ownerId === p.id) b.hp = RARITY_HP[b.rarity as BladeRarity];
         });
         break;
-      case PowerUpType.Blades: {
-        // Instant : attache N lames de la rareté du power-up.
-        const n = POWERUP_BLADES_COUNT[rarity];
-        for (let i = 0; i < n; i++) {
-          const b = new Blade();
-          b.id = randomId();
-          b.rarity = rarity;
-          b.hp = RARITY_HP[rarity];
-          state.blades.set(b.id, b);
-          attachBladeToPlayer(state, p, b);
-        }
-        break;
-      }
     }
+    return durationMs;
   }
+}
+
+// Masque des effets à durée actifs à `now` (cf. Player.activeEffects).
+export function activeEffectMask(p: Player, now: number): number {
+  let mask = 0;
+  if (p.speedUntil > now) mask |= powerUpBit(PowerUpType.Speed);
+  if (p.spinUntil > now) mask |= powerUpBit(PowerUpType.Spin);
+  if (p.magnetUntil > now) mask |= powerUpBit(PowerUpType.Magnet);
+  if (p.shieldUntil > now) mask |= powerUpBit(PowerUpType.Shield);
+  return mask;
 }

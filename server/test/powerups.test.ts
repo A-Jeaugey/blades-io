@@ -51,7 +51,8 @@ test("power-ups : aucun effet ne dure plus de 25 s, un second ramassage ne cumul
   for (const type of [PowerUpType.Speed, PowerUpType.Spin, PowerUpType.Magnet]) {
     pickUp(state, sys, type, BladeRarity.Epic);
   }
-  assert.equal(p.speedUntil, clock.now + 18_000);
+  // Speed a sa durée, plus courte (retour de jeu du 2026-10-12).
+  assert.equal(p.speedUntil, clock.now + 6_500);
   assert.equal(p.spinUntil, clock.now + 18_000);
   assert.equal(p.magnetUntil, clock.now + 18_000);
 });

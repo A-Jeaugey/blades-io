@@ -431,8 +431,8 @@ export const RARITY_HP: Record<BladeRarity, number> = {
 // Durée proportionnelle à la rareté ; BLADES est instant (+X lames).
 export enum PowerUpType {
   Speed = 0,    // +mouvement
-  Spin = 1,     // +vitesse rotation orbites
-  Magnet = 2,   // +rayon d'aimant sur lames au sol
+  Spin = 1,     // +vitesse rotation orbites, ×1,5 dégâts des lames en orbite
+  Magnet = 2,   // rayon d'aimant et attraction des lames au sol
   Shield = 3,   // lames en orbite regen leurs HP et deviennent temporairement "blindées"
   Blades = 4,   // instant : +N lames Common attachées
 }
@@ -466,10 +466,48 @@ export const POWERUP_DURATION: Record<BladeRarity, number> = {
   [BladeRarity.Legendary]: 25,
 };
 
+// Speed (retour de jeu du 2026-10-12 : « on voit presque pas la diff ») :
+// une vraie accélération, mais courte. À ×1,35 pendant 8 à 25 s, l'effet se
+// confondait avec la marche ; à ×1,6 il se voit au premier pas, et la durée
+// propre au type (4 à 8 s, allongée par les améliorations) le garde pour un
+// sprint, une fuite ou un engagement, pas pour une partie entière.
+export const POWERUP_SPEED_DURATION: Record<BladeRarity, number> = {
+  [BladeRarity.Common]: 4,
+  [BladeRarity.Rare]: 5,
+  [BladeRarity.Epic]: 6.5,
+  [BladeRarity.Legendary]: 8,
+};
+
 // Multiplicateurs d'effets (constants, ne dépendent pas de la rareté).
-export const POWERUP_SPEED_MULT = 1.35;     // +35 % vitesse
+export const POWERUP_SPEED_MULT = 1.6;      // +60 % vitesse
+// Speed et boost se multiplient (le boost ajoute toujours quelque chose,
+// sinon on brûlerait des lames pour rien), plafonnés à ce multiple de
+// PLAYER_SPEED : 1,6 × 1,7 = 2,72 donnerait 30 u/s, 80 % de la vitesse d'un
+// lancer (THROW_PROJECTILE_SPEED, 38 u/s) : une cible qui fuit tout droit
+// ne serait plus rattrapable à portée, et l'interception visée par les bots
+// convergerait mal. 2,3 est l'enveloppe déjà jouée (1,35 × 1,7 = 2,295) :
+// 25,3 u/s au plus, un pas de 0,42 u par tick, sous le rayon du corps
+// (PLAYER_BODY_RADIUS) ; boost sous Speed : +44 %. Dans stepMovement, donc
+// pareil pour la prédiction du client.
+export const POWERUP_SPEED_BOOST_CAP = 2.3;
 export const POWERUP_SPIN_MULT = 1.6;       // +60 % vitesse de rotation
-export const POWERUP_MAGNET_MULT = 2.0;     // x2 rayon d'aimant
+// Spin (même retour : « la rotation elle sert à quoi en vrai ? ») : une
+// orbite plus rapide ne donnait aucun avantage net, les clashs étant
+// symétriques. Contrepartie offensive du Bouclier : tant qu'elle est
+// active, les lames en orbite infligent ×1,5 dégâts (arrondi au supérieur)
+// aux lames adverses en clash et aux caisses. Une Commune casse alors une
+// Rare d'un coup, une Épique une Légendaire en deux. Les lancers n'en
+// profitent pas (le Bouclier ne les réduit pas non plus).
+export const POWERUP_SPIN_DAMAGE_MULT = 1.5;
+// Aimant (même retour : « il sert à rien ») : rayon ×2 à force égale,
+// l'effet passait inaperçu (une lame à 8 u venait à 5 u/s, moins vite qu'un
+// joueur qui marche). Rayon ×3,5 (19 u), et pendant l'effet une attraction
+// propre : POWERUP_MAGNET_PULL u/s au contact, au moins
+// POWERUP_MAGNET_PULL_EDGE de cette vitesse au bord du rayon (12 u/s : une
+// lame rattrape un joueur qui marche, 11 u/s).
+export const POWERUP_MAGNET_MULT = 3.5;     // ×3,5 rayon d'aimant
+export const POWERUP_MAGNET_PULL = 30;
+export const POWERUP_MAGNET_PULL_EDGE = 0.4;
 export const POWERUP_SHIELD_DMG_REDUC = 0.5; // dégâts reçus par les lames divisés par 2
 
 // BLADES : lames de la rareté du power-up, ajoutées d'un coup (tâche 4.3).

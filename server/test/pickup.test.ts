@@ -107,13 +107,13 @@ test("aimant : attraction vers le joueur le plus proche dans un rayon de 5,5 u",
   assert.equal(outside.x, -7);
 });
 
-test("aimant : rayon doublé par le power-up, sans effet sur une lame verrouillée", () => {
+test("aimant : rayon agrandi par le power-up, sans effet sur une lame verrouillée", () => {
   const p = addPlayer(state, { x: 0, y: -20 });
   p.magnetUntil = clock.now + 1000;
-  const boosted = addGroundBlade(state, { x: -7, y: -20 });
+  const boosted = addGroundBlade(state, { x: -18, y: -20 });
   const locked = addGroundBlade(state, { x: 3, y: -20, pickupLockUntil: clock.now + 1000 });
   updateBladePositions(DT, 0, state, new OrbitPositionCache());
-  assert.ok(boosted.x > -7);
+  assert.ok(boosted.x > -18);
   assert.equal(locked.x, 3);
 });
 

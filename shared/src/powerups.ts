@@ -1,4 +1,4 @@
-import { BladeRarity, POWERUP_DURATION, PowerUpType } from "./constants";
+import { BladeRarity, POWERUP_DURATION, POWERUP_SPEED_DURATION, PowerUpType } from "./constants";
 
 // Améliorations des power-ups (QUÊTES › AMÉLIORATIONS, retour de jeu du
 // 2026-10-12) : chaque niveau, payé en trophées, allonge les effets à durée
@@ -22,8 +22,11 @@ export function clampUpgradeLevel(level: number): number {
   return Math.max(0, Math.min(POWERUP_UPGRADE_MAX_LEVEL, Math.floor(level)));
 }
 
-// Durée de base d'un effet, avant amélioration (s).
-export function basePowerUpDuration(_type: PowerUpType, rarity: BladeRarity): number {
+// Durée de base d'un effet, avant amélioration (s). Speed a la sienne,
+// courte (cf. POWERUP_SPEED_DURATION) : une forte accélération sur 25 s
+// déciderait seule des poursuites.
+export function basePowerUpDuration(type: PowerUpType, rarity: BladeRarity): number {
+  if (type === PowerUpType.Speed) return POWERUP_SPEED_DURATION[rarity];
   return POWERUP_DURATION[rarity];
 }
 
@@ -33,4 +36,13 @@ export function basePowerUpDuration(_type: PowerUpType, rarity: BladeRarity): nu
 export function powerUpDurationMs(type: PowerUpType, rarity: BladeRarity, level = 0): number {
   const mult = 1 + clampUpgradeLevel(level) * POWERUP_UPGRADE_STEP;
   return Math.round(basePowerUpDuration(type, rarity) * 1000 * mult);
+}
+
+// Effets actifs d'un joueur, visibles de tous (Player.activeEffects) : un
+// bit par type. Les *Until restent réservés au joueur lui-même (vue
+// OWNER_VIEW_TAG) ; ce masque, qui ne change qu'au début et à la fin d'un
+// effet, suffit aux autres clients pour le montrer (lignes de vitesse sous
+// Speed).
+export function powerUpBit(type: PowerUpType): number {
+  return 1 << type;
 }
