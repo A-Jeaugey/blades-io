@@ -3,7 +3,7 @@
 // règles de chaque mode (apparition, score, fin de partie) vivent côté
 // serveur, dans server/src/modes/.
 
-export type GameModeId = "ffa" | "rounds" | "tdm" | "lts" | "ctf";
+export type GameModeId = "ffa" | "rounds" | "tdm" | "lts" | "ctf" | "ranked";
 
 export interface GameModeInfo {
   id: GameModeId;
@@ -43,6 +43,11 @@ export const GAME_MODES: readonly GameModeInfo[] = [
   { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: false, upgrades: true },
   { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false, mapEvents: false, adaptiveArena: false, upgrades: true },
   { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true },
+  // Classé (retours du 2026-10-12) : des manches, qui rapportent des points
+  // de rang (shared/src/ranked.ts). Partie rapide seulement, dans sa file :
+  // rien ne compte en salon privé. Sans améliorations, tout le monde à
+  // égalité.
+  { id: "ranked", quickPlay: true, privateRoom: false, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: false },
 ];
 
 export function modeShrinks(id: string): boolean {
@@ -63,6 +68,10 @@ export function modeAllowsUpgrades(id: string): boolean {
 
 export function modeRespawns(id: string): boolean {
   return !GAME_MODES.some((m) => m.id === id && !m.respawns);
+}
+
+export function isRankedMode(id: string): boolean {
+  return id === "ranked";
 }
 
 export function isTeamMode(id: string): boolean {

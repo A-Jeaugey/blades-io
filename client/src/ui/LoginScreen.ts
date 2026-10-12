@@ -7,6 +7,7 @@ import { I18nKey, gameModeHint, gameModeName, onLangChange, t } from "../i18n";
 import { levelText } from "./level";
 import { LeaderboardView } from "./LeaderboardView";
 import { joinIdFromUrl } from "./share";
+import { RankedLobby } from "./ranked";
 
 // Identifiant de build (date + commit) injecté par Vite (cf. vite.config.ts).
 declare const __BUILD_ID__: string;
@@ -87,6 +88,8 @@ export class LoginScreen {
   private shownXp: number | null = null;
   // Classements à onglets du rail droit (tâche 5.4).
   private board: LeaderboardView | null = null;
+  // Rang du joueur connecté (mode classé), sous ses trophées.
+  private ranked: RankedLobby | null = null;
   // Invitation dans l'arène d'un ami (?join=ID, tâche 5.5), jusqu'à la
   // première partie.
   private inviteRoomId: string | null = null;
@@ -240,6 +243,8 @@ export class LoginScreen {
     const boardRoot = document.getElementById("lobby-board");
     this.board = boardRoot ? new LeaderboardView(boardRoot) : null;
     void this.board?.load();
+    this.ranked = new RankedLobby();
+    void this.ranked.refresh();
     this.refreshWallet();
     this.renderGameModes();
     onLangChange(() => {
@@ -567,6 +572,7 @@ export class LoginScreen {
     const offered = this.offeredGameModes();
     field.classList.toggle("hidden", offered.length < 2);
     const selected = this.selectedGameMode();
+    this.ranked?.setGameMode(selected);
     row.replaceChildren(...offered.map((id) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -611,6 +617,7 @@ export class LoginScreen {
     // Re-fetch à chaque retour au menu : le joueur vient de finir une partie,
     // son score peut être dans le top maintenant et son wallet a augmenté.
     void this.board?.load();
+    void this.ranked?.refresh();
     this.refreshWallet();
   }
   hide(): void {

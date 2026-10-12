@@ -237,6 +237,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       get baseRadius() { return room.baseRadius; },
       endMatch: (intermissionMs) => this.endMatch(intermissionMs),
       emit: (type, payload) => this.emit(type, payload),
+      sendTo: (playerId, type, payload) => this.emit(type, payload, { to: [playerId] }),
     };
     // Arène à la taille de sa population : petite à la création, elle
     // s'agrandit à l'arrivée des joueurs (ArenaSizer).
@@ -1007,6 +1008,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     });
     const ev: MatchEndEvent = { standings, nextAt: this.state.phaseEndsAt, ...this.mode.matchResult?.(standings) };
     this.emit("matchEnd", ev);
+    this.mode.onMatchEnd?.(standings, now);
   }
 
   // Classement de tous les joueurs selon le mode, du premier au dernier,

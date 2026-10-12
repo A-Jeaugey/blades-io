@@ -72,6 +72,7 @@ function withMode(r: TestRoom): KillRaceMode {
     baseRadius: MAP_RADIUS,
     endMatch: (ms) => r.room.endMatch(ms),
     emit: (type, payload) => r.room.emit(type, payload),
+    sendTo: (playerId, type, payload) => r.room.emit(type, payload, { to: [playerId] }),
   };
   const mode = new KillRaceMode(host);
   r.room.mode = mode;

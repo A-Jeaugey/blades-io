@@ -1,4 +1,5 @@
 import {
+  GameModeId,
   ROUND_DURATION_MS,
   ROUND_INTERMISSION_MS,
   ROUND_PODIUM_BONUS,
@@ -21,12 +22,12 @@ interface RoundRecord {
 // partie de la room, ModeHost.endMatch). On réapparaît pendant toute la
 // manche ; le classement additionne le score de chaque vie de la manche,
 // gardé à la mort, et celui de la vie en cours : mourir coûte l'élan, pas
-// les points déjà faits.
+// les points déjà faits. Le classé (modes/ranked.ts) en reprend les règles.
 export class RoundsMode implements GameMode {
-  readonly id = "rounds" as const;
+  readonly id: GameModeId = "rounds";
   private records = new Map<string, RoundRecord>();
 
-  constructor(private readonly host: ModeHost) {}
+  constructor(protected readonly host: ModeHost) {}
 
   private recordOf(id: string): RoundRecord {
     let r = this.records.get(id);

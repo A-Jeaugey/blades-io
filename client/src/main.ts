@@ -57,6 +57,7 @@ import {
   teamBase,
   tierClashShake,
 } from "@bladeio/shared";
+import { RANKED_LEAVE_PR, RANKED_MIN_PRESENCE_MS, RankedResultEvent, isRankedMode } from "@bladeio/shared";
 import { Callbacks } from "@colyseus/sdk";
 import { Connection, JoinOptions, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
 import { ServerClock } from "./net/ServerClock";
@@ -104,7 +105,7 @@ import { SoundManager } from "./audio/SoundManager";
 import { detectPreset, getPresetConfig, hasChosenPreset, nextLowerPreset, QualityConfig, saveAutoDowngrade } from "./quality";
 import { getActiveTheme } from "./themes";
 import { I18nKey, formatNumber, t } from "./i18n";
-import { showAlert } from "./ui/Dialog";
+import { showAlert, showConfirm } from "./ui/Dialog";
 import { RoomRef, ShareResult, inviteUrl, share } from "./ui/share";
 import { BLADE_STYLES, KILL_FX_LOOKS, lookOf } from "./cosmetics/looks";
 import { getLoadout } from "./cosmetics/loadout";
@@ -389,6 +390,9 @@ export class Game {
   private killFeed = new KillFeed();
   // Partie à fin (manches, tâche 7.1) : minuterie et podium.
   private match = new MatchUi(() => void this.returnToMenu());
+  // Classé : début de la manche en cours pour ce joueur (arrivée, ou début
+  // de la manche), heure locale. Sert à prévenir avant un départ pénalisé.
+  private rankedSince = 0;
   // Spectateur (dernière équipe en vie, tâche 7.2) : éliminé ou arrivé en
   // cours de manche, on suit un coéquipier jusqu'à la manche suivante. Le
   // serveur place notre joueur hors jeu sur lui : la caméra suit notre
@@ -581,10 +585,10 @@ export class Game {
     this.death = new DeathScreen(
       () => this.respawn(),
       () => this.spectate(),
-      () => this.returnToMenu(),
+      () => void this.leaveByChoice(),
       () => void this.shareScore(),
     );
-    document.getElementById("spectate-menu")?.addEventListener("click", () => void this.returnToMenu());
+    document.getElementById("spectate-menu")?.addEventListener("click", () => void this.leaveByChoice());
     // Caméra sur le tueur : un clic sur le jeu ou Espace, Entrée, Échap
     // passent directement à la carte (Échap la ferme ensuite, cf.
     // DeathScreen). L'écouteur de la carte, sur document, passe avant
@@ -641,7 +645,7 @@ export class Game {
       this.decor.setFlashIntensity(s.flashes);
     });
     this.settings.onQuit(() => {
-      this.returnToMenu();
+      void this.leaveByChoice();
     });
     this.settings.onInvite(() => void this.invite((r) => this.settings.inviteFeedback(r)));
     this.hud.onInvite(() => void this.invite((r) => { if (r === "copied") this.hud.flashCopied(); }));
@@ -757,6 +761,7 @@ export class Game {
       return;
     }
     this.myId = this.room.sessionId;
+    this.rankedSince = Date.now();
     this.chat.setLocalPlayerId(this.myId);
     // Si on a un code (create ou join), on met à jour l'URL pour que le lien
     // soit partageable.
@@ -825,6 +830,8 @@ export class Game {
     // seul : tout le monde réapparaît.
     this.match.reset();
     room.onMessage("matchEnd", (ev: MatchEndEvent) => this.onMatchEnd(ev));
+    // Classé : points de rang de la manche, après le podium.
+    room.onMessage("rankedResult", (ev: RankedResultEvent) => this.match.showRanked(ev));
     // Capture du drapeau : prises, chutes, retours, captures, au tick.
     room.onMessage("flag", (ev: FlagEvent & { tick?: number }) => this.atTick(ev.tick, () => this.onFlagEvent(ev), false));
     callbacks.listen(state, "phase", (phase, previous: number | undefined) => {
@@ -1720,6 +1727,7 @@ export class Game {
     this.setSpectating(false);
     this.resetPrediction();
     this.match.showPodium(ev, this.myId, this.myTeam());
+    if (isRankedMode(this.room?.state?.mode ?? "")) this.match.rankedPending();
     this.sound.challengeDone();
   }
 
@@ -1846,6 +1854,7 @@ export class Game {
   // Partie suivante : le serveur a remis tout le monde en jeu, avec les
   // lames de départ ; comme une réapparition, sans la demander.
   private onMatchStart(): void {
+    this.rankedSince = Date.now();
     this.match.hidePodium();
     this.death.hide();
     this.endKillCam();
@@ -1886,6 +1895,17 @@ export class Game {
       text.dataset.i18n = key;
       text.textContent = t(key);
     }
+  }
+
+  // Retour au menu demandé par le joueur. En pleine manche classée, après
+  // sa première minute, partir coûte des points de rang (le serveur le
+  // compte comme une défaite) : il confirme d'abord.
+  private async leaveByChoice(): Promise<void> {
+    const state = this.room?.state;
+    const costly = !!state && isRankedMode(state.mode ?? "") && state.phase === MatchPhase.Playing
+      && auth.getAccessToken() !== null && Date.now() - this.rankedSince >= RANKED_MIN_PRESENCE_MS;
+    if (costly && !(await showConfirm(t("ranked.leaveConfirm", { n: Math.abs(RANKED_LEAVE_PR) }), t("ranked.leave"), t("ranked.stay")))) return;
+    await this.returnToMenu();
   }
 
   private async returnToMenu(): Promise<void> {
