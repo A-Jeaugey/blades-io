@@ -40,9 +40,12 @@ import {
   RoomSummary,
   viewRadiusLimit,
   ProjectileImpactEvent,
-  POWERUP_DURATION,
+  PICKUP_MAGNET_RADIUS,
+  POWERUP_MAGNET_MULT,
   PowerUpPickupEvent,
   PowerUpType,
+  powerUpBit,
+  powerUpDurationMs,
   CTF_BASE_RADIUS,
   FlagEvent,
   MapEventKind,
@@ -77,6 +80,7 @@ import { FlagRenderer, FlagSnapshot } from "./entities/FlagView";
 import { MapEventSnapshot, MapEventView } from "./scene/MapEventView";
 import { ParticlePool } from "./fx/Particles";
 import { CombatFx } from "./fx/CombatFx";
+import { MagnetRing } from "./fx/MagnetRing";
 import { fxIntensity } from "./fx/flash";
 import { Haptics } from "./fx/Haptics";
 import { AmbientWisps } from "./scene/AmbientWisps";
@@ -97,6 +101,8 @@ import { ProfilePanel } from "./ui/ProfilePanel";
 import { challengeById, challengeText } from "./ui/challenges";
 import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
+import { PowerUpToast } from "./ui/PowerUpToast";
+import { powerUpTip, powerUpToast } from "./ui/powerUpInfo";
 import { SettingsPanel, shakeIntensity } from "./ui/Settings";
 import { ChatPanel } from "./ui/ChatPanel";
 import { NAMETAG_ANCHOR_Y, NametagOverlay } from "./scene/NametagOverlay";
@@ -131,6 +137,10 @@ const WALL_ZAP_MARGIN = WALL_KILL_THICKNESS + 0.5;
 const KILLCAM_MS = 2500;
 const WALL_DEATH_MS = 1200;
 const KILLCAM_PAN_TAU = 0.25;
+// Effets visibles de tous (Player.activeEffects) : Speed, pour les lignes
+// de vitesse des autres joueurs. Rayon de l'aimant renforcé, dessiné au sol.
+const SPEED_BIT = powerUpBit(PowerUpType.Speed);
+const MAGNET_RING_RADIUS = PICKUP_MAGNET_RADIUS * POWERUP_MAGNET_MULT;
 
 type OrbitInfo = { ownerId: string; ring: number; slot: number; inRing: number };
 interface ClashCheck {
@@ -233,6 +243,10 @@ export class Game {
   // la barre du badge dans le HUD (sinon on ne sait pas combien il restait
   // au départ).
   private effectDurations: Map<string, number> = new Map();
+  // Ramassage d'un power-up : ce qu'il fait, sous les badges d'effet.
+  private readonly powerUpToast = new PowerUpToast();
+  // Zone de l'aimant autour du joueur local, tant qu'il est actif.
+  private magnetRing!: MagnetRing;
   private particles!: ParticlePool;
   // Effets de combat (tâche 4.9) : ondes de choc, éclats de lame, colonnes
   // de lumière, traînées des lames, lignes de vitesse.
@@ -467,6 +481,10 @@ export class Game {
     this.flagsView = new FlagRenderer(this.sceneStack.scene, this.quality);
     this.mapEventView = new MapEventView(this.quality);
     this.sceneStack.scene.add(this.mapEventView.root);
+    // Dans la scène dès le lobby (cachée) : son shader est compilé au
+    // préchauffage, pas au premier Aimant.
+    this.magnetRing = new MagnetRing(this.quality, this.theme.palette.powerUpColor[PowerUpType.Magnet]);
+    this.sceneStack.scene.add(this.magnetRing.root);
     this.particles = new ParticlePool(this.quality.maxParticles, this.quality.particleScale);
     this.combatFx = new CombatFx(this.quality);
     this.blades.setTrailSink(this.combatFx.trails);
@@ -633,6 +651,7 @@ export class Game {
       this.camera.shake.intensity = shakeIntensity(s);
       this.blades.setFlashIntensity(s.flashes);
       this.mapEventView.setFlashIntensity(s.flashes);
+      this.magnetRing.setFlashIntensity(s.flashes);
       this.particles.setFlashIntensity(s.flashes);
       this.combatFx.setFlashIntensity(s.flashes);
       this.flashK = s.flashes;
@@ -1042,12 +1061,23 @@ export class Game {
       // Le son est plein volume si c'est moi qui ramasse, atténué sinon.
       const g = msg.playerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y);
       this.sound.powerUp(msg.type as PowerUpType, msg.rarity as BladeRarity, g);
-      // Pour le joueur local, on retient la durée pour afficher la barre.
+      // Pour le joueur local, on retient la durée pour afficher la barre, et
+      // on dit ce que fait l'effet. Durée envoyée par le serveur, qui connaît
+      // le niveau d'amélioration ; à défaut (serveur d'avant), celle de base.
       if (msg.playerId === this.myId) {
         this.scorePop(msg.x, msg.y, SCORE_POWERUP, "small");
-        const durMs = POWERUP_DURATION[msg.rarity as BladeRarity] * 1000;
-        const key = powerUpEffectKey(msg.type as PowerUpType);
+        const type = msg.type as PowerUpType;
+        const rarity = msg.rarity as BladeRarity;
+        const durMs = msg.durationMs ?? (type === PowerUpType.Blades ? 0 : powerUpDurationMs(type, rarity));
+        const key = powerUpEffectKey(type);
         if (key) this.effectDurations.set(key, Math.max(durMs, this.effectDurations.get(key) ?? 0));
+        const toast = powerUpToast(type, rarity, durMs);
+        this.powerUpToast.show(toast.title, toast.effect, "#" + color.toString(16).padStart(6, "0"));
+        // Speed : rafale de lignes de vitesse dans le sens de la course.
+        const me = this.players.get(this.myId);
+        if (type === PowerUpType.Speed && me) {
+          this.combatFx.speedLines.burst(me.renderX, me.renderY, me.moveX, me.moveZ, Math.max(me.moveSpeed, 15), color, 14);
+        }
         this.camera.shake.add(0.08);
       }
     });
@@ -1902,6 +1932,7 @@ export class Game {
     this.hud.hide();
     this.hud.setRoomCode("");
     this.hud.clearEffects();
+    this.powerUpToast.hide();
     this.chat.hide();
     this.nametags.clear();
     this.combatFeedback.clear();
@@ -2227,6 +2258,23 @@ export class Game {
     }
   }
 
+  // Zone de l'aimant autour du joueur local (vivant, pas spectateur), tant
+  // que son effet dure.
+  private updateMagnetRing(localView: PlayerView | undefined, serverNowMs: number, dt: number): void {
+    const me = this.room?.state?.players?.get(this.myId);
+    const remaining = (me?.magnetUntil ?? 0) - serverNowMs;
+    const active = !!localView && !!me?.alive && !this.dead && !this.spectating && remaining > 0;
+    this.magnetRing.update(
+      active,
+      localView?.renderX ?? 0,
+      localView?.renderY ?? 0,
+      MAGNET_RING_RADIUS,
+      remaining,
+      dt,
+      this.elapsed * 0.001,
+    );
+  }
+
   private updateHud(): void {
     if (!this.room || !this.room.state?.players) return;
     const me = this.room.state.players.get(this.myId);
@@ -2242,7 +2290,7 @@ export class Game {
     // les badges HUD avec leur temps restant. Durée base conservée dans
     // effectDurations pour normaliser la barre.
     const dnow = this.serverNow();
-    const updateFx = (key: I18nKey, color: number, until: number) => {
+    const updateFx = (key: I18nKey, color: number, until: number, tip = "") => {
       if (until <= dnow) {
         this.hud.updateEffect(key, "", "#" + color.toString(16).padStart(6, "0"), 0, 1, dnow);
         this.effectDurations.delete(key);
@@ -2259,13 +2307,15 @@ export class Game {
           until,
           dur,
           dnow,
+          tip,
         );
       }
     };
-    updateFx("hud.fxSpeed", this.theme.palette.powerUpColor[PowerUpType.Speed], me.speedUntil ?? 0);
-    updateFx("hud.fxSpin", this.theme.palette.powerUpColor[PowerUpType.Spin], me.spinUntil ?? 0);
-    updateFx("hud.fxMagnet", this.theme.palette.powerUpColor[PowerUpType.Magnet], me.magnetUntil ?? 0);
-    updateFx("hud.fxShield", this.theme.palette.powerUpColor[PowerUpType.Shield], me.shieldUntil ?? 0);
+    const pu = this.theme.palette.powerUpColor;
+    updateFx("hud.fxSpeed", pu[PowerUpType.Speed], me.speedUntil ?? 0, powerUpTip(PowerUpType.Speed));
+    updateFx("hud.fxSpin", pu[PowerUpType.Spin], me.spinUntil ?? 0, powerUpTip(PowerUpType.Spin));
+    updateFx("hud.fxMagnet", pu[PowerUpType.Magnet], me.magnetUntil ?? 0, powerUpTip(PowerUpType.Magnet));
+    updateFx("hud.fxShield", pu[PowerUpType.Shield], me.shieldUntil ?? 0, powerUpTip(PowerUpType.Shield));
     // Zone dorée (tâche 4.4) : points ×2 tant qu'on y est.
     const ev = this.mapEventSnap;
     const inGolden = ev.kind === MapEventKind.Golden && me.alive && dnow >= ev.startsAt && dnow < ev.endsAt &&
@@ -2528,10 +2578,17 @@ export class Game {
         if (v.trail.visible !== trailShown) v.trail.visible = trailShown;
         // Lignes de vitesse (tâche 4.9) : le joueur local d'après son
         // dernier input, sans attendre le serveur ; les autres d'après l'état.
+        // Sous Speed aussi, à la couleur du power-up : le joueur local d'après
+        // son échéance, les autres d'après leurs effets visibles de tous.
         const boosting = isLocal ? this.localBoosting && !this.dead : !!ps?.boost;
-        if (boosting && shouldBeVisible && !dissolving && v.moveSpeed > 4) {
+        const speeding = isLocal
+          ? !this.dead && (ps?.speedUntil ?? 0) > serverNowMs
+          : ((ps?.activeEffects ?? 0) & SPEED_BIT) !== 0;
+        if ((boosting || speeding) && shouldBeVisible && !dissolving && v.moveSpeed > 4) {
           const palette = this.theme.palette;
-          const color = isLocal || ally ? palette.playerLocal.accent : palette.playerRemote.accent;
+          const color = speeding
+            ? palette.powerUpColor[PowerUpType.Speed]
+            : isLocal || ally ? palette.playerLocal.accent : palette.playerRemote.accent;
           this.combatFx.speedLines.track(id, v.renderX, v.renderY, v.moveX, v.moveZ, v.moveSpeed, color, isLocal, dt);
         }
       }
@@ -2541,6 +2598,7 @@ export class Game {
         this.disposePlayerView(c);
         this.corpses.splice(i, 1);
       }
+      this.updateMagnetRing(localView, serverNowMs, dt);
       this.blades.update(now, RENDER_DELAY, this.elapsed * 0.001, this.playerPositions);
       if (this.debugHitboxes) {
         // Étincelle vs milieu des deux lames là où elles sont dessinées à

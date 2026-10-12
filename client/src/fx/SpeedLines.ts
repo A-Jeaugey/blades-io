@@ -2,9 +2,9 @@ import * as THREE from "three";
 import { FxBudget } from "../quality";
 import { fxIntensity } from "./flash";
 
-// Lignes de vitesse au boost (tâche 4.9) : de fins traits parallèles au
-// déplacement apparaissent devant et autour du joueur qui boost, puis
-// filent vers l'arrière et s'effacent. Dans le monde et non sur l'écran :
+// Lignes de vitesse au boost (tâche 4.9) et sous le power-up Speed : de
+// fins traits parallèles au déplacement apparaissent devant et autour du
+// joueur rapide, puis filent vers l'arrière et s'effacent. Dans le monde et non sur l'écran :
 // pas de passe plein écran (coûteuse sans post-FX), et on voit aussi qui
 // d'autre boost (haute et moyenne qualité), ce qui aide à lire une menace
 // qui fond sur soi. Traits orientés face à la caméra autour de leur axe :
@@ -123,8 +123,9 @@ export class SpeedLines {
     this.object.visible = false;
   }
 
-  // Joueur qui boost à cette frame : position, direction du déplacement
-  // (unité), vitesse (u/s), couleur. local : le joueur de ce client.
+  // Joueur rapide à cette frame (boost ou Speed) : position, direction du
+  // déplacement (unité), vitesse (u/s), couleur. local : le joueur de ce
+  // client.
   track(key: string, x: number, z: number, dirX: number, dirZ: number, speed: number, color: number, local: boolean, dt: number): void {
     const rate = local ? this.localRate : this.remoteRate;
     if (rate <= 0) return;
@@ -136,12 +137,23 @@ export class SpeedLines {
     e.seen = true;
     e.carry += rate * dt;
     if (e.carry < 1) return;
+    const n = Math.floor(e.carry);
+    e.carry -= n;
+    this.emit(x, z, dirX, dirZ, speed, color, n);
+  }
+
+  // Rafale d'un coup (ramassage du power-up Speed par le joueur local) :
+  // count lignes, sans attendre l'émission continue.
+  burst(x: number, z: number, dirX: number, dirZ: number, speed: number, color: number, count: number): void {
+    this.emit(x, z, dirX, dirZ, speed, color, Math.min(count, this.max));
+  }
+
+  private emit(x: number, z: number, dirX: number, dirZ: number, speed: number, color: number, count: number): void {
     this.color.setHex(color);
     // Côté et avant du joueur (perpendiculaire à la direction, dans le sol).
     const sideX = -dirZ;
     const sideZ = dirX;
-    while (e.carry >= 1) {
-      e.carry -= 1;
+    for (let i = 0; i < count; i++) {
       let l: Line;
       if (this.lines.length >= this.max) l = this.lines.shift()!;
       else l = this.pool.pop() ?? { x: 0, y: 0, z: 0, dx: 0, dz: 0, len: 0, speed: 0, age: 0, life: 1, r: 0, g: 0, b: 0 };

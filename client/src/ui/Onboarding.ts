@@ -1,4 +1,7 @@
+import { PowerUpType } from "@bladeio/shared";
 import { I18nKey, t } from "../i18n";
+import { getActiveTheme } from "../themes";
+import { powerUpIconSvg } from "./powerUpInfo";
 
 // Onboarding (tâche 3.1) : carte des contrôles à la première entrée en jeu,
 // indications contextuelles uniques pendant les premières parties, page
@@ -84,6 +87,15 @@ export class Onboarding {
     this.howto.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", () => this.closeHowTo()));
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && !this.howto.classList.contains("hidden")) this.closeHowTo();
+    });
+    // Icônes des power-ups de la page : leurs formes en jeu, à la couleur du
+    // thème actif (la forme seule les distingue, la couleur suit le thème).
+    const colors = getActiveTheme().palette.powerUpColor;
+    this.howto.querySelectorAll<HTMLElement>(".pu-icon[data-pu]").forEach((el) => {
+      const type = Number(el.dataset.pu) as PowerUpType;
+      const color = colors[type];
+      if (color === undefined) return;
+      el.innerHTML = powerUpIconSvg(type, "#" + color.toString(16).padStart(6, "0"));
     });
     const reset = document.getElementById("howto-reset");
     reset?.addEventListener("click", () => {
