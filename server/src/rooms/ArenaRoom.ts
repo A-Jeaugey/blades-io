@@ -11,6 +11,7 @@ import {
   CrateDestroyedEvent,
   KillCause,
   PlayerKilledEvent,
+  PowerUpPickupEvent,
   DEATH_DROP_MAX_DIST,
   DEATH_DROP_MIN_DIST,
   DEATH_DROP_SPEED_MIN,
@@ -821,6 +822,9 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.tier = 0;
     p.hitlagUntil = 0;
     p.hitlagReadyAt = 0;
+    // Les effets ne survivent pas à la mort : un Bouclier légendaire pris
+    // juste avant restait actif après une réapparition rapide.
+    p.speedUntil = 0; p.spinUntil = 0; p.magnetUntil = 0; p.shieldUntil = 0;
     // Nouvelle horloge d'orbite ; la vitesse est calculée au premier tick.
     p.orbitPhase = 0;
     p.orbitTick = this.state.tick;
@@ -981,7 +985,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     resolveProjectileCollisions(this.state, throwCb, this.orbitCache, dt);
     this.spawning.update(dt, this.state, this.isPrivate);
     this.crates.update(dt, this.state, this.isPrivate);
-    this.powerups.update(dt, this.state, this.isPrivate, (player, pu) => this.handlePowerUpPickup(player, pu));
+    this.powerups.update(dt, this.state, this.isPrivate, (player, pu, durationMs) => this.handlePowerUpPickup(player, pu, durationMs));
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
     this.state.players.forEach((p) => { if (p.alive) updateScore(p); });
@@ -1183,16 +1187,18 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     };
   }
 
-  private handlePowerUpPickup(player: Player, pu: PowerUp): void {
+  private handlePowerUpPickup(player: Player, pu: PowerUp, durationMs: number): void {
     player.powerupsCollected++;
     updateScore(player);
-    this.emit("powerupPickup", {
+    const ev: PowerUpPickupEvent = {
       playerId: player.id,
       type: pu.type,
       rarity: pu.rarity,
       x: pu.x,
       y: pu.y,
-    }, { to: [player.id], players: [player.id] });
+      durationMs,
+    };
+    this.emit("powerupPickup", ev, { to: [player.id], players: [player.id] });
   }
 
   private handleCrateHit(crate: Crate, attacker: Player | null): void {

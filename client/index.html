@@ -93,6 +93,8 @@
             <span id="room-code">—</span>
           </div>
           <div id="effects"></div>
+          <!-- Ramassage d'un power-up : ce qu'il fait (cf. ui/PowerUpToast.ts). -->
+          <div id="powerup-toast" class="powerup-toast" role="status" aria-live="polite"></div>
         </div>
         <div id="joystick" class="hidden">
           <div id="joystick-base"><div id="joystick-thumb"></div></div>
@@ -404,13 +406,26 @@
                 <li data-i18n-html="howto.throw2">Boost makes you 70 % faster but burns 1 blade every 0.5 s, cheapest first. They drop right behind you: anyone can grab them, you included.</li>
               </ul>
             </section>
+            <!-- Power-ups : forme (icône dessinée par ui/Onboarding.ts, à la
+                 couleur du thème) et effet de chacun. -->
+            <section>
+              <h3 data-i18n="howto.powerups">Power-ups</h3>
+              <p class="howto-pu-intro" data-i18n="howto.pu.intro">Walk over them to grab them. The rarer (and bigger) a power-up, the longer it lasts; grabbing the same type again extends it, without stacking.</p>
+              <ul class="howto-pu">
+                <li><span class="pu-icon" data-pu="0"></span><span data-i18n-html="howto.pu.speed"><b>Speed</b> (double chevron): +60% speed, a short burst: 4 s (Common) to 8 s (Legendary). Boosting still adds to it, up to 2.3× your speed.</span></li>
+                <li><span class="pu-icon" data-pu="1"></span><span data-i18n-html="howto.pu.spin"><b>Spin</b> (circular arrow): your orbit spins 60% faster and your blades deal 1.5× damage to enemy blades and crates (a Common breaks a Rare in one hit). 8 to 25 s: the attacking twin of Shield.</span></li>
+                <li><span class="pu-icon" data-pu="2"></span><span data-i18n-html="howto.pu.magnet"><b>Magnet</b> (horseshoe): loose blades come to you from 3.5× farther (the ring on the ground) and much faster. 8 to 25 s.</span></li>
+                <li><span class="pu-icon" data-pu="3"></span><span data-i18n-html="howto.pu.shield"><b>Shield</b> (crest): repairs your blades and halves the damage they take in clashes. 8 to 25 s.</span></li>
+                <li><span class="pu-icon" data-pu="4"></span><span data-i18n-html="howto.pu.blades"><b>Blades</b> (shuriken): instantly adds blades of its rarity: 3 Common, 3 Rare, 2 Epic or 2 Legendary.</span></li>
+              </ul>
+            </section>
             <section>
               <h3 data-i18n="howto.arena">Arena</h3>
               <ul>
                 <li data-i18n-html="howto.arena1">The red edge kills instantly, outer blades first. A red glow and an alarm warn you. The arena grows with the number of players; when it drops, it slowly shrinks, announced 10 s ahead (dashes on the ground and on the minimap).</li>
                 <li data-i18n-html="howto.arena2">You spawn away from bigger players, near loose blades. For 10 s, bots leave you alone, then for 40 s only the easiest ones go after you, and only up close. This ends as soon as you throw or your blades hit someone. In your first game, bots can't kill you during those first 10 s, and only a throw or an elimination ends your protection.</li>
                 <li data-i18n-html="howto.arena3">Bushes hide you and your blades from other players.</li>
-                <li data-i18n-html="howto.arena4">Break crates for loot. Power-ups: Speed, Spin, Magnet, Shield, Blades.</li>
+                <li data-i18n-html="howto.arena4">Break crates for loot, with your orbit or by throwing at them.</li>
                 <li data-i18n-html="howto.arena5">When you die, your peak blade count of the last 15 s goes back to the ground, boost trail and throws included. Take someone down and the blades you lost against them in those 15 s come back to you.</li>
                 <li data-i18n-html="howto.arena6">The leader wears a crown with a bounty: take them down for bonus trophies. Killing a player with at least twice your blades pays double.</li>
                 <li data-i18n-html="howto.arena7">Bots are marked BOT in the leaderboard. Some are easy, some hard; in your first game, they go easy on you.</li>

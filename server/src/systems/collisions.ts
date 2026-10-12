@@ -9,6 +9,7 @@ import {
   PLAYER_BODY_COLLISION,
   PLAYER_BODY_RADIUS,
   POWERUP_SHIELD_DMG_REDUC,
+  POWERUP_SPIN_DAMAGE_MULT,
   RARITY_DAMAGE,
   TIER_COUNT,
   bladeBodyReach,
@@ -63,6 +64,12 @@ const HITLAG_COOLDOWN = HITLAG_COOLDOWN_MS;
 const KNOCKBACK_MAX = KNOCKBACK_MAX_SPEED;
 const SHIELD_REDUC = POWERUP_SHIELD_DMG_REDUC;
 const DAMAGE = RARITY_DAMAGE;
+// Dégâts d'une lame en orbite sous Spin (POWERUP_SPIN_DAMAGE_MULT), arrondis
+// au supérieur : 2, 3, 6, 12. Le Bouclier d'en face s'applique ensuite.
+const SPIN_DAMAGE: Record<number, number> = {};
+for (const r of Object.keys(RARITY_DAMAGE)) {
+  SPIN_DAMAGE[Number(r)] = Math.ceil(RARITY_DAMAGE[Number(r) as BladeRarity] * POWERUP_SPIN_DAMAGE_MULT);
+}
 // Lame dessinée par palier et rareté (pointe, demi-largeur, portée sur un
 // corps), calculée une fois : lue pour chaque lame à chaque tick.
 const RARITIES = 4;
@@ -155,6 +162,8 @@ interface OwnerBucket {
   vy: number;
   spawnProtected: boolean;
   shielded: boolean;
+  // Power-up Spin : ses lames frappent plus fort (SPIN_DAMAGE).
+  spinning: boolean;
   // Équipe (modes équipe) : deux alliés ne se touchent pas.
   team: number;
   blades: OrbitingEntry[];
@@ -208,6 +217,7 @@ export function resolveCollisions(
       vy: moving ? p.moveVy : 0,
       spawnProtected: p.spawnProtectionUntil > nowMs,
       shielded: p.shieldUntil > nowMs,
+      spinning: p.spinUntil > nowMs,
       team: p.team,
       blades: [],
     };
@@ -235,7 +245,7 @@ export function resolveCollisions(
     bucket.blades.push({
       blade: b,
       id,
-      damage: DAMAGE[rarity],
+      damage: bucket.spinning ? SPIN_DAMAGE[rarity] : DAMAGE[rarity],
       x: pos.x,
       y: pos.y,
       hitbox: bucket.hitbox,

@@ -258,6 +258,12 @@ canvas#game.booting {
 }
 .howto-body ul { margin: 0; padding-left: 18px; }
 .howto-body li { margin: 4px 0; }
+/* Power-ups : icône de la forme en jeu, puis l'effet. */
+.howto-pu-intro { margin: 0 0 6px; }
+.howto-body ul.howto-pu { padding-left: 0; list-style: none; }
+.howto-pu li { display: flex; align-items: flex-start; gap: 10px; }
+.pu-icon { flex: none; width: 22px; height: 22px; margin-top: 1px; }
+.pu-icon svg { display: block; width: 100%; height: 100%; }
 .howto-body b { color: var(--fg-bright); }
 .howto-cols {
   display: grid;
@@ -1305,6 +1311,58 @@ button:hover {
   width: 100%;
   background: var(--fx-color, var(--cyan));
   transition: width 0.08s linear;
+}
+/* Infobulle (title) : ce que fait l'effet. */
+#effects .effect-badge {
+  pointer-events: auto;
+  cursor: help;
+}
+/* Ramassage d'un power-up : ce qu'il fait, sous les badges (cf.
+   ui/PowerUpToast.ts). */
+#powerup-toast {
+  display: none;
+  max-width: min(230px, 60vw);
+  padding: 5px 10px;
+  background: var(--panel);
+  border: 1px solid var(--fx-color, var(--cyan));
+  border-radius: 4px;
+  box-shadow: 0 0 10px var(--fx-color, var(--cyan));
+  color: var(--fg-bright);
+  font-size: 12px;
+  line-height: 1.3;
+  pointer-events: none;
+}
+#powerup-toast .put-title {
+  display: block;
+  color: var(--fx-color, var(--cyan));
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 6px var(--fx-color, var(--cyan));
+}
+#powerup-toast .put-effect {
+  display: block;
+  font-weight: 600;
+}
+#powerup-toast.show {
+  display: block;
+  animation: pu-toast-in 0.25s ease-out, pu-toast-out 0.4s ease-in 2.8s forwards;
+}
+@keyframes pu-toast-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pu-toast-out {
+  to { opacity: 0; }
+}
+/* Téléphone en paysage : à droite des badges plutôt que dessous, où il
+   descendait jusqu'au joystick avec trois effets actifs. */
+@media (max-height: 500px) {
+  #powerup-toast {
+    position: absolute;
+    left: calc(100% + 8px);
+    bottom: 0;
+    width: max-content;
+  }
 }
 
 #room-badge {

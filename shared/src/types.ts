@@ -98,6 +98,9 @@ export interface PowerUpPickupEvent extends TickStamped {
   rarity: BladeRarity;
   x: number;
   y: number;
+  // Durée de l'effet pour ce joueur (ms), améliorations comprises : seul le
+  // serveur connaît son niveau. 0 pour Blades (instantané).
+  durationMs: number;
 }
 
 // Émis chaque fois que deux lames de joueurs différents entrent en contact

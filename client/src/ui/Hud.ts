@@ -59,7 +59,8 @@ export class Hud {
 
   // Met à jour un badge d'effet actif (SPEED, SPIN, MAGNET, SHIELD).
   // untilMs = date de fin, nowMs = heure du serveur estimée (les deux dans
-  // l'horloge du serveur) ; si la fin est passée, on retire le badge.
+  // l'horloge du serveur) ; si la fin est passée, on retire le badge. tip :
+  // ce que fait l'effet, en infobulle.
   updateEffect(
     key: string,
     label: string,
@@ -67,6 +68,7 @@ export class Hud {
     untilMs: number,
     durationMs: number,
     nowMs: number,
+    tip = "",
   ): void {
     const remaining = untilMs - nowMs;
     let node = this.effectNodes.get(key);
@@ -81,6 +83,7 @@ export class Hud {
       const root = document.createElement("div");
       root.className = "effect-badge";
       root.style.setProperty("--fx-color", color);
+      if (tip) root.title = tip;
       const lbl = document.createElement("span");
       lbl.className = "effect-label";
       lbl.textContent = label;

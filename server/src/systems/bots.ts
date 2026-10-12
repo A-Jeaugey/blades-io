@@ -13,12 +13,14 @@ import {
   CHAMPION_SECOND_AT,
   CHAMPION_SIZE_RATIO,
   MAP_RADIUS,
+  NAME_MAX_LENGTH,
   PLAYER_SPEED,
   SPAWN_GRACE_CHASE_RADIUS,
   SPAWN_GRACE_RAMP_MS,
   THROW_PROJECTILE_MAX_RANGE,
   THROW_PROJECTILE_SPEED,
   WALL_KILL_THICKNESS,
+  botNameKey,
   isHiddenFrom,
   outerOrbitRadius,
   sameTeam,
@@ -43,6 +45,29 @@ function botSafeRadius(arena: ArenaState): number {
 // en deçà (LOOT_WALL_MARGIN, systems/spawnPoint.ts).
 function botReachRadius(arena: ArenaState): number {
   return botSafeRadius(arena) - 6;
+}
+
+// Nom d'un nouveau bot, unique dans la room : comparé sans la marque de
+// champion ni la casse (botNameKey) à tous les joueurs présents, humains et
+// morts compris. Avant, seuls les vivants comptaient, avec la marque : un
+// champion « ★ Raclette » côtoyait un bot « Raclette », et la liste (12
+// noms) s'épuisait vite. Numéroté (« Raclette 2 ») seulement si tous les
+// noms sont pris, ce qu'une partie n'atteint pas (10 bots et 2 champions au
+// plus, BOT_NAMES en compte bien plus).
+export function pickBotName(arena: ArenaState): string {
+  const taken = new Set<string>();
+  arena.players.forEach((p) => taken.add(botNameKey(p.name)));
+  const free = BOT_NAMES.filter((n) => !taken.has(botNameKey(n)));
+  if (free.length > 0) return free[Math.floor(Math.random() * free.length)];
+  // Place pour la marque de champion, qui s'ajoute devant.
+  const maxLen = NAME_MAX_LENGTH - CHAMPION_NAME_MARK.length;
+  const start = Math.floor(Math.random() * BOT_NAMES.length);
+  for (let n = 2; ; n++) {
+    for (let i = 0; i < BOT_NAMES.length; i++) {
+      const candidate = `${BOT_NAMES[(start + i) % BOT_NAMES.length]} ${n}`;
+      if (candidate.length <= maxLen && !taken.has(botNameKey(candidate))) return candidate;
+    }
+  }
 }
 
 function reachable(arena: ArenaState, x: number, y: number): boolean {
@@ -343,18 +368,7 @@ export class BotController {
     const id = "bot_" + Math.random().toString(36).slice(2, 10);
     const p = new Player();
     p.id = id;
-    const usedNames = new Set<string>();
-    arena.players.forEach((player) => {
-      if (player.alive) usedNames.add(player.name);
-    });
-    
-    const availableNames = BOT_NAMES.filter(n => !usedNames.has(n));
-    if (availableNames.length > 0) {
-      p.name = availableNames[Math.floor(Math.random() * availableNames.length)];
-    } else {
-      // Fallback au cas où il y a plus de bots que de noms disponibles
-      p.name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + " II";
-    }
+    p.name = pickBotName(arena);
     p.isBot = true;
     if (champion) {
       p.champion = true;

@@ -3,6 +3,7 @@ import {
   PLAYER_BODY_RADIUS,
   PLAYER_BOOST_MULT,
   PLAYER_SPEED,
+  POWERUP_SPEED_BOOST_CAP,
   POWERUP_SPEED_MULT,
 } from "./constants";
 import { resolveDecorCollision } from "./decor";
@@ -77,10 +78,11 @@ export function stepMovement(body: MoveBody, input: MoveInput, ctx: MoveContext,
     dy /= mag;
   }
   const moving = mag > 0.05;
-  let speed = PLAYER_SPEED;
-  if (ctx.speed) speed *= POWERUP_SPEED_MULT;
+  // Speed et boost se multiplient, plafonnés (cf. POWERUP_SPEED_BOOST_CAP).
+  let mult = ctx.speed ? POWERUP_SPEED_MULT : 1;
   const boosting = input.boost && ctx.canBoost && moving;
-  if (boosting) speed *= PLAYER_BOOST_MULT;
+  if (boosting) mult = Math.min(mult * PLAYER_BOOST_MULT, Math.max(PLAYER_BOOST_MULT, POWERUP_SPEED_BOOST_CAP));
+  const speed = PLAYER_SPEED * mult;
 
   // Vitesse totale = input + recul.
   body.x += (dx * speed + body.knockbackVx) * dt;

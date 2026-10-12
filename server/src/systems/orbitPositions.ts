@@ -8,6 +8,8 @@ import {
   PICKUP_MAGNET_RADIUS,
   PICKUP_MAGNET_STRENGTH,
   POWERUP_MAGNET_MULT,
+  POWERUP_MAGNET_PULL,
+  POWERUP_MAGNET_PULL_EDGE,
   POWERUP_SPIN_MULT,
   WALL_KILL_THICKNESS,
   bladeCountRotationMult,
@@ -23,6 +25,8 @@ import {
 const MAGNET_RADIUS = PICKUP_MAGNET_RADIUS;
 const MAGNET_RADIUS_BOOSTED = PICKUP_MAGNET_RADIUS * POWERUP_MAGNET_MULT;
 const MAGNET_STRENGTH = PICKUP_MAGNET_STRENGTH;
+const MAGNET_PULL_BOOSTED = POWERUP_MAGNET_PULL;
+const MAGNET_PULL_EDGE = POWERUP_MAGNET_PULL_EDGE;
 const FRICTION = GROUND_BLADE_FRICTION;
 const MAX_BLADES = MAX_BLADES_PER_PLAYER;
 const SPIN_MULT = POWERUP_SPIN_MULT;
@@ -82,6 +86,8 @@ interface MagnetSource {
   y: number;
   radius: number;
   radiusSq: number;
+  // Power-up Aimant actif : rayon et attraction renforcés.
+  boosted: boolean;
 }
 
 // Vitesse de l'horloge d'orbite d'un joueur : tier × nombre de lames ×
@@ -127,14 +133,15 @@ export function updateBladePositions(
     });
     // Seuls les joueurs qui peuvent encore ramasser attirent les lames.
     if (bladeCount >= MAX_BLADES) return;
-    const radius = p.magnetUntil > nowMs ? MAGNET_RADIUS_BOOSTED : MAGNET_RADIUS;
+    const boosted = p.magnetUntil > nowMs;
+    const radius = boosted ? MAGNET_RADIUS_BOOSTED : MAGNET_RADIUS;
     const key = cellKey(Math.floor(x / MAGNET_CELL), Math.floor(y / MAGNET_CELL));
     let cell = magnetGrid.get(key);
     if (!cell) {
       cell = [];
       magnetGrid.set(key, cell);
     }
-    cell.push({ x, y, radius, radiusSq: radius * radius });
+    cell.push({ x, y, radius, radiusSq: radius * radius, boosted });
     magnetCount++;
   });
 
@@ -220,8 +227,16 @@ export function updateBladePositions(
       if (best) {
         const bestDist = Math.sqrt(bestD2);
         if (bestDist > 0.001) {
-          // Force proportionnelle à 1-(d/R) : max au contact, 0 à la limite.
-          const k = (MAGNET_STRENGTH * (1 - bestDist / best.radius) * dt) / bestDist;
+          // Aimant ordinaire : vitesse proportionnelle à 1-(d/R), max au
+          // contact, nulle à la limite. Power-up Aimant : sa propre vitesse,
+          // qui ne tombe pas sous MAGNET_PULL_EDGE au bord du rayon (sinon
+          // les lames lointaines venaient moins vite qu'un joueur qui
+          // marche). Jamais au-delà du joueur.
+          const near = 1 - bestDist / best.radius;
+          const speed = best.boosted
+            ? MAGNET_PULL_BOOSTED * (MAGNET_PULL_EDGE + (1 - MAGNET_PULL_EDGE) * near)
+            : MAGNET_STRENGTH * near;
+          const k = Math.min(1, (speed * dt) / bestDist);
           x += (best.x - x) * k;
           y += (best.y - y) * k;
           moved = true;

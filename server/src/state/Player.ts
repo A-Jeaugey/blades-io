@@ -55,6 +55,10 @@ export class Player extends Schema {
   @view(OWNER_VIEW_TAG) @type("float64") spinUntil: number = 0;
   @view(OWNER_VIEW_TAG) @type("float64") magnetUntil: number = 0;
   @view(OWNER_VIEW_TAG) @type("float64") shieldUntil: number = 0;
+  // Les mêmes effets, vus de tous : un bit par type actif (powerUpBit),
+  // tenu par PowerUpSystem. Un octet qui change deux fois par effet, pour
+  // que les autres clients le montrent (lignes de vitesse sous Speed).
+  @type("uint8") activeEffects: number = 0;
   // Fenêtre d'invulnérabilité au (re)spawn. Le joueur ne peut ni recevoir
   // ni infliger de dégât tant que cette date est dans le futur (cf.
   // SPAWN_PROTECTION_MS dans shared/constants).
