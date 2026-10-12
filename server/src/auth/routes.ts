@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { LEADERBOARD_PERIODS, LeaderboardPeriod, USERNAME_RE, nameProblem, seasonAt } from "@bladeio/shared";
+import { LEADERBOARD_PERIODS, LeaderboardPeriod, RANKED_BOARD_LIMIT, USERNAME_RE, nameProblem, seasonAt } from "@bladeio/shared";
 import { upgradeOrderProblem } from "@bladeio/shared";
 import { getAdminClient, isSupabaseConfigured, verifyAccessToken } from "./supabase";
 import { isGuestTokenConfigured, signGuestToken, verifyGuestToken } from "./guestToken";
@@ -7,6 +7,7 @@ import { getProfileStats } from "./profileStats";
 import { quotePurchase, shopOfferResponse } from "./shopQuote";
 import { getChallenges } from "../challenges";
 import { getLeaderboard } from "../seasons";
+import { getRankedLeaderboard, getRankedStatus } from "../ranked";
 import {
   claimGuestWallet,
   createGuestWallet,
@@ -150,6 +151,51 @@ export function buildAuthRouter(): Router {
     } catch {
       res.status(500).json({ error: "leaderboard_failed" });
     }
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/ranked/me
+  // Rang du joueur connecté dans la saison en cours (mode classé) : PR,
+  // parties, meilleur total, place au classement (null avant sa première
+  // manche de la saison, ses PR de départ affichés). Auth obligatoire.
+  //   503 { error: 'ranked_unavailable' } → base injoignable ou migration
+  //   0013 absente
+  // --------------------------------------------------------------------- //
+  router.get("/ranked/me", async (req: Request, res: Response) => {
+    if (!isSupabaseConfigured()) {
+      res.status(503).json({ error: "auth_unavailable" });
+      return;
+    }
+    const user = await verifyAccessToken(bearerToken(req));
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const status = await getRankedStatus(user.id);
+    if (!status) {
+      res.status(503).json({ error: "ranked_unavailable" });
+      return;
+    }
+    res.json(status);
+  });
+
+  // --------------------------------------------------------------------- //
+  // GET /api/ranked/leaderboard  ?limit=50
+  // Classement classé de la saison en cours (50 premiers au plus), et le
+  // rang du joueur connecté (bearer facultatif). Sans base : vide.
+  // --------------------------------------------------------------------- //
+  router.get("/ranked/leaderboard", async (req: Request, res: Response) => {
+    const limit = Math.min(
+      Math.max(parseInt((req.query.limit as string) ?? String(RANKED_BOARD_LIMIT), 10) || RANKED_BOARD_LIMIT, 1),
+      RANKED_BOARD_LIMIT,
+    );
+    const user = isSupabaseConfigured() ? await verifyAccessToken(bearerToken(req)) : null;
+    const board = await getRankedLeaderboard(limit, user?.id ?? null);
+    if (!board) {
+      res.status(503).json({ error: "ranked_unavailable" });
+      return;
+    }
+    res.json(board);
   });
 
   // --------------------------------------------------------------------- //

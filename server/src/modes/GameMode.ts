@@ -31,6 +31,8 @@ export interface ModeHost {
   // Évènement de partie pour tous les clients, estampillé du tick courant
   // (cf. TickStamped) : à ne pas utiliser pour une position à cacher.
   emit(type: string, payload: object): void;
+  // Évènement pour un seul joueur (son client), estampillé comme emit.
+  sendTo(playerId: string, type: string, payload: object): void;
 }
 
 // Règles d'un mode de jeu (tâche 7.3). La room appelle ces hooks aux moments
@@ -75,4 +77,7 @@ export interface GameMode {
   // Objectif d'un bot propre au mode (aller chercher un drapeau…), mis en
   // balance avec ses autres envies (cf. BotController.setGoals).
   botGoal?(bot: Player): BotGoal | null;
+  // Fin de partie, classement figé et annoncé (matchEnd) : résultats propres
+  // au mode (points de rang du classé).
+  onMatchEnd?(standings: readonly MatchStanding[], now: number): void;
 }

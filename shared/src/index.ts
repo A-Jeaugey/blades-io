@@ -19,3 +19,4 @@ export * from "./modes";
 export * from "./mapEvents";
 export * from "./arena";
 export * from "./powerups";
+export * from "./ranked";

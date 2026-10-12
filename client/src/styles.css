@@ -1725,6 +1725,107 @@ body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0
   font-variant-numeric: tabular-nums;
 }
 
+/* Mode classé : emblèmes des rangs. Une forme par rang (rond, carré, écu,
+   hexagone, losange, étoile) et le chiffre de la division dessus : jamais la
+   couleur seule (tâche 3.8). Couleurs des raretés du thème actif (Argent la
+   commune, Or la légendaire, Diamant la rare, Maître l'épique ; Bronze et
+   Platine en sont des mélanges) : aucune couleur propre au classé. */
+.rank-emblem {
+  --rank-c: var(--rarity-common);
+  --rank-shape: circle(50%);
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+}
+.rank-emblem::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--rank-c);
+  clip-path: var(--rank-shape);
+}
+.rank-emblem b {
+  position: relative;
+  color: var(--dark);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.rank-emblem-lg { width: 40px; height: 40px; }
+.rank-emblem-lg b { font-size: 14px; }
+.rank-bronze { --rank-c: color-mix(in oklab, color-mix(in oklab, var(--rarity-legendary) 70%, var(--pink)) 78%, var(--dark)); }
+.rank-silver { --rank-shape: inset(8% round 3px); }
+.rank-gold { --rank-c: var(--rarity-legendary); --rank-shape: polygon(50% 0, 100% 14%, 100% 58%, 50% 100%, 0 58%, 0 14%); }
+.rank-gold b { margin-bottom: 12%; }
+.rank-platinum { --rank-c: color-mix(in oklab, var(--rarity-common) 55%, var(--rarity-rare)); --rank-shape: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%); }
+.rank-diamond { --rank-c: var(--rarity-rare); --rank-shape: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.rank-master { --rank-c: var(--rarity-epic); --rank-shape: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+/* Lobby : rang du joueur connecté, entre son niveau et ses trophées (une
+   ligne de plus repoussait ENTER THE GRID hors de la console). */
+.bio2-ranked { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; padding-right: 12px; }
+.bio2-ranked b { color: var(--fg-bright); font-weight: 700; letter-spacing: 2px; white-space: nowrap; }
+.bio2-ranked-val { color: var(--cyan); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bio2-wallet:has(.bio2-ranked:not(.hidden)) { flex-wrap: wrap; row-gap: 6px; }
+.bio2-wallet:has(.bio2-ranked:not(.hidden)) .bio2-level { margin-right: 0; }
+#join-invite:not(.hidden) + .bio2-ranked-note { margin-top: 6px; }
+/* Cinq onglets dans le rail du lobby (CLASSÉ en plus) : marges serrées. */
+.bio2-rail .lb-tabs { gap: 3px; }
+.bio2-rail .lb-tabs button { padding: 5px 2px; letter-spacing: 0; }
+/* Classement CLASSÉ : emblème devant le pseudo. */
+.lb-rank-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.lb-rank-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Podium d'une manche classée : gain, rang, total ; passage de rang mis en
+   avant (le signe + ou − et le texte disent le sens, pas la couleur). */
+.podium-ranked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 8px;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--fg-bright);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.podium-ranked .pr-main { font-weight: 700; }
+.podium-ranked.up .pr-main { color: var(--cyan); }
+.podium-ranked.down .pr-main { color: var(--pink); }
+.podium-ranked .pr-change { flex-basis: 100%; font-weight: 800; letter-spacing: 2px; }
+.podium-ranked.promoted { border-color: var(--cyan); box-shadow: 0 0 14px rgba(var(--accent-cool-rgb), .35); }
+.podium-ranked.promoted .pr-change { color: var(--cyan); }
+.podium-ranked.demoted .pr-change { color: var(--pink); }
+.podium-ranked .pr-detail { flex-basis: 100%; color: var(--fg-muted); font-size: 12px; }
+.podium-ranked .pr-msg { color: var(--fg-muted); font-size: 13px; }
+/* Profil : rang de la saison. */
+.profile-ranked { margin: 0 0 14px; }
+.profile-ranked-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px 12px;
+}
+.profile-ranked-head .rank-emblem { grid-row: span 2; }
+.profile-ranked-name { color: var(--fg-bright); font-weight: 700; letter-spacing: 1px; }
+.profile-ranked-pr { color: var(--cyan); font-weight: 700; font-variant-numeric: tabular-nums; }
+.profile-ranked-bar {
+  grid-column: 2 / -1;
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--cyan) calc(var(--p, 0) * 100%), rgba(var(--accent-cool-rgb), .18) 0);
+}
+.profile-ranked-next { margin: 6px 0 0; color: var(--fg-muted); font-size: 13px; }
+.profile-ranked .profile-note { margin-top: 6px; }
+
 /* Caméra sur le tueur : bandeau sous le centre de l'écran (le tueur est au
    centre), au-dessus des contrôles tactiles. */
 .killcam {

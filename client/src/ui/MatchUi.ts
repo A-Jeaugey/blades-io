@@ -1,5 +1,7 @@
-import { MatchEndEvent, MatchPhase, MatchStanding, ROUND_SHRINK_MS, TEAM_NONE, otherTeam } from "@bladeio/shared";
+import { MatchEndEvent, MatchPhase, MatchStanding, ROUND_SHRINK_MS, RankedResultEvent, TEAM_NONE, otherTeam, rankOf, sameRank } from "@bladeio/shared";
 import { formatNumber, onLangChange, t } from "../i18n";
+import { prText, rankEmblem, rankLabel } from "./ranked";
+import { auth } from "../auth/supabase";
 
 // Partie qui a une fin (manches, tâche 7.1 ; modes équipe, 7.2) :
 // minuterie en haut de l'écran, score des équipes, podium de fin.
@@ -50,7 +52,11 @@ export class MatchUi {
   private readonly table = document.getElementById("podium-table") as HTMLElement;
   private readonly me = document.getElementById("podium-me") as HTMLElement;
   private readonly next = document.getElementById("podium-next") as HTMLElement;
+  private readonly rankedLine = document.getElementById("podium-ranked") as HTMLElement;
   private shown: MatchEndEvent | null = null;
+  // Classé : résultat de la manche (null : en attente de la base).
+  private ranked: RankedResultEvent | null = null;
+  private rankedExpected = false;
   private myId = "";
   private myTeam = TEAM_NONE;
   private shrinking = false;
@@ -124,12 +130,30 @@ export class MatchUi {
     this.myId = myId;
     this.myTeam = myTeam;
     this.nextText = "";
+    this.ranked = null;
+    this.rankedExpected = false;
     this.renderPodium();
     this.podium.classList.remove("hidden");
   }
 
+  // Manche classée : les points de rang arrivent juste après le podium,
+  // une fois écrits en base.
+  rankedPending(): void {
+    this.rankedExpected = true;
+    this.renderRanked();
+  }
+
+  showRanked(ev: RankedResultEvent): void {
+    if (!this.shown) return;
+    this.ranked = ev;
+    this.rankedExpected = true;
+    this.renderRanked();
+  }
+
   hidePodium(): void {
     this.shown = null;
+    this.ranked = null;
+    this.rankedExpected = false;
     this.podium.classList.add("hidden");
   }
 
@@ -144,6 +168,7 @@ export class MatchUi {
   private renderPodium(): void {
     const ev = this.shown;
     if (!ev) return;
+    this.renderRanked();
     const teams = this.renderTeams(ev);
     // Modes équipe : un tableau par équipe à la place des marches.
     this.steps.classList.toggle("hidden", teams);
@@ -171,6 +196,46 @@ export class MatchUi {
     });
     if (s.bonus > 0) text += ` · ${t("match.bonus", { n: formatNumber(s.bonus, 0) })}`;
     this.me.textContent = text;
+  }
+
+  // Points de rang de la manche : gain, rang et total (passage de rang mis
+  // en avant), ou pourquoi il n'y en a pas (invité, arrivé tard, base
+  // injoignable).
+  private renderRanked(): void {
+    const line = this.rankedLine;
+    if (!line) return;
+    line.classList.toggle("hidden", !this.rankedExpected);
+    line.classList.remove("up", "down", "promoted", "demoted");
+    if (!this.rankedExpected) return;
+    const ev = this.ranked;
+    if (!ev) {
+      line.replaceChildren(span("pr-msg", t("ranked.pending")));
+      return;
+    }
+    if (ev.status !== "scored" || ev.before === undefined || ev.after === undefined) {
+      // Invité d'un serveur sans comptes : pas d'invitation à se connecter.
+      const key = ev.status === "guest" && auth.isConfigured() ? "ranked.guest" : ev.status === "late" ? "ranked.late" : "ranked.unavailable";
+      line.replaceChildren(span("pr-msg", t(key)));
+      return;
+    }
+    const before = rankOf(ev.before);
+    const after = rankOf(ev.after);
+    const delta = ev.after - ev.before;
+    const sign = delta > 0 ? "+" : delta < 0 ? "−" : "±";
+    line.classList.add(delta >= 0 ? "up" : "down");
+    const main = span("pr-main", `${sign}${prText(Math.abs(delta))} · ${rankLabel(after)} · ${prText(ev.after)}`);
+    const parts: HTMLElement[] = [rankEmblem(after), main];
+    if (!sameRank(before, after)) {
+      const promoted = after.floor > before.floor;
+      line.classList.add(promoted ? "promoted" : "demoted");
+      parts.push(span("pr-change", t(promoted ? "ranked.promoted" : "ranked.demoted", { rank: rankLabel(after) })));
+    }
+    if (ev.score !== undefined && ev.expected !== undefined) {
+      let detail = t("ranked.detail", { score: formatNumber(ev.score, 0), expected: formatNumber(ev.expected, 0) });
+      if (ev.podium) detail += ` · ${t("ranked.podium", { n: ev.podium })}`;
+      parts.push(span("pr-detail", detail));
+    }
+    line.replaceChildren(...parts);
   }
 
   // Modes équipe : victoire, défaite ou égalité vues de son équipe, les

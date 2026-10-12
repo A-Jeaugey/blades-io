@@ -6,6 +6,7 @@ import { levelText } from "./level";
 import { fetchGuestWallet } from "../auth/guestToken";
 import { wallet } from "../auth/wallet";
 import { LeaderboardView } from "./LeaderboardView";
+import { RankedProfile } from "./ranked";
 
 // Profil joueur (tâche 5.1), depuis le lobby. Compte : statistiques du
 // serveur (GET /api/profile/stats). Invité, ou serveur injoignable :
@@ -48,10 +49,13 @@ export class ProfilePanel {
   private request = 0;
   // Classements (tâche 5.4) : le rail du lobby est masqué sur téléphone.
   private board: LeaderboardView;
+  // Rang de la saison (mode classé).
+  private ranked: RankedProfile;
 
   constructor() {
     this.root = document.getElementById("profile") as HTMLElement;
     this.board = new LeaderboardView(this.root.querySelector("#profile-board") as HTMLElement);
+    this.ranked = new RankedProfile(this.root.querySelector("#profile-ranked"));
     document.getElementById("open-profile-btn")?.addEventListener("click", () => this.open());
     this.root.querySelectorAll("[data-close]").forEach((el) => el.addEventListener("click", () => this.close()));
     document.addEventListener("keydown", (e) => {
@@ -61,6 +65,7 @@ export class ProfilePanel {
       if (this.root.classList.contains("hidden")) return;
       this.render();
       this.board.render();
+      this.ranked.render();
     });
   }
 
@@ -69,6 +74,7 @@ export class ProfilePanel {
     this.root.setAttribute("aria-hidden", "false");
     void this.load();
     void this.board.load();
+    void this.ranked.load();
   }
 
   close(): void {
