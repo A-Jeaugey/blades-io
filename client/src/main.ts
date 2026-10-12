@@ -94,6 +94,7 @@ import { MatchHud, MatchUi } from "./ui/MatchUi";
 import { getBest, submitScore } from "./ui/personalBest";
 import { recordLocalLife } from "./ui/localStats";
 import { ProfilePanel } from "./ui/ProfilePanel";
+import { refreshQuestsBadge } from "./ui/questsEntry";
 import { challengeById, challengeText } from "./ui/challenges";
 import { DeathStats } from "./ui/DeathScreen";
 import { HintId, Onboarding } from "./ui/Onboarding";
@@ -1943,7 +1944,7 @@ export class Game {
       return;
     }
     this.login.show();
-    void this.profile.refreshBadge();
+    void refreshQuestsBadge();
     void this.sound.playLobbyMusic();
   }
 

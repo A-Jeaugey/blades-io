@@ -326,6 +326,13 @@
                 <span class="bio2-cta-secondary-icon">⌬</span>
                 <span class="bio2-cta-secondary-label" data-i18n="lobby.boutique">BOUTIQUE</span>
               </button>
+              <!-- Quêtes (cf. ui/questsEntry.ts) : défis réussis du jour sur le
+                   bouton. -->
+              <button id="open-quests-btn" class="bio2-cta-secondary" type="button">
+                <span class="bio2-cta-secondary-icon">✦</span>
+                <span class="bio2-cta-secondary-label" data-i18n="lobby.quests">QUESTS</span>
+                <span id="quests-badge" class="bio2-cta-badge hidden"></span>
+              </button>
               <button id="open-howto-btn" class="bio2-cta-secondary" type="button">
                 <span class="bio2-cta-secondary-icon">?</span>
                 <span class="bio2-cta-secondary-label" data-i18n="lobby.howToPlay">HOW TO PLAY</span>
@@ -333,7 +340,6 @@
               <button id="open-profile-btn" class="bio2-cta-secondary" type="button">
                 <span class="bio2-cta-secondary-icon">◉</span>
                 <span class="bio2-cta-secondary-label" data-i18n="lobby.profile">PROFILE</span>
-                <span id="profile-badge" class="bio2-cta-badge hidden"></span>
               </button>
             </div>
           </section>
@@ -411,7 +417,8 @@
               <ul>
                 <li data-i18n-html="howto.trophies1">Earned at the end of each life in public rooms: kills × 15, your peak blade count, 1 per 10 s alive, crates × 3, power-ups × 2. Spend them in the BOUTIQUE.</li>
                 <li data-i18n-html="howto.seasons">Leaderboards of the day, the week, the season and all time, public games only. A season lasts six weeks: at its end, the top ten earn trophies (1,000 for the first, 750, 500, then 250).</li>
-                <li data-i18n-html="howto.challenges">Every day, three challenges (easy, medium, hard), and one per week: the same for everyone, renewed at midnight Paris time. Your lives in public rooms count; rewards are trophies. Find them in PROFILE.</li>
+                <li data-i18n-html="howto.challenges">Every day, three challenges (easy, medium, hard), and one per week: the same for everyone, renewed at midnight Paris time. Your lives in public rooms count; rewards are trophies. Find them in QUESTS.</li>
+                <li data-i18n-html="howto.upgrades"><b>UPGRADES</b> (QUESTS): spend trophies to make Speed, Spin, Magnet and Shield last longer.</li>
                 <li data-i18n-html="howto.trophies2">They are also your XP: spending them does not lower your level, shown next to your name. New titles at levels 5, 10, 20, 30, 50, 75 and 100.</li>
                 <li data-i18n-html="howto.rounds"><b>ROUNDS</b> (game mode, in the lobby): 5-minute rounds, and the arena shrinks during the last minute. Your points add up over all your lives in the round; the top 3 earn 150, 100 and 50 trophies (public games).</li>
                 <li data-i18n-html="howto.teams"><b>TEAM MODES</b> (private rooms, bots optional): two teams, ◆ marks yours (ring, name, map). <b>TEAM DEATHMATCH</b>: first team to 30 kills. <b>LAST TEAM STANDING</b>: no respawn, the arena shrinks in the last minute; when you are out, you watch a teammate. <b>CAPTURE THE FLAG</b>: take their flag and bring it to your base while yours is home; touch your dropped flag to send it back. 3 captures win.</li>
@@ -443,12 +450,6 @@
               <span class="profile-level-xp"></span>
               <i class="profile-level-bar"></i>
             </div>
-            <section class="profile-challenges">
-              <h3><span data-i18n="profile.daily">Daily challenges</span> <small id="profile-daily-reset"></small></h3>
-              <ul id="profile-daily" class="challenge-list"></ul>
-              <h3><span data-i18n="profile.weekly">Weekly challenge</span> <small id="profile-weekly-reset"></small></h3>
-              <ul id="profile-weekly" class="challenge-list"></ul>
-            </section>
             <h3 data-i18n="profile.stats">Stats</h3>
             <div id="profile-grid" class="profile-grid"></div>
             <h3 data-i18n="profile.recent">Recent games</h3>
@@ -466,6 +467,69 @@
               <p class="lb-season profile-note"></p>
             </section>
             <p id="profile-note" class="profile-note" role="status"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quêtes (cf. ui/QuestsPanel.ts, chargé à la première ouverture) :
+           défis du jour et de la semaine, niveau et récompenses de niveau,
+           améliorations des power-ups. -->
+      <div id="quests" class="howto quests hidden" aria-hidden="true">
+        <div class="howto-backdrop" data-close></div>
+        <div class="howto-shell" role="dialog" aria-labelledby="quests-title">
+          <header class="howto-head">
+            <span id="quests-title" class="howto-title" data-i18n="quests.title">QUESTS</span>
+            <span class="quests-wallet" data-i18n-attr="title:quests.balance"><span class="sr-only" data-i18n="quests.balance">Your trophies</span><span aria-hidden="true">🏆</span> <span id="quests-balance">—</span></span>
+            <button class="howto-close" data-close aria-label="Close" data-i18n-attr="aria-label:common.close">✕</button>
+          </header>
+          <div class="quests-tabs" role="tablist">
+            <button type="button" role="tab" id="quests-tab-challenges" data-tab="challenges" aria-controls="quests-pane-challenges" aria-selected="true">
+              <span data-i18n="quests.tabChallenges">CHALLENGES</span>
+              <span class="quests-tab-count" id="quests-count-challenges"></span>
+            </button>
+            <button type="button" role="tab" id="quests-tab-levels" data-tab="levels" aria-controls="quests-pane-levels" aria-selected="false" tabindex="-1">
+              <span data-i18n="quests.tabLevels">LEVELS</span>
+              <span class="quests-tab-count" id="quests-count-levels"></span>
+            </button>
+            <button type="button" role="tab" id="quests-tab-upgrades" data-tab="upgrades" aria-controls="quests-pane-upgrades" aria-selected="false" tabindex="-1">
+              <span data-i18n="quests.tabUpgrades">UPGRADES</span>
+              <span class="quests-tab-count" id="quests-count-upgrades"></span>
+            </button>
+          </div>
+          <div class="howto-body">
+            <section id="quests-pane-challenges" role="tabpanel" aria-labelledby="quests-tab-challenges" data-pane="challenges">
+              <p id="quests-challenges-status" class="profile-note" role="status"></p>
+              <div class="quests-challenges hidden">
+                <h3><span data-i18n="profile.daily">Daily challenges</span> <small id="quests-daily-reset"></small></h3>
+                <ul id="quests-daily" class="challenge-list"></ul>
+                <h3><span data-i18n="profile.weekly">Weekly challenge</span> <small id="quests-weekly-reset"></small></h3>
+                <ul id="quests-weekly" class="challenge-list"></ul>
+              </div>
+              <p class="profile-note" data-i18n="quests.challengesNote">Your lives in public rooms count.</p>
+            </section>
+            <section id="quests-pane-levels" role="tabpanel" aria-labelledby="quests-tab-levels" data-pane="levels" hidden>
+              <p id="quests-who" class="profile-who"></p>
+              <div id="quests-level" class="profile-level hidden">
+                <span class="profile-level-name"></span>
+                <span class="profile-level-xp"></span>
+                <i class="profile-level-bar"></i>
+                <span class="quests-level-total"></span>
+              </div>
+              <p id="quests-next" class="quests-next hidden"></p>
+              <h3 data-i18n="quests.track">Level rewards</h3>
+              <ol id="quests-track" class="quests-track"></ol>
+              <p class="profile-note" data-i18n="quests.levelsNote">XP is the trophies you earn in public rooms.</p>
+            </section>
+            <section id="quests-pane-upgrades" role="tabpanel" aria-labelledby="quests-tab-upgrades" data-pane="upgrades" hidden>
+              <p id="upg-intro" class="upg-intro"></p>
+              <p id="upg-modes" class="profile-note hidden"></p>
+              <div id="upg-guest" class="upg-guest hidden">
+                <p data-i18n="upg.guest">Sign in to buy upgrades.</p>
+                <button type="button" id="upg-signin" class="boutique-btn buy" data-i18n="shop.signIn">SIGN IN</button>
+              </div>
+              <div id="upg-list" class="upg-list"></div>
+              <p id="upg-status" class="profile-note" role="status" aria-live="polite"></p>
+            </section>
           </div>
         </div>
       </div>

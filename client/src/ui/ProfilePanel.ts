@@ -5,13 +5,12 @@ import { getLocalStats } from "./localStats";
 import { levelText } from "./level";
 import { fetchGuestWallet } from "../auth/guestToken";
 import { wallet } from "../auth/wallet";
-import { ChallengesResponse, ChallengeState } from "@bladeio/shared";
-import { challengeText, fetchChallenges, formatCountdown } from "./challenges";
 import { LeaderboardView } from "./LeaderboardView";
 
 // Profil joueur (tâche 5.1), depuis le lobby. Compte : statistiques du
 // serveur (GET /api/profile/stats). Invité, ou serveur injoignable :
-// statistiques gardées dans ce navigateur (ui/localStats.ts).
+// statistiques gardées dans ce navigateur (ui/localStats.ts). Les défis ont
+// rejoint le panneau QUÊTES (ui/QuestsPanel.ts).
 
 type Source = "account" | "local" | "fallback";
 
@@ -41,36 +40,12 @@ function formatWhen(iso: string, now: number): string {
 
 const count = (n: number) => formatNumber(n, 0);
 
-// Une ligne de défi : texte, récompense, barre et « 12 / 20 » (ou réussi).
-function challengeRow(c: ChallengeState): HTMLLIElement {
-  const li = document.createElement("li");
-  li.className = c.completed ? "challenge done" : "challenge";
-  const name = document.createElement("span");
-  name.className = "challenge-name";
-  name.textContent = challengeText(c);
-  const reward = document.createElement("span");
-  reward.className = "challenge-reward";
-  reward.textContent = `🏆 ${c.reward}`;
-  const bar = document.createElement("i");
-  bar.className = "challenge-bar";
-  bar.style.setProperty("--p", (c.progress / c.target).toFixed(3));
-  const progress = document.createElement("span");
-  progress.className = "challenge-progress";
-  const shown = c.metric === "survivalTotal" || c.metric === "lifeSurvival"
-    ? `${Math.floor(c.progress / 60)} / ${Math.round(c.target / 60)} min`
-    : `${c.progress} / ${c.target}`;
-  progress.textContent = c.completed ? `✓ ${t("profile.challengeDone")}` : shown;
-  li.append(name, reward, bar, progress);
-  return li;
-}
-
 export class ProfilePanel {
   private root: HTMLElement;
   private stats: ProfileStats | null = null;
   private source: Source = "local";
   private loading = false;
   private request = 0;
-  private challenges: ChallengesResponse | null = null;
   // Classements (tâche 5.4) : le rail du lobby est masqué sur téléphone.
   private board: LeaderboardView;
 
@@ -85,7 +60,6 @@ export class ProfilePanel {
     onLangChange(() => {
       if (this.root.classList.contains("hidden")) return;
       this.render();
-      this.renderChallenges();
       this.board.render();
     });
   }
@@ -94,55 +68,7 @@ export class ProfilePanel {
     this.root.classList.remove("hidden");
     this.root.setAttribute("aria-hidden", "false");
     void this.load();
-    void this.loadChallenges();
     void this.board.load();
-  }
-
-  // Défis réussis du jour sur le bouton PROFIL (« 1/3 »), relu à chaque
-  // retour au lobby.
-  async refreshBadge(): Promise<void> {
-    const c = await fetchChallenges();
-    if (c) this.challenges = c;
-    this.renderBadge();
-  }
-
-  private renderBadge(): void {
-    const badge = document.getElementById("profile-badge");
-    if (!badge) return;
-    const daily = this.challenges?.day.challenges;
-    if (!daily) {
-      badge.classList.add("hidden");
-      return;
-    }
-    const done = daily.filter((c) => c.completed).length;
-    badge.textContent = `${done}/${daily.length}`;
-    badge.classList.toggle("done", done === daily.length);
-    badge.classList.remove("hidden");
-  }
-
-  private async loadChallenges(): Promise<void> {
-    const c = await fetchChallenges();
-    if (c) this.challenges = c;
-    this.renderChallenges();
-    this.renderBadge();
-  }
-
-  private renderChallenges(): void {
-    const daily = this.root.querySelector("#profile-daily") as HTMLElement;
-    const weekly = this.root.querySelector("#profile-weekly") as HTMLElement;
-    const section = this.root.querySelector(".profile-challenges") as HTMLElement;
-    const c = this.challenges;
-    section.classList.toggle("hidden", !c);
-    if (!c) return;
-    const now = Date.now();
-    (this.root.querySelector("#profile-daily-reset") as HTMLElement).textContent =
-      t("profile.dailyReset", { time: formatCountdown(Date.parse(c.day.resetsAt) - now) });
-    (this.root.querySelector("#profile-weekly-reset") as HTMLElement).textContent =
-      t("profile.weeklyReset", { time: formatCountdown(Date.parse(c.week.resetsAt) - now) });
-    daily.innerHTML = "";
-    for (const ch of c.day.challenges) daily.append(challengeRow(ch));
-    weekly.innerHTML = "";
-    weekly.append(challengeRow(c.week.challenge));
   }
 
   close(): void {
