@@ -127,7 +127,7 @@ client/src/
   `RemoteMotion` (au plus 200 ms, écart d'un virage absorbé en 50 ms, jamais
   dans le décor). Avant, les autres étaient au dernier patch reçu et
   l'écart entre deux joueurs différait d'un écran à l'autre de vitesse ×
-  (ping + ~40 ms) : 5,3 u à 100 ms de ping au boost, 0,15 u depuis
+  (ping + ~40 ms) : 5,3 u à 100 ms de ping au boost, 0,18 u depuis
   (`node tools/bench-netcode.js`). Ne jamais redessiner un joueur ou une
   orbite à un autre instant : les deux écrans d'un duel divergeraient de
   nouveau. Lames au sol et projectiles restent au dernier état reçu.
