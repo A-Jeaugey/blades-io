@@ -11,9 +11,9 @@ import { getActiveTheme } from "../themes";
 // (incandescente, à bandes « glitch » en haute qualité). L'impact lui-même
 // (onde, étincelles, son) est joué par main.ts au tick de l'évènement.
 //
-// Tout est réglé sur l'heure du serveur au tick de rendu (80 ms dans le
-// passé, comme les entités) : la puce touche le sol à l'image où l'impact
-// est joué. Un emplacement par puce possible (PROCESSOR_COUNT_MAX), créé
+// Tout est réglé sur l'heure du serveur des évènements joués (dernier état
+// reçu, cf. EVENT_LEAD_MS dans main.ts) : la puce touche le sol à l'image
+// où l'impact est joué. Un emplacement par puce possible (PROCESSOR_COUNT_MAX), créé
 // d'avance : rien n'est créé en partie, tout est compilé au lobby.
 
 export interface DropSnapshot {
@@ -151,7 +151,7 @@ export class ProcessorFallView {
   }
 
   // drops : puces de l'évènement en cours (vide sinon) ; renderMs : heure
-  // du serveur au tick de rendu.
+  // du serveur des évènements joués.
   update(drops: readonly DropSnapshot[], renderMs: number, dt: number, elapsedSec: number): void {
     this.trailMat.uniforms.uTime.value = elapsedSec;
     if (this.warm) {
@@ -168,8 +168,8 @@ export class ProcessorFallView {
     for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
       const d = i < drops.length ? drops[i] : null;
-      // Avant l'impact au tick de rendu, quel que soit ce que l'état dit
-      // déjà (il a 80 ms d'avance) ; après, l'impact a pris le relais.
+      // Avant l'impact à l'heure des évènements, quel que soit ce que l'état
+      // dit déjà ; après, l'impact a pris le relais.
       const left = d ? d.at - renderMs : -1;
       if (!d || left <= 0) {
         if (s.alert.visible) s.alert.visible = s.chip.visible = s.trail.visible = false;

@@ -171,7 +171,7 @@ export class PreviewStage {
     this.pose.x = x;
     this.pose.y = z;
     this.pose.theta = this.clock * 2.4;
-    this.blades.update(now, 0, this.clock, this.provider);
+    this.blades.update(now, this.clock, this.provider);
 
     // Effet d'élimination à côté du personnage, à intervalle régulier.
     if (this.clock >= this.nextBurst) {

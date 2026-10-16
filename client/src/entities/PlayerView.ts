@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RemoteMotion } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 import { SKIN_LOOKS, SkinLook, TRAIL_LOOKS, TrailLook, lookOf } from "../cosmetics/looks";
@@ -126,12 +127,11 @@ export class PlayerView {
   public moveX = 0;
   public moveZ = 1;
   public moveSpeed = 0;
+  // Dernier état reçu (le joueur local s'y replie sans prédiction), et son
+  // extrapolation jusqu'à l'instant dessiné (joueurs distants, spectateur).
   public targetX = 0;
   public targetY = 0;
-  public prevX = 0;
-  public prevY = 0;
-  public prevTime = 0;
-  public targetTime = 0;
+  private motion: RemoteMotion | null = null;
   private hasTrail: boolean;
   // Cosmétiques (tâche 6.1) : skin (couleurs, tête, accessoire) et traînée,
   // appliqués d'après les champs synchronisés du joueur.
@@ -547,32 +547,25 @@ export class PlayerView {
     if (this.protHalo) this.protHalo.visible = this.protected_;
   }
 
-  setSnapshot(x: number, y: number, now: number): void {
-    if (x === this.targetX && y === this.targetY) return;
-    this.prevX = this.targetX;
-    this.prevY = this.targetY;
-    this.prevTime = this.targetTime;
+  // État reçu au tick d'un patch : position et vitesse du dernier pas.
+  setServerState(tick: number, x: number, y: number, vx: number, vy: number): void {
     this.targetX = x;
     this.targetY = y;
-    this.targetTime = now;
+    if (!this.motion) this.motion = new RemoteMotion(x, y);
+    this.motion.push(tick, x, y, vx, vy);
   }
 
-  interpolate(now: number, renderDelay: number): void {
-    const renderTime = now - renderDelay;
-    const span = this.targetTime - this.prevTime;
-    if (span <= 0) {
+  // Joueur distant dessiné au tick du joueur local (fractionnaire) : les deux
+  // écrans montrent ainsi le même écart entre deux joueurs, au lieu de
+  // vitesse × (ping + un patch) de différence.
+  follow(shownTick: number, dt: number): void {
+    if (this.motion) {
+      this.motion.update(shownTick, dt);
+      this.renderX = this.motion.renderX;
+      this.renderY = this.motion.renderY;
+    } else {
       this.renderX = this.targetX;
       this.renderY = this.targetY;
-    } else {
-      // Lerp linéaire : vélocité constante dans un segment, discontinue à
-      // chaque transition de snapshot. Sur écran 240+Hz les kinks sont
-      // visibles ("pas fluide" malgré 480fps). Le vrai fix demanderait
-      // de stocker 3+ snapshots et faire Catmull-Rom (continuité de
-      // vélocité). Smoothstep n'est pas la solution : il met la vélocité
-      // à 0 aux extrémités → micro stop-and-go pire que les kinks.
-      const alpha = Math.max(0, Math.min(1, (renderTime - this.prevTime) / span));
-      this.renderX = this.prevX + (this.targetX - this.prevX) * alpha;
-      this.renderY = this.prevY + (this.targetY - this.prevY) * alpha;
     }
     this.root.position.set(this.renderX, 0, this.renderY);
   }

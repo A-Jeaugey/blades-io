@@ -6,9 +6,10 @@ import { SERVER_DT } from "@bladeio/shared";
 //
 // Le décalage (temps du tick − instant de réception) est lissé : la gigue
 // de réception ne doit pas faire trembler la rotation des orbites. Il inclut
-// la latence moyenne, ce qui est voulu : un tick estimé ainsi correspond à
-// l'état que le client affiche, et tickAt(maintenant − RENDER_DELAY) tombe
-// au même instant que la position interpolée des joueurs distants.
+// la latence moyenne, ce qui est voulu : tickAt(maintenant) est le tick du
+// dernier état reçu, celui jusqu'où les évènements sont joués. Les joueurs
+// et les orbites sont dessinés plus loin, au tick du joueur local
+// (InputTickClock).
 export class ServerClock {
   private offsetSec = 0;
   private ready = false;

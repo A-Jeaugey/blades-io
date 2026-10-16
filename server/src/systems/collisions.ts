@@ -95,9 +95,6 @@ function drawnIndex(tier: number, rarity: number): number {
 }
 const LAG_S = KILL_LAG_ALLOWANCE_MS / 1000;
 const LAG_REACH_MAX = KILL_LAG_REACH_MAX;
-// Au-delà, le dernier pas d'un humain est trop ancien pour dire où il va
-// (inputs interrompus) : pas de portée de latence.
-const MOVE_STALE_MS = 100;
 
 // Un seul gel à la fois, puis HITLAG_COOLDOWN_MS de liberté : un clash
 // pendant le gel ne le prolonge pas. Avant, chaque contact le repoussait et
@@ -161,10 +158,12 @@ interface OwnerBucket {
   // Même chose pour toucher un corps : lames dessinées comprises
   // (bladeBodyReach), portée de latence non comprise.
   bodyReach: number;
-  // Humain qui se déplace : vitesse de son dernier pas (portée de latence,
-  // KILL_LAG_ALLOWANCE_MS). Nulle pour un bot ou un humain à l'arrêt.
+  // Vitesse de son dernier pas (Player.moveVx/moveVy, nulle quand ses
+  // inputs n'arrivent plus) : vitesse relative de la portée de latence.
   vx: number;
   vy: number;
+  // Humain : ses lames ont la portée de latence (KILL_LAG_ALLOWANCE_MS).
+  lagReach: boolean;
   spawnProtected: boolean;
   shielded: boolean;
   // Power-up Spin : ses lames frappent plus fort (SPIN_DAMAGE).
@@ -206,7 +205,6 @@ export function resolveCollisions(
   state.players.forEach((p) => {
     if (!p.alive) return;
     const tier = p.tier;
-    const moving = !p.isBot && nowMs - p.movedAt <= MOVE_STALE_MS;
     const outer = outerOrbitRadius(p.bladeCount);
     const hitbox = tierBladeHitbox(tier);
     const bucket: OwnerBucket = {
@@ -218,8 +216,9 @@ export function resolveCollisions(
       reach: outer + hitbox,
       hitbox,
       bodyReach: outer + hitbox,
-      vx: moving ? p.moveVx : 0,
-      vy: moving ? p.moveVy : 0,
+      vx: p.moveVx,
+      vy: p.moveVy,
+      lagReach: !p.isBot,
       spawnProtected: p.spawnProtectionUntil > nowMs,
       shielded: p.shieldUntil > nowMs,
       spinning: p.spinUntil > nowMs,
@@ -365,13 +364,16 @@ export function resolveCollisions(
       const tx = target.x - owner.x;
       const ty = target.y - owner.y;
       const d2 = tx * tx + ty * ty;
-      const cReach = owner.bodyReach + BODY_RADIUS + (owner.vx !== 0 || owner.vy !== 0 ? LAG_REACH_MAX : 0);
+      const cReach = owner.bodyReach + BODY_RADIUS + (owner.lagReach ? LAG_REACH_MAX : 0);
       if (d2 > cReach * cReach) continue;
-      // Portée de latence : ce que l'attaquant parcourt vers la cible pendant
-      // KILL_LAG_ALLOWANCE_MS, ajouté au rayon du corps.
+      // Portée de latence : ce dont l'attaquant et sa cible se rapprochent
+      // pendant KILL_LAG_ALLOWANCE_MS, ajouté au rayon du corps. Vitesse
+      // relative : la vitesse de l'attaquant seule tuait une cible qui fuyait
+      // aussi vite que lui à 1,5 u de ses lames, sans contact sur aucun
+      // écran.
       let body = BODY_RADIUS;
-      if (d2 > 1e-6 && (owner.vx !== 0 || owner.vy !== 0)) {
-        const closing = (owner.vx * tx + owner.vy * ty) / Math.sqrt(d2);
+      if (owner.lagReach && d2 > 1e-6) {
+        const closing = ((owner.vx - target.vx) * tx + (owner.vy - target.vy) * ty) / Math.sqrt(d2);
         if (closing > 0) body += Math.min(LAG_REACH_MAX, closing * LAG_S);
       }
 

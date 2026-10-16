@@ -4,11 +4,14 @@ import {
   POWERUP_TYPE_VALUES,
   AckState,
   InputPredictor,
+  InputTickClock,
   CLOSE_CODE_INPUT_FLOOD,
   ClashEvent,
   MAP_RADIUS,
   LOW_BLADE_WARNING,
   SERVER_DT,
+  SERVER_TICKRATE,
+  VELOCITY_SYNC_SCALE,
   THROW_COOLDOWN_MS,
   SCORE_CRATE,
   SCORE_KILL,
@@ -127,13 +130,18 @@ import { auth } from "./auth/supabase";
 import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
 
-// Buffer d'interpolation : on rend la simu serveur avec ce délai pour
-// que les snapshots à interpoler soient déjà en mémoire (sinon
-// extrapolation, plus jittery sur jitter réseau). 80ms = ~5 ticks à
-// 60Hz, suffisant pour absorber 30-50ms de jitter normal sans bourrer
-// le buffer. Avant : 150ms, sentait le lag à chaque direction change
-// (le perso continue d'avancer "dans le passé" 150ms après l'input).
-const RENDER_DELAY = 80;
+// Joueurs et orbites sont dessinés à l'instant du joueur local, en avance
+// sur tout ce que le serveur a envoyé (RemoteMotion) : les évènements
+// (clash, élimination, changements d'orbite, retraits) sont joués dès leur
+// réception. Avant, les autres étaient dessinés 80 ms dans le passé (en fait
+// au dernier patch, l'interpolation n'ayant qu'un patch d'avance à 60 Hz),
+// lui dans le futur, et les deux écrans d'un duel ne montraient pas le même
+// écart. Marge de gigue : un patch arrivé plus tôt que la moyenne n'attend
+// pas.
+const EVENT_LEAD_MS = 2 * SERVER_DT * 1000;
+// Au-delà de cet écart entre les deux lames dessinées d'un clash, leur
+// milieu n'est plus le point de contact : le serveur le place.
+const CLASH_POINT_MAX_SPREAD = 3;
 // Au-delà de ce rayon (moins celui de l'arène du moment), une lame
 // détruite l'a été par le mur (orbite qui dépasse la zone mortelle,
 // projectile qui l'atteint).
@@ -264,8 +272,8 @@ export class Game {
   private combatFx!: CombatFx;
   // Réglage des flashs courant (teinte des corps qui se dissolvent).
   private flashK = 1;
-  // Joueurs retirés de l'état dont le rendu (80 ms dans le passé) n'a pas
-  // encore atteint le retrait : leur dernier état, pour les placer jusque-là.
+  // Joueurs retirés de l'état dont le retrait n'est pas encore joué : leur
+  // dernier état, pour les placer jusque-là.
   private departing = new Map<string, any>();
   // Corps qui finissent de se dissoudre après leur retrait (un mort n'est
   // plus envoyé aux autres clients).
@@ -318,12 +326,16 @@ export class Game {
   private nextBorderBeepAt = 0;
   private tmpNdcA = new THREE.Vector3();
   private tmpNdcB = new THREE.Vector3();
-  // Tick serveur estimé et tick de rendu de la frame : les joueurs distants
-  // sont affichés RENDER_DELAY dans le passé, leurs lames au même instant.
+  // Tick serveur estimé (tel que reçu) ; tick jusqu'où les évènements reçus
+  // sont joués ; tick dessiné, celui du joueur local (inputs envoyés), pour
+  // tous les joueurs et toutes les orbites.
   private serverClock = new ServerClock();
-  private renderTick = 0;
-  // Derniers segments d'horloge d'orbite reçus par joueur : le tick de
-  // rendu est 80 ms dans le passé, un nouveau segment a pu commencer depuis.
+  private inputTicks = new InputTickClock();
+  private eventTick = 0;
+  private shownTick = 0;
+  // Derniers segments d'horloge d'orbite reçus par joueur : le plus récent se
+  // prolonge jusqu'au tick dessiné ; un segment reçu après coup (commencé
+  // avant ce tick) recale l'angle d'autant.
   private orbitSegments = new Map<string, OrbitSegment[]>();
   private debugHitboxes: DebugHitboxes | null = null;
   // Shaders compilés au lobby (scene/shaderWarmup.ts), et les joueurs
@@ -332,11 +344,10 @@ export class Game {
   private warmupViews: PlayerView[] = [];
   // Mesure de fluidité en jeu (?debug=perf).
   private perfOverlay: PerfOverlay | null = null;
-  // Ligne de temps du rendu : ce qui est reçu ~80 ms avant que le rendu
-  // n'atteigne son tick (évènements de combat, changements des lames en
-  // orbite, morts) y attend ce tick. Joué tout de suite, l'étincelle d'un
-  // clash apparaissait avant le contact et la lame cassée disparaissait
-  // avant d'atteindre l'impact.
+  // Ligne de temps des évènements (combat, changements des lames en orbite,
+  // morts, retraits) : jouée dans l'ordre des ticks, dès réception (cf.
+  // EVENT_LEAD_MS). Elle attendait le tick de rendu quand les autres joueurs
+  // étaient dessinés 80 ms dans le passé.
   private timeline: Array<{ tick: number; seq: number; run: () => void; fx: boolean }> = [];
   private timelineSeq = 0;
   private timelineSorted = true;
@@ -550,7 +561,7 @@ export class Game {
         thetaAt: (id: string, tick: number) => this.orbitThetaFor(id, tick),
         tick: () => this.room?.state?.tick ?? 0,
         ids: () => [...this.orbitSegments.keys()],
-        frames: () => ({ count: this.debugHitboxes?.frameCount ?? 0, lastTick: this.debugHitboxes?.lastFrameTick ?? -1, renderTick: this.renderTick }),
+        frames: () => ({ count: this.debugHitboxes?.frameCount ?? 0, lastTick: this.debugHitboxes?.lastFrameTick ?? -1, renderTick: this.eventTick, shownTick: this.shownTick }),
         reset: () => this.debugHitboxes?.resetStats(),
         serverNow: () => this.serverNow(),
         protectedShown: () => !!this.players.get(this.myId)?.isProtectedShown,
@@ -598,6 +609,8 @@ export class Game {
         // HUD (tâche 3.4) : ligne du fil des éliminations, ping mesuré.
         feed: (e: KillFeedEntry) => this.killFeed.push(e, performance.now()),
         ping: () => this.pingMs,
+        // Positions dessinées de tous les joueurs (bancs de synchro).
+        players: () => [...this.players].map(([id, v]) => ({ id, x: v.renderX, y: v.renderY })),
         // Zone d'intérêt (tâche 2.4) : résumé de la room (minimap, classement).
         summary: () => this.summary,
       };
@@ -856,6 +869,7 @@ export class Game {
 
     // Horloge serveur : chaque patch apporte le tick courant.
     this.serverClock.reset();
+    this.inputTicks.reset();
     this.predictedThrowReadyAt = 0;
     this.orbitSegments.clear();
     this.timeline.length = 0;
@@ -924,11 +938,8 @@ export class Game {
       const isLocal = key === this.myId;
       const view = new PlayerView(isLocal, this.quality);
       view.applyCosmetics(p.skin ?? "", p.trail ?? "");
-      view.targetX = p.x; view.targetY = p.y;
+      view.setServerState(state.tick, p.x, p.y, (p.velX ?? 0) / VELOCITY_SYNC_SCALE, (p.velY ?? 0) / VELOCITY_SYNC_SCALE);
       view.renderX = p.x; view.renderY = p.y;
-      view.prevX = p.x; view.prevY = p.y;
-      view.prevTime = performance.now();
-      view.targetTime = performance.now();
       this.sceneStack.scene.add(view.root);
       this.sceneStack.scene.add(view.trail);
       this.players.set(key, view);
@@ -943,9 +954,9 @@ export class Game {
       this.renderAlive.set(key, !!p.alive);
       let aliveSeen = !!p.alive;
       callbacks.onChange(p, () => {
-        const now = performance.now();
         this.recordOrbitSegment(key, p);
-        view.setSnapshot(p.x, p.y, now);
+        // state.tick est déjà celui de ce patch (champ racine décodé avant).
+        view.setServerState(state.tick, p.x, p.y, (p.velX ?? 0) / VELOCITY_SYNC_SCALE, (p.velY ?? 0) / VELOCITY_SYNC_SCALE);
         view.applyCosmetics(p.skin ?? "", p.trail ?? "");
         if (!!p.alive !== aliveSeen) {
           aliveSeen = !!p.alive;
@@ -968,12 +979,10 @@ export class Game {
     callbacks.onAdd(state, "players", onPlayerAdd, true);
 
     // Retrait d'un joueur (mort, sorti de la zone d'intérêt, caché dans un
-    // buisson, parti) : au tick du patch sur la ligne de temps, comme ses
-    // positions. Le serveur retire un mort de la vue des autres au tick
-    // même du kill : retiré dès réception, il disparaissait ~80 ms avant le
-    // coup fatal à l'écran, et l'élimination, jouée à son tick, ne le
-    // trouvait plus (ni explosion, ni effet d'élimination, ni gain affiché
-    // au tueur). L'élimination, reçue avant, passe la première au même tick.
+    // buisson, parti) : au tick du patch sur la ligne de temps. Le serveur
+    // retire un mort de la vue des autres au tick même du kill ; l'élimination,
+    // reçue avant, passe la première au même tick et trouve encore sa vue
+    // (explosion, effet d'élimination, gain affiché au tueur).
     callbacks.onRemove(state, "players", (p, key) => {
       const v = this.players.get(key);
       if (!v) return;
@@ -1050,12 +1059,16 @@ export class Game {
         this.sound.wallZap(msg.ownerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y));
         return;
       }
-      this.particles.spawnSparks(msg.x, 0.9, msg.y, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
+      // Lame en orbite : là où elle est dessinée (en avance sur le message).
+      const drawn = this.drawnBlade(msg.bladeId);
+      const bx = drawn ? drawn.x : msg.x;
+      const by = drawn ? drawn.y : msg.y;
+      this.particles.spawnSparks(bx, 0.9, by, this.theme.palette.rarityColor[msg.rarity], 24, 7.5);
       // Éclats projetés vers l'extérieur de l'orbite du porteur (pour un
       // projectile, son lanceur : ils poursuivent sa course).
       const owner = msg.ownerId ? this.players.get(msg.ownerId) : undefined;
-      this.combatFx.shatter(msg.x, msg.y, this.theme.palette.rarityColor[msg.rarity],
-        owner ? msg.x - owner.renderX : 0, owner ? msg.y - owner.renderY : 0);
+      this.combatFx.shatter(bx, by, this.theme.palette.rarityColor[msg.rarity],
+        owner ? bx - owner.renderX : 0, owner ? by - owner.renderY : 0);
       if (msg.ownerId === this.myId) {
         this.camera.shake.add(0.18);
         this.sound.bladeLost();
@@ -1082,8 +1095,7 @@ export class Game {
         if (view) this.particles.spawnSparks(view.renderX, 1.2, view.renderY, this.theme.palette.rarityColor[msg.rarity], 6, 2);
       }
     });
-    // Caisses : sur la ligne de temps du rendu, comme les autres coups (la
-    // lame qui frappe est dessinée 80 ms dans le passé).
+    // Caisses : sur la ligne de temps, comme les autres coups.
     room.onMessage("crateHit", (msg: CrateHitEvent) => this.atTick(msg.tick, () => {
       const kind = this.crates.kindOf(msg.crateId);
       if (!this.crates.hit(msg.crateId, msg.hp)) return;
@@ -1183,8 +1195,9 @@ export class Game {
         const sparkTier = Math.min(msg.tier, 5);
         const count = 6 + sparkTier * 6;
         const speed = 4 + sparkTier * 2.5;
-        this.particles.spawnSparks(msg.x, 0.95, msg.y, this.theme.palette.fx.clashSpark, count, speed);
-        this.combatFx.clash(msg.x, msg.y, msg.tier, msg.destroyed, this.theme.palette.fx.clashSpark);
+        const at = this.clashPoint(msg);
+        this.particles.spawnSparks(at.x, 0.95, at.y, this.theme.palette.fx.clashSpark, count, speed);
+        this.combatFx.clash(at.x, at.y, msg.tier, msg.destroyed, this.theme.palette.fx.clashSpark);
         // Flash blanc des deux lames au contact (une lame brisée disparaît
         // dans la foulée, son retrait arrive après ce message).
         const flashAt = performance.now();
@@ -1393,7 +1406,7 @@ export class Game {
       const p = this.playerState(id);
       const spinPhase = p?.spinPhase ?? 0;
       const tier = p?.tier ?? 0;
-      const theta = this.orbitThetaFor(id, this.renderTick);
+      const theta = this.orbitThetaFor(id, this.shownTick);
       const bladeCount = p?.bladeCount ?? 0;
       const bladeStyle = lookOf(BLADE_STYLES, p?.bladeSkin ?? "") ?? 0;
       return { x: v.renderX, y: v.renderY, spinPhase, theta, tier, bladeCount, bladeStyle };
@@ -1404,8 +1417,25 @@ export class Game {
     return { x: msg.x, y: msg.y, a: this.blades.orbitInfo(msg.aId), b: this.blades.orbitInfo(msg.bId) };
   }
 
+  // Lame en orbite telle que dessinée à cette frame, sinon null.
+  private drawnBlade(id: string): { x: number; y: number } | null {
+    const o = this.blades.orbitInfo(id);
+    return o ? this.drawnOrbitPosition(o) : null;
+  }
+
+  // Point d'un clash à l'écran : les orbites sont dessinées en avance sur le
+  // message (instant du joueur local), donc au milieu des deux lames telles
+  // que dessinées ; le point du serveur si l'une manque ou si elles sont
+  // loin l'une de l'autre (extrapolation démentie).
+  private clashPoint(msg: ClashEvent): { x: number; y: number } {
+    const pa = this.drawnBlade(msg.aId);
+    const pb = this.drawnBlade(msg.bId);
+    if (!pa || !pb || Math.hypot(pa.x - pb.x, pa.y - pb.y) > CLASH_POINT_MAX_SPREAD) return { x: msg.x, y: msg.y };
+    return { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 };
+  }
+
   // Distance entre le point d'un clash et le milieu des deux lames telles
-  // que dessinées à cette frame (tick de rendu courant).
+  // que dessinées à cette frame.
   private clashDistance(c: ClashCheck): number | null {
     const pa = c.a && this.drawnOrbitPosition(c.a);
     const pb = c.b && this.drawnOrbitPosition(c.b);
@@ -1427,7 +1457,7 @@ export class Game {
     return this.serverClock.isEpochReady ? this.serverClock.epochAt(performance.now()) : Date.now();
   }
 
-  // Joue `run` quand le tick de rendu atteint `tick` (tout de suite si
+  // Joue `run` quand le tick des évènements atteint `tick` (tout de suite si
   // l'horloge n'est pas encore calée ou sans tick). fx : effet visuel ou
   // sonore, sauté s'il est en retard de plus de 0,5 s (onglet revenu de
   // l'arrière-plan) ; sinon (changement d'état), toujours appliqué.
@@ -1447,11 +1477,11 @@ export class Game {
       this.timeline.sort((a, b) => a.tick - b.tick || a.seq - b.seq);
       this.timelineSorted = true;
     }
-    const staleBefore = this.renderTick - 30;
+    const staleBefore = this.eventTick - 30;
     let i = 0;
     for (; i < this.timeline.length; i++) {
       const item = this.timeline[i];
-      if (item.tick > this.renderTick) break;
+      if (item.tick > this.eventTick) break;
       if (!item.fx || item.tick >= staleBefore) item.run();
     }
     if (i > 0) this.timeline.splice(0, i);
@@ -1904,8 +1934,9 @@ export class Game {
 
   // Évènement de carte (tâche 4.4) : bannière et son à son annonce (ou à
   // l'arrivée en cours d'évènement), zone au sol et chute de processeurs à
-  // chaque image (celle-ci à l'heure du tick de rendu, comme les entités).
-  private updateMapEvent(serverNowMs: number, serverRenderMs: number, dt: number): void {
+  // chaque image (celle-ci à l'heure des évènements joués : la puce touche
+  // le sol avec son impact).
+  private updateMapEvent(serverNowMs: number, serverEventMs: number, dt: number): void {
     const src = this.room?.state?.mapEvent;
     const ev = this.mapEventSnap;
     ev.kind = src?.kind ?? MapEventKind.None;
@@ -1915,7 +1946,7 @@ export class Game {
     ev.startsAt = src?.startsAt ?? 0;
     ev.endsAt = src?.endsAt ?? 0;
     this.mapEventView.update(ev, serverNowMs, this.elapsed * 0.001);
-    this.processorFall.update(this.readDrops(), serverRenderMs, dt, this.elapsed * 0.001);
+    this.processorFall.update(this.readDrops(), serverEventMs, dt, this.elapsed * 0.001);
     if (ev.kind === this.lastEventKind) return;
     this.lastEventKind = ev.kind;
     const key = MAP_EVENT_TOASTS[ev.kind];
@@ -2138,6 +2169,19 @@ export class Game {
     this.needReconcile = false;
   }
 
+  // Tick dessiné : celui du joueur local, entre ses deux derniers inputs
+  // (cf. updateLocalPrediction), d'après l'horloge des inputs ; à défaut
+  // (spectateur, avant le premier acquittement), le dernier état reçu.
+  // Jamais derrière ce qui est reçu, au plus une seconde devant (horloge pas
+  // encore recalée après une longue coupure).
+  private presentTick(now: number): number {
+    const received = this.serverClock.isReady ? this.serverClock.tickAt(now) : (this.room?.state?.tick ?? 0);
+    if (!this.inputTicks.isReady) return received;
+    const alpha = Math.max(0, Math.min(1, this.inputAccumMs / (SERVER_DT * 1000)));
+    const t = this.inputTicks.tickOf(this.inputSeq - 1 + alpha);
+    return Math.min(received + SERVER_TICKRATE, Math.max(received, t));
+  }
+
   // Rendu du joueur local : interpolation entre les deux dernières
   // positions prédites (l'horloge d'inputs avance par pas fixes), plus la
   // correction en cours d'absorption.
@@ -2162,6 +2206,9 @@ export class Game {
     const state = this.room?.state;
     const me = state?.players?.get(this.myId);
     if (!me) return;
+    // Mort ou en vie, chaque input est appliqué (ou acquitté) dans l'ordre :
+    // l'horloge des inputs reste juste, et l'instant dessiné ne saute pas.
+    this.inputTicks.onAck(me.lastSeq, state.tick);
     if (!me.alive || this.dead || this.matchOver()) { this.resetPrediction(); return; }
     const ack: AckState = {
       seq: me.lastSeq,
@@ -2672,26 +2719,27 @@ export class Game {
         this.needReconcile = false;
         this.reconcileLocal();
       }
-      // Tick de rendu de la frame, puis ce qui l'attendait sur la ligne de
-      // temps, avant de placer joueurs et lames.
-      this.renderTick = this.serverClock.isReady
-        ? this.serverClock.tickAt(now - RENDER_DELAY)
+      // Évènements reçus joués, puis l'instant dessiné de la frame, avant de
+      // placer joueurs et lames.
+      this.eventTick = this.serverClock.isReady
+        ? this.serverClock.tickAt(now + EVENT_LEAD_MS)
         : (this.room?.state?.tick ?? 0);
       this.flushTimeline();
+      this.shownTick = this.presentTick(now);
       const localView = this.players.get(this.myId);
-      // Heure du serveur : présente pour le joueur local (prédit), au tick
-      // de rendu pour les autres (affichés 80 ms dans le passé).
+      // Heure du serveur telle que reçue ; celle des évènements joués (chute
+      // de processeurs : une puce touche le sol quand son impact est joué).
       const serverNowMs = this.serverNow();
-      const serverRenderMs = this.serverClock.isEpochReady ? this.serverClock.epochAt(now - RENDER_DELAY) : serverNowMs;
+      const serverEventMs = this.serverClock.isEpochReady ? this.serverClock.epochAt(now + EVENT_LEAD_MS) : serverNowMs;
       const myTeam = this.myTeam();
       for (const [id, v] of this.players) {
         if (id === this.myId && !this.spectating) this.updateLocalPrediction(dt, v);
-        else v.interpolate(now, RENDER_DELAY);
+        else v.follow(this.shownTick, dt);
         // Spawn protection visuel : halo cyan pulsé tant que
         // spawnProtectionUntil est dans le futur. Lu directement du state
         // serveur ; la dérive d'horloge sur ~2.5s reste imperceptible.
         const ps = this.playerState(id);
-        v.setProtected(!!ps && ps.spawnProtectionUntil > (id === this.myId ? serverNowMs : serverRenderMs));
+        v.setProtected(!!ps && ps.spawnProtectionUntil > serverNowMs);
         // Modes équipe : alliés à la couleur de son propre anneau.
         const ally = id !== this.myId && sameTeam(myTeam, ps?.team ?? TEAM_NONE);
         if (id !== this.myId) v.setAlly(ally);
@@ -2733,7 +2781,7 @@ export class Game {
         this.corpses.splice(i, 1);
       }
       this.updateMagnetRing(localView, serverNowMs, dt);
-      this.blades.update(now, RENDER_DELAY, this.elapsed * 0.001, this.playerPositions);
+      this.blades.update(now, this.elapsed * 0.001, this.playerPositions);
       if (this.debugHitboxes) {
         // Étincelle vs milieu des deux lames là où elles sont dessinées à
         // cette frame.
@@ -2748,7 +2796,7 @@ export class Game {
         this.clashChecks.length = 0;
         this.clashChecksImmediate.length = 0;
       }
-      this.debugHitboxes?.update(this.renderTick, this.myId, (ownerId, ring, slot, inRing, tick) => {
+      this.debugHitboxes?.update(this.eventTick, this.myId, (ownerId, ring, slot, inRing, tick) => {
         const owner = this.room?.state?.players?.get(ownerId);
         if (!owner) return null;
         return orbitSlotAngle(ring, slot, inRing, this.orbitThetaFor(ownerId, tick), owner.spinPhase ?? 0);
@@ -2774,7 +2822,7 @@ export class Game {
       this.updateArenaShrink(serverNowMs);
       this.updateMatchUi(serverNowMs);
       this.updateFlags(myTeam, dt, serverNowMs);
-      this.updateMapEvent(serverNowMs, serverRenderMs, dt);
+      this.updateMapEvent(serverNowMs, serverEventMs, dt);
       this.updateBorderWarning(localView, dt);
       this.updateAimIndicator(localView, dt, serverNowMs);
       this.combatFeedback.update(now, (x, y) => this.camera.screenOf(x, y));

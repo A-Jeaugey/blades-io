@@ -1,10 +1,13 @@
 import {
   BOOST_DRAIN_INTERVAL,
+  INPUT_BACKLOG_KEEP,
+  INPUT_BACKLOG_WINDOW_TICKS,
   MAX_STEP_CREDIT,
   PLAYER_BODY_RADIUS,
   PLAYER_ORBIT_PUSH_MARGIN,
   RING_BASE_CAP,
   SERVER_DT,
+  VELOCITY_SYNC_SCALE,
   MoveInput,
   outerOrbitRadius,
   stepMovement,
@@ -113,10 +116,44 @@ export function updateMovement(
       applyStep(p, input, now, SERVER_DT, removePlayerBlades);
       p.lastSeq = input.seq;
     }
+    trimInputBacklog(p);
+    // Inputs interrompus (coupure, onglet en arrière-plan) : il ne bouge
+    // plus, les autres clients ne doivent plus l'extrapoler.
+    if (now - p.movedAt > STALE_MOVE_MS && (p.moveVx !== 0 || p.moveVy !== 0)) setMoveVelocity(p, 0, 0);
   });
 
   // Push-out joueur-joueur (basé sur les orbites).
   pushOutPlayers(state);
+}
+
+// Trois ticks sans pas : ses inputs n'arrivent plus (un tick sans input,
+// suivi d'un tick à deux, est la gigue ordinaire du réseau).
+const STALE_MOVE_MS = 50;
+
+// File en retard (cf. INPUT_BACKLOG_WINDOW_TICKS) : jamais descendue sous
+// INPUT_BACKLOG_KEEP + 1 sur toute la fenêtre, ses plus anciens inputs sont
+// abandonnés, acquittés sans être appliqués.
+export function trimInputBacklog(p: Player): void {
+  const queued = p.inputQueue.length;
+  if (queued < p.backlogMin) p.backlogMin = queued;
+  if (++p.backlogTicks < INPUT_BACKLOG_WINDOW_TICKS) return;
+  const drop = p.backlogMin - INPUT_BACKLOG_KEEP;
+  if (drop > 0) {
+    const dropped = p.inputQueue.splice(0, drop);
+    p.lastSeq = dropped[dropped.length - 1].seq;
+  }
+  p.backlogMin = Infinity;
+  p.backlogTicks = 0;
+}
+
+// Vitesse du dernier pas et sa version envoyée aux autres clients (cf.
+// VELOCITY_SYNC_SCALE) : une course en ligne droite, arrondis flottants
+// près, ne change rien au patch.
+export function setMoveVelocity(p: Player, vx: number, vy: number): void {
+  p.moveVx = vx;
+  p.moveVy = vy;
+  p.velX = Math.round(vx * VELOCITY_SYNC_SCALE);
+  p.velY = Math.round(vy * VELOCITY_SYNC_SCALE);
 }
 
 // Un pas de mouvement (stepMovement, partagé avec la prédiction du client),
@@ -129,6 +166,8 @@ function applyStep(
   dt: number,
   removePlayerBlades: (player: Player, count: number) => void,
 ): void {
+  const x0 = p.x;
+  const y0 = p.y;
   const r = stepMovement(p, input, {
     speed: p.speedUntil > now,
     // Hitlag : déplacement figé, recul conservé pour la sortie du gel.
@@ -136,8 +175,9 @@ function applyStep(
     canBoost: p.bladeCount > 0,
   }, dt);
   p.boost = r.boosting;
-  p.moveVx = r.dx * r.speed;
-  p.moveVy = r.dy * r.speed;
+  // Déplacement réel du pas : le long d'un mur, il glisse ; contre un
+  // pilier ou figé par le hitlag, il ne va nulle part.
+  setMoveVelocity(p, (p.x - x0) / dt, (p.y - y0) / dt);
   p.movedAt = now;
   if (r.boosting) {
     p.lifeBoostMs += dt * 1000;

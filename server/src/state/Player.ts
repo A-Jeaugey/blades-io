@@ -120,11 +120,19 @@ export class Player extends Schema {
   // ignorés) et crédit de pas (cf. MAX_STEP_CREDIT).
   lastQueuedSeq: number = 0;
   stepCredit: number = 0;
-  // Vitesse du dernier pas (u/s, recul non compris) et son heure (ms
-  // epoch) : portée de ses lames quand il fonce sur une cible
-  // (KILL_LAG_ALLOWANCE_MS, collisions.ts).
+  // Plus petite file vue sur la fenêtre en cours, et ticks écoulés dans
+  // celle-ci (cf. INPUT_BACKLOG_WINDOW_TICKS).
+  backlogMin: number = Infinity;
+  backlogTicks: number = 0;
+  // Vitesse du dernier pas (u/s, recul et décor compris), nulle quand ses
+  // inputs n'arrivent plus, et son heure (ms epoch) : portée de latence
+  // (KILL_LAG_ALLOWANCE_MS, collisions.ts). Envoyée à tous en entiers
+  // (velX/velY, VELOCITY_SYNC_SCALE) : les autres clients l'extrapolent
+  // jusqu'à leur instant (RemoteMotion). Toujours par setMoveVelocity.
   moveVx: number = 0;
   moveVy: number = 0;
+  @type("int16") velX: number = 0;
+  @type("int16") velY: number = 0;
   movedAt: number = 0;
   // Bot champion (tâche 4.12) : apparu avec une grosse orbite, il ne s'en
   // prend qu'à des proies à sa mesure.

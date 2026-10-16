@@ -31,7 +31,8 @@ export interface DebugOrbitStats {
 const MAX_RINGS = 400;
 
 // Mode debug hitbox (?debug=hitbox) : cercles aux positions serveur des
-// lames en orbite (trame la plus proche du tick de rendu) et mesure de
+// lames en orbite (trame la plus proche du tick des évènements joués : en
+// retard sur les orbites dessinées, à l'instant du joueur local) et mesure de
 // l'écart avec le calcul du client. Outil de vérification de la tâche 1.1 :
 // ce que le joueur voit doit être ce que le serveur calcule.
 export class DebugHitboxes {
@@ -127,8 +128,8 @@ export class DebugHitboxes {
   // angleOf : angle que ce client calcule pour une lame d'un joueur à un
   // tick donné, avec l'anneau et le slot utilisés par le serveur (null si le
   // joueur lui est inconnu) : la mesure porte sur la phase d'orbite, pas sur
-  // les 80 ms de décalage d'un changement de composition. Une trame n'est
-  // mesurée qu'une fois le tick de rendu atteint : l'état synchronisé du
+  // le décalage d'un changement de composition. Une trame n'est mesurée
+  // qu'une fois le tick des évènements atteint : l'état synchronisé du
   // même tick est arrivé entre-temps (le message debug peut précéder le
   // patch d'état).
   update(
@@ -163,7 +164,7 @@ export class DebugHitboxes {
       this.stats.samples = this.errors.length;
     }
 
-    // Cercles : trame la plus proche du tick de rendu.
+    // Cercles : trame la plus proche du tick des évènements.
     let best: DebugOrbitFrame | null = null;
     for (const f of this.frames) {
       if (!best || Math.abs(f.tick - renderTick) < Math.abs(best.tick - renderTick)) best = f;

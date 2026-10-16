@@ -78,7 +78,7 @@ import {
 import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
 import { Blade } from "../state/Blade";
-import { updateMovement } from "../systems/movement";
+import { setMoveVelocity, updateMovement } from "../systems/movement";
 import {
   OrbitPositionCache,
   updateBladePositions,
@@ -826,7 +826,9 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // handleInput). Le recul de la vie précédente ne pousse pas le nouveau
     // spawn.
     p.inputQueue.length = 0; p.stepCredit = 0;
+    p.backlogMin = Infinity; p.backlogTicks = 0;
     p.knockbackVx = 0; p.knockbackVy = 0;
+    setMoveVelocity(p, 0, 0);
     p.throwCooldownUntil = 0;
     p.alive = true; p.boost = false;
     p.bladeCount = 0; p.bladeIds = [];

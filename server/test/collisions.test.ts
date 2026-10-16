@@ -319,11 +319,12 @@ test("lame dessinée : une Common de palier 0 garde sa hitbox ronde", () => {
   assert.equal(target.alive, true);
 });
 
-// Un humain se voit au présent et voit sa cible ~80 ms dans le passé :
-// quand il fonce sur elle, ses lames portent plus loin de ce qu'il parcourt
-// en KILL_LAG_ALLOWANCE_MS (au plus KILL_LAG_REACH_MAX). Pas un bot, ni un
-// joueur qui s'éloigne ou dont le dernier pas est ancien.
-test("portée de latence : un humain qui fonce sur sa cible la touche plus tôt", () => {
+// L'élimination n'arrive à l'écran qu'un aller-retour après le contact :
+// quand un humain et sa cible se rapprochent, ses lames portent plus loin de
+// ce dont ils se rapprochent en KILL_LAG_ALLOWANCE_MS (au plus
+// KILL_LAG_REACH_MAX). Vitesse relative : rien pour une cible qui fuit aussi
+// vite, ni pour un bot attaquant.
+test("portée de latence : selon la vitesse relative de l'attaquant humain et de sa cible", () => {
   const a = addPlayer(state, { x: 0, y: 0, blades: 1 });
   const blade = ownedBlades(state, a)[0];
   cache.set(blade.id, 1.8, 0);
@@ -331,24 +332,26 @@ test("portée de latence : un humain qui fonce sur sa cible la touche plus tôt"
   const extra = Math.min(KILL_LAG_REACH_MAX, speed * KILL_LAG_ALLOWANCE_MS / 1000);
   const reach = 1.8 + tierBladeHitbox(0) + PLAYER_BODY_RADIUS;
   const target = addPlayer(state, { x: reach + extra - 0.05, y: 0 });
-  const attempt = (vx: number, isBot: boolean, movedAgoMs: number): boolean => {
+  const attempt = (vx: number, isBot: boolean, targetVx = 0): boolean => {
     target.alive = true;
     a.isBot = isBot;
     a.moveVx = vx;
     a.moveVy = 0;
-    a.movedAt = clock.now - movedAgoMs;
+    target.moveVx = targetVx;
+    target.moveVy = 0;
     const r = recorder();
     resolveCollisions(state, cache, r, cooldowns);
     return r.kills.length > 0;
   };
-  assert.equal(attempt(0, false, 0), false, "immobile : portée normale");
-  assert.equal(attempt(speed, false, 0), true, "fonce sur la cible");
-  assert.equal(attempt(-speed, false, 0), false, "s'éloigne");
-  assert.equal(attempt(speed, true, 0), false, "un bot joue au présent");
-  assert.equal(attempt(speed, false, 500), false, "dernier pas trop ancien");
+  assert.equal(attempt(0, false), false, "immobiles : portée normale");
+  assert.equal(attempt(speed, false), true, "fonce sur la cible");
+  assert.equal(attempt(-speed, false), false, "s'éloigne");
+  assert.equal(attempt(speed, true), false, "un bot joue au présent");
+  assert.equal(attempt(speed, false, speed), false, "poursuite à vitesse égale");
+  assert.equal(attempt(0, false, -speed), true, "la cible fonce sur ses lames");
   // Plafond : même très rapide, pas au-delà de KILL_LAG_REACH_MAX.
   target.x = reach + KILL_LAG_REACH_MAX + 0.05;
-  assert.equal(attempt(100, false, 0), false);
+  assert.equal(attempt(100, false), false);
 });
 
 test("caisse : dégâts de la rareté, destruction à 0 PV", () => {

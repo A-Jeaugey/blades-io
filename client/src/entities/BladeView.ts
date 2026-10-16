@@ -20,7 +20,7 @@ export interface PlayerPositionProvider {
     x: number;
     y: number;
     spinPhase: number;
-    // Horloge d'orbite du joueur au tick de rendu (cf. orbitThetaAt) :
+    // Horloge d'orbite du joueur au tick dessiné (cf. orbitThetaAt) :
     // intègre tier, nombre de lames et Spin, comme sur le serveur.
     theta: number;
     // Tier du joueur (0 à TIER_COUNT - 1) : forme, échelle et glow.
@@ -541,10 +541,14 @@ export class BladeRenderer {
   }
 
   update(
-    now: number, renderDelay: number, elapsedSec: number,
+    now: number, elapsedSec: number,
     players: PlayerPositionProvider,
   ): void {
-    const renderTime = now - renderDelay;
+    // Lames au sol et en vol : au dernier état reçu, prolongé jusqu'à
+    // maintenant (les orbites, elles, suivent le tick dessiné de leur
+    // propriétaire). Un lancer est montré là où le serveur l'a envoyé, et son
+    // impact, joué à réception, tombe où il est dessiné.
+    const renderTime = now;
     this.time.value = elapsedSec;
     this.ownerPoses.clear();
     const dirtyMatrices = this.dirtyMatrices;
@@ -577,8 +581,8 @@ export class BladeRenderer {
         if (!owner) return;
         const rings = this.perOwnerRingCount.get(e.ownerId);
         const nInRing = rings?.get(e.ringIndex) ?? 1;
-        // Même formule que le serveur, à l'horloge d'orbite du tick de rendu :
-        // la lame est dessinée là où le serveur la fait collisionner.
+        // Même formule que le serveur, à l'horloge d'orbite du tick dessiné :
+        // la lame est dessinée là où le serveur la fera collisionner.
         angle = orbitSlotAngle(e.ringIndex, e.slotIndex, nInRing, owner.theta, owner.spinPhase);
         const r = ringRadius(e.ringIndex);
         x = owner.x + Math.cos(angle) * r;
@@ -586,8 +590,7 @@ export class BladeRenderer {
         yRender = 0.9;
       } else if (e.isProjectile) {
         // Projectile : extrapolation linéaire à partir du dernier snapshot
-        // serveur en utilisant la velocity. Plus juste que l'interpolation
-        // entre deux snapshots (qui retarde l'image de RENDER_DELAY).
+        // serveur en utilisant la velocity.
         const dtMs = renderTime - e.targetTime;
         x = e.targetX + e.vx * (dtMs / 1000);
         y = e.targetY + e.vy * (dtMs / 1000);

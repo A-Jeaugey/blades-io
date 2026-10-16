@@ -22,6 +22,40 @@ export const MAX_INPUT_RATE = 80; // rejets au-delà
 // pas plus de MAX_INPUT_QUEUE inputs en attente.
 export const MAX_STEP_CREDIT = 10;
 export const MAX_INPUT_QUEUE = 20;
+// File en retard : une coupure plus longue que MAX_STEP_CREDIT (TCP retient
+// tout le flux jusqu'à la retransmission, 200 ms au moins) livre d'un bloc
+// plus d'inputs que le crédit n'en absorbe. Le client en envoie ensuite
+// exactement un par pas : le surplus restait en file pour toujours, et le
+// joueur jouait avec ce retard en plus (tools/bench-netcode.js, coupures de
+// 300 ms : 10 inputs en file, 167 ms). Si la file n'est jamais descendue
+// sous INPUT_BACKLOG_KEEP + 1 pendant INPUT_BACKLOG_WINDOW_TICKS (250 ms),
+// ses plus anciens inputs sont abandonnés, acquittés sans être appliqués :
+// le client se recale d'autant, une fois. Abandonnés et non rattrapés deux
+// par tick : un client qui enverrait plus vite que 60 par seconde n'y gagne
+// rien. La gigue ordinaire (paquets en retard puis groupés) vide la file
+// au moins une fois par fenêtre : rien n'est perdu (netsync.test.ts).
+export const INPUT_BACKLOG_WINDOW_TICKS = 15;
+export const INPUT_BACKLOG_KEEP = 1;
+// Joueurs distants affichés à l'instant du joueur local (prédit, en avance
+// sur le serveur d'un aller-retour) : extrapolés depuis leur dernier état
+// reçu avec la vitesse de leur dernier pas (Player.moveVx/moveVy), sur au
+// plus REMOTE_EXTRAPOLATION_MAX_TICKS (200 ms : au-delà d'un ping de cet
+// ordre, ils restent en retard d'autant). L'écart entre deux estimations
+// (changement de direction) est absorbé en REMOTE_CORRECTION_TAU secondes ;
+// au-delà de REMOTE_TELEPORT_DIST, c'est une téléportation (réapparition),
+// sans lissage.
+export const REMOTE_EXTRAPOLATION_MAX_TICKS = 12;
+// Vitesse envoyée aux autres clients (Player.velX/velY) : entier, en
+// VELOCITY_SYNC_SCALE-ièmes d'u/s. Au dixième, l'extrapolation se trompe de
+// 0,01 u au plus sur 200 ms ; en float32, la vitesse coûtait 25 à 35 % de
+// données en plus par client (tools/bench-server.js).
+export const VELOCITY_SYNC_SCALE = 10;
+export const REMOTE_CORRECTION_TAU = 0.05;
+export const REMOTE_TELEPORT_DIST = 15;
+// Lissage de l'horloge des inputs (InputTickClock) : poids d'un acquittement,
+// et écart (ticks) au-delà duquel on recale d'un coup.
+export const INPUT_TICK_SMOOTHING = 0.1;
+export const INPUT_TICK_RESYNC = 15;
 // Nombre de secondes CONSÉCUTIVES au-dessus de MAX_INPUT_RATE avant
 // déconnexion. Consécutives : une rafale isolée (paquets retenus pendant un
 // hoquet réseau puis livrés d'un coup) ne doit pas expulser un joueur
@@ -39,12 +73,14 @@ export const PLAYER_BODY_RADIUS = 0.6;
 // Distance centre-à-centre minimale pour qu'un kill corps-à-corps déclenche
 // (uniquement quand au moins un des deux joueurs n'a plus de lames).
 export const PLAYER_BODY_COLLISION = 1.0;
-// Latence de l'attaquant humain : il se voit au présent (prédiction) et voit
-// sa cible ~80 ms dans le passé (interpolation), et l'élimination s'affiche
-// au tick de rendu. Quand il fonce sur elle, elle semblait donc entrer dans
-// ses lames d'autant (1,5 à 2,5 u au boost) avant de mourir. Ses lames
-// portent plus loin de ce qu'il parcourt vers elle en KILL_LAG_ALLOWANCE_MS,
-// au plus KILL_LAG_REACH_MAX. Pas les bots, qui jouent au présent.
+// Latence de l'attaquant humain : chaque écran montre les joueurs à l'instant
+// du joueur local, en avance d'un aller-retour sur le serveur (prédiction,
+// extrapolation des autres), et l'élimination n'arrive qu'un aller-retour
+// après le contact. Quand les deux se rapprochent, la cible entrait donc
+// dans ses lames d'autant avant de mourir. Ses lames portent plus loin de
+// ce dont les deux se rapprochent en KILL_LAG_ALLOWANCE_MS (vitesse
+// relative : en poursuite à vitesse égale, rien), au plus KILL_LAG_REACH_MAX.
+// Pas pour un bot attaquant, qui joue au présent.
 export const KILL_LAG_ALLOWANCE_MS = 100;
 export const KILL_LAG_REACH_MAX = 1.5;
 // Marge ajoutée au rayon de l'orbite pour le push-out joueur-joueur (les

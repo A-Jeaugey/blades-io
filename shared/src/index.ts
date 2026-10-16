@@ -9,6 +9,7 @@ export * from "./shop";
 export * from "./upgrades";
 export * from "./movement";
 export * from "./prediction";
+export * from "./remoteMotion";
 export * from "./profile";
 export * from "./levels";
 export * from "./challenges";

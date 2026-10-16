@@ -2,7 +2,7 @@
 
 Guide pour Claude (et autres assistants IA) qui travaillent sur ce repo.
 
-> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js` (`BENCH_SEED=<n>` : même partie avant et après, l'écart ne vient que du code mesuré). Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`), et `node tools/bench-survival.js first` pour le temps avant sa première mort (débutant par défaut, que les bots ménagent ; `BENCH_RETURNING=1` pour un joueur qui revient) ; équilibre entre gros et petits joueurs (prime, loot, paliers) : `node tools/bench-snowball.js` (durée des règnes du leader, kills « underdog ») ; contact de deux grosses orbites (collisions, destructions de lames) : `node tools/bench-giants.js` (après `npm test`) ; champions face à un joueur aguerri à grosse orbite : `node tools/bench-champions.js` (après `npm test`). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
+> **Pour le contexte produit/gameplay**, lire `README.md` (anglais) et `PLAN.md` (français, plan d'amélioration V2 à suivre, cases à cocher). Chaque tâche du plan renvoie aux constats de l'audit `docs/AUDIT-2026-09.md` (preuves `fichier:ligne`, mesures de référence). Performance serveur : mesurer avant/après avec `node tools/bench-server.js` (`BENCH_SEED=<n>` : même partie avant et après, l'écart ne vient que du code mesuré). Bots ou combat : vérifier que les premières secondes d'un débutant ne deviennent pas plus meurtrières avec `node tools/bench-survival.js` (après `npm test`), et `node tools/bench-survival.js first` pour le temps avant sa première mort (débutant par défaut, que les bots ménagent ; `BENCH_RETURNING=1` pour un joueur qui revient) ; équilibre entre gros et petits joueurs (prime, loot, paliers) : `node tools/bench-snowball.js` (durée des règnes du leader, kills « underdog ») ; contact de deux grosses orbites (collisions, destructions de lames) : `node tools/bench-giants.js` (après `npm test`) ; champions face à un joueur aguerri à grosse orbite : `node tools/bench-champions.js` (après `npm test`) ; synchronisation entre clients (ce que deux écrans montrent d'un même duel, avec ping, gigue et coupures) : `node tools/bench-netcode.js` (après `npm run build`, `BENCH_PING`). La section « Actions manuelles en attente » de `PLAN.md` liste ce que le owner doit faire à la main (Supabase, production, fusion) : la lui rappeler en fin de tâche tant qu'elle n'est pas vide. Ce document se concentre sur **ce qu'il faut savoir pour coder dans la base sans casser quoi que ce soit**, avec un focus sur le système de thèmes cosmétiques évolutif.
 
 ---
 
@@ -14,9 +14,9 @@ shared/    Constantes et types — source de vérité gameplay (positions de
 server/    Colyseus authoritative room. Tick et patchs à 60 Hz, simulation
            complète. Le serveur ne sait rien des couleurs/visuels — c'est
            cosmétique.
-client/    Vite + Three.js + SDK Colyseus. Entités distantes rendues 80 ms
-           dans le passé (interpolation) + prédiction locale +
-           reconciliation pour le joueur courant.
+client/    Vite + Three.js + SDK Colyseus. Prédiction + réconciliation du
+           joueur courant ; les autres joueurs extrapolés jusqu'à son
+           instant, pour que tous les écrans montrent le même combat.
 ```
 
 **Règles d'or** :
@@ -52,7 +52,7 @@ client/src/
 │   ├── renderScale.ts   Tailles en pixels rapportées à la partie dessinée
 │   ├── MapEventView.ts  Zone au sol d'un évènement de carte (pluie, zone dorée)
 │   ├── ProcessorFallView.ts Chute de processeurs : alertes au sol, puces en
-│   │                    chute réglées sur l'heure du tick de rendu
+│   │                    chute réglées sur l'heure des évènements joués
 │   ├── AmbientWisps.ts  Particules d'âme — actif si theme.ambient.wisps != null
 │   └── palette.ts       Façade rétrocompat sur le thème actif
 ├── entities/
@@ -114,9 +114,25 @@ client/src/
 
 ### Synchronisation client/serveur — important
 
-- Les entités distantes sont rendues `RENDER_DELAY` (80 ms) dans le passé.
-  `ServerClock` (`client/src/net/ServerClock.ts`) estime le tick serveur
-  correspondant : le **tick de rendu** de la frame.
+- **Un seul instant à l'écran : celui du joueur local** (retour de jeu du
+  2026-10-16). Il se voit prédit, en avance sur le serveur d'un aller-retour ;
+  les autres joueurs et toutes les orbites sont dessinés au même tick, le
+  **tick dessiné** (`Game.presentTick`) : l'input n s'applique au tick
+  n + écart (`InputTickClock`, `shared/src/remoteMotion.ts`, écart mesuré à
+  chaque acquittement). Un joueur distant y est extrapolé depuis son dernier
+  état avec la vitesse de son dernier pas (`Player.moveVx/moveVy` :
+  déplacement réel, nulle quand ses inputs n'arrivent plus, toujours par
+  `setMoveVelocity` ; envoyée à tous en entiers, `velX/velY` au dixième
+  d'u/s, `VELOCITY_SYNC_SCALE`) par
+  `RemoteMotion` (au plus 200 ms, écart d'un virage absorbé en 50 ms, jamais
+  dans le décor). Avant, les autres étaient au dernier patch reçu et
+  l'écart entre deux joueurs différait d'un écran à l'autre de vitesse ×
+  (ping + ~40 ms) : 5,3 u à 100 ms de ping au boost, 0,15 u depuis
+  (`node tools/bench-netcode.js`). Ne jamais redessiner un joueur ou une
+  orbite à un autre instant : les deux écrans d'un duel divergeraient de
+  nouveau. Lames au sol et projectiles restent au dernier état reçu.
+  `ServerClock` (`client/src/net/ServerClock.ts`) donne le tick tel que
+  reçu (`tickAt(maintenant)`).
 - **Orbites** : angle d'une lame = `orbitSlotAngle(anneau, slot, n, θ,
   spinPhase)` (`shared/src/orbits.ts`), où θ est l'horloge d'orbite du
   joueur, synchronisée sous forme de segment (`orbitPhase`, `orbitTick`,
@@ -124,12 +140,15 @@ client/src/
   clients calculent le même angle pour un tick donné. Ne jamais
   réintroduire un temps local (horloge du navigateur, somme de `dt`) dans
   ce calcul.
-- **Évènements de combat** (clash, lame détruite, impact, kill…) et
-  changements des lames en orbite : estampillés du tick serveur
-  (`TickStamped`, `emit()` côté serveur) et joués quand le tick de rendu
-  l'atteint (`atTick()` dans `client/src/main.ts`). Tout nouvel évènement
-  positionnel suit ce chemin, sinon il apparaît 80 ms avant l'image
-  correspondante.
+- **Évènements de combat** (clash, lame détruite, impact, kill…),
+  changements des lames en orbite et retraits : estampillés du tick serveur
+  (`TickStamped`, `emit()` côté serveur), joués dans l'ordre des ticks dès
+  leur réception (`atTick()`, `eventTick` = tick reçu + `EVENT_LEAD_MS`,
+  dans `client/src/main.ts`). Les orbites étant dessinées en avance, un
+  effet positionnel se place sur ce qui est dessiné (étincelles au milieu
+  des deux lames dessinées, `clashPoint` ; éclats sur la lame dessinée,
+  `drawnBlade` ; élimination sur le corps dessiné), le point du serveur en
+  secours. Tout nouvel évènement positionnel suit ce chemin.
 - **Mouvement** : un input = un pas de `SERVER_DT`, appliqué dans l'ordre
   par le serveur (file d'inputs, `lastSeq` acquitte le dernier appliqué).
   Le pas est la fonction partagée `stepMovement` (`shared/src/movement.ts`)
@@ -137,7 +156,15 @@ client/src/
   (`shared/src/prediction.ts`). Toute règle de déplacement (vitesse,
   boost, Speed, recul, hitlag, décor) se change dans `stepMovement`,
   jamais d'un seul côté : sinon la prédiction se trompe à chaque pas.
-  Test de référence : `server/test/prediction.test.ts`.
+  Test de référence : `server/test/prediction.test.ts`. File en retard :
+  après une coupure plus longue que le crédit de pas (`MAX_STEP_CREDIT`),
+  le surplus d'inputs restait en file pour toujours (167 ms de lag en plus
+  après une coupure de 300 ms) ; s'il ne descend jamais sous
+  `INPUT_BACKLOG_KEEP` + 1 pendant `INPUT_BACKLOG_WINDOW_TICKS` (250 ms),
+  il est abandonné, acquitté sans être appliqué (`trimInputBacklog`,
+  `server/src/systems/movement.ts`, tests `server/test/netsync.test.ts`).
+  Jamais rattrapé deux pas par tick : ce serait un speed-hack pour qui
+  envoie plus de 60 inputs par seconde.
 - **Zone d'intérêt** (`server/src/systems/interest.ts`) : chaque client ne
   reçoit que les joueurs et les lames proches (`@view()` sur
   `players`/`blades`, rayon annoncé par le client via le message `view`,
@@ -624,7 +651,7 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   échéance serveur `Crate.expiresAt` ; le plafond des caisses ordinaires ne
   compte que les `Normal`, et leur butin garde son ordre de tirage (bancs
   de bots seuls identiques). Client : `entities/eventModels.ts`,
-  `scene/ProcessorFallView.ts` (heure du tick de rendu, `serverRenderMs`),
+  `scene/ProcessorFallView.ts` (heure des évènements joués, `serverEventMs`),
   couleurs `palette.mapEvent` des thèmes, caisses d'évènement qui
   apparaissent et disparaissent sur la ligne de temps (`atTick`). La
   minuterie ne part qu'avec un humain dans la room, sans aucun tirage
@@ -672,10 +699,13 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `bladeEdgeRadius` : `BLADE_TIP_REACH` × échelle du palier × échelle de la
   rareté, comme dans `BladeView`). Toute retouche d'une forme de
   `client/src/entities/bladeGeometries.ts` met `BLADE_TIP_REACH` à jour.
-  Un humain qui fonce sur sa cible la touche d'autant plus loin qu'il
-  avance vite (`KILL_LAG_ALLOWANCE_MS`, `KILL_LAG_REACH_MAX`, d'après la
-  vitesse de son dernier pas, `Player.moveVx/moveVy`) : il la voit 80 ms
-  dans le passé. Pas les bots, qui jouent au présent. Projectiles
+  Un humain et sa cible qui se rapprochent : ses lames portent d'autant plus
+  loin (`KILL_LAG_ALLOWANCE_MS`, `KILL_LAG_REACH_MAX`, vitesse relative de
+  leurs derniers pas, `Player.moveVx/moveVy`) : l'élimination n'arrive à
+  l'écran qu'un aller-retour après le contact. En poursuite à vitesse
+  égale, rien (avec la seule vitesse de l'attaquant, une cible qui fuyait
+  aussi vite mourait à 1,5 u de ses lames). Pas un bot attaquant, qui joue
+  au présent. Projectiles
   (`throws.ts`) : contact testé sur tout le trajet du tick
   (`server/src/systems/geometry.ts`), lames en orbite dessinées ; une lame
   en orbite qui tient arrête le projectile, brisée elle le laisse
