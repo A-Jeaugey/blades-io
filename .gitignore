@@ -12,3 +12,9 @@ client/public/
 # Sorties d'outils MCP (Playwright captures/snapshots à la racine)
 .playwright-mcp/
 /*.png
+# Refonte graphique : captures de travail et sauvegardes de Blender
+art/shots/*.png
+art/**/*.blend1
+# Concept Blender : fichier de scène et rendus, régénérés par build_concept.py
+art/concept/*.blend
+art/concept/*.png

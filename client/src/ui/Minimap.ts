@@ -1,5 +1,6 @@
 import { BladeRarity, MAP_RADIUS, MapEventKind, WALL_KILL_THICKNESS } from "@bladeio/shared";
 import { THREAT_COLORS, getActiveTheme } from "../themes";
+import { CAM_ISO, ISO_YAW_DEG } from "../gfx";
 
 function rgba(color: number, alpha: number): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
@@ -68,6 +69,9 @@ export class Minimap {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
     this.size = this.canvas.width;
+    // Cadrage isométrique (?cam=iso) : la carte tourne avec la caméra, pour
+    // que « vers le haut de la minimap » reste « vers le haut de l'écran ».
+    if (CAM_ISO) this.canvas.style.transform = `rotate(${ISO_YAW_DEG}deg)`;
     // Couleurs du thème actif (celles d'avant pour le Néon). Les flèches des
     // légendaires prennent la couleur de la rareté, palette daltonienne
     // comprise (tâche 3.8).

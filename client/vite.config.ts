@@ -77,6 +77,10 @@ export default defineConfig({
         // jour du jeu garde three.js et Colyseus en cache. Tone.js,
         // Supabase et la boutique ont leurs fichiers, chargés à la demande.
         manualChunks(id) {
+          // Lecteur de glTF : seulement pour le rendu v2 (?gfx=v2), chargé à
+          // la demande (scene/v2/kit.ts), hors du fichier de three.js que
+          // tout le monde télécharge.
+          if (id.includes("/node_modules/three/examples/jsm/loaders/GLTFLoader")) return "gltf";
           if (id.includes("/node_modules/three/")) return "three";
           if (id.includes("/node_modules/@colyseus/") || id.includes("/node_modules/msgpackr/")) return "colyseus";
           return undefined;

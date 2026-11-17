@@ -1,7 +1,17 @@
 import * as THREE from "three";
 import { CAMERA_DISTANCE, CAMERA_FOV_DEG, CAMERA_PITCH_DEG } from "@bladeio/shared";
+import { CAM_ISO, ISO_FOV_DEG } from "../gfx";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
+import { gfxV2Active } from "./v2/kit";
+
+// Lune du rendu v2 : direction vers laquelle on la voit depuis le sol
+// (derrière et à gauche de la caméra d'origine : les ombres tombent vers le
+// joueur, là où elles se lisent), demi-côté de la zone d'ombres autour du
+// point suivi et distance de la lumière.
+const MOON_DIR = new THREE.Vector3(-0.42, 0.76, -0.49).normalize();
+const SHADOW_HALF = 48;
+const SHADOW_DISTANCE = 90;
 
 export class SceneStack {
   renderer: THREE.WebGLRenderer;
@@ -15,6 +25,12 @@ export class SceneStack {
   // Brouillard pour la distance de caméra de base (CAMERA_DISTANCE).
   private fogNear: number;
   private fogFar: number;
+  // Rendu v2 : la lune, seule lumière qui porte une ombre, et le repère de
+  // sa carte d'ombres (axes perpendiculaires à sa direction).
+  private moon: THREE.DirectionalLight | null = null;
+  private shadowRight = new THREE.Vector3();
+  private shadowUp = new THREE.Vector3();
+  private shadowTexel = 1;
 
   constructor(canvas: HTMLCanvasElement, q: QualityConfig) {
     this.basePixelRatio = q.pixelRatio;
@@ -55,7 +71,7 @@ export class SceneStack {
     // Cadrage partagé (shared/), le même pour tous les thèmes ; la
     // CameraRig le pilote ensuite.
     this.camera = new THREE.PerspectiveCamera(
-      CAMERA_FOV_DEG,
+      CAM_ISO ? ISO_FOV_DEG : CAMERA_FOV_DEG,
       window.innerWidth / window.innerHeight,
       0.5,
       Math.max(220, this.fogFar + 40),
@@ -66,7 +82,36 @@ export class SceneStack {
 
     const ambient = new THREE.AmbientLight(theme.lighting.ambient.color, theme.lighting.ambient.intensity);
     this.scene.add(ambient);
-    if (!q.simpleMaterials) {
+    if (gfxV2Active(q)) {
+      // Rendu v2 : la lumière principale devient une lune qui porte des
+      // ombres (couleur du thème, plus forte : c'est elle qui donne le
+      // volume). La carte d'ombres suit le joueur (followShadows). À régler
+      // avant la première compilation : activer les ombres change les
+      // programmes de tous les matériaux éclairés.
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      const moon = new THREE.DirectionalLight(theme.lighting.key.color, 1.1);
+      moon.castShadow = true;
+      const size = q.preset === "high" ? 2048 : 1024;
+      moon.shadow.mapSize.set(size, size);
+      const cam = moon.shadow.camera;
+      cam.left = cam.bottom = -SHADOW_HALF;
+      cam.right = cam.top = SHADOW_HALF;
+      cam.near = 1;
+      cam.far = SHADOW_DISTANCE * 2;
+      cam.updateProjectionMatrix();
+      moon.shadow.bias = -0.0006;
+      moon.shadow.normalBias = 0.04;
+      this.shadowTexel = (SHADOW_HALF * 2) / size;
+      this.shadowRight.crossVectors(new THREE.Vector3(0, 1, 0), MOON_DIR).normalize();
+      this.shadowUp.crossVectors(MOON_DIR, this.shadowRight).normalize();
+      this.moon = moon;
+      this.scene.add(moon, moon.target);
+      this.followShadows(0, 0);
+      const rim = new THREE.DirectionalLight(theme.lighting.rim.color, theme.lighting.rim.intensity);
+      rim.position.set(-30, 20, -20);
+      this.scene.add(rim);
+    } else if (!q.simpleMaterials) {
       const key = new THREE.DirectionalLight(theme.lighting.key.color, theme.lighting.key.intensity);
       key.position.set(20, 40, 20);
       this.scene.add(key);
@@ -92,6 +137,21 @@ export class SceneStack {
       this.camera.far = far;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  // Rendu v2 : la carte d'ombres suit le point visé. Son centre avance par
+  // pas d'un texel dans le repère de la lumière : sans ça, le bord des
+  // ombres fourmille à chaque déplacement de la caméra.
+  followShadows(x: number, z: number): void {
+    const moon = this.moon;
+    if (!moon) return;
+    const t = moon.target.position.set(x, 0, z);
+    const r = t.dot(this.shadowRight);
+    const u = t.dot(this.shadowUp);
+    t.addScaledVector(this.shadowRight, Math.round(r / this.shadowTexel) * this.shadowTexel - r);
+    t.addScaledVector(this.shadowUp, Math.round(u / this.shadowTexel) * this.shadowTexel - u);
+    moon.position.copy(t).addScaledVector(MOON_DIR, SHADOW_DISTANCE);
+    moon.target.updateMatrixWorld();
   }
 
   private applyPixelRatio(): void {

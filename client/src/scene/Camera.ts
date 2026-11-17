@@ -7,19 +7,27 @@ import {
   cameraZoom,
 } from "@bladeio/shared";
 import { ScreenShake } from "../fx/ScreenShake";
+import { CAM_ISO, ISO_FOV_DEG, ISO_PITCH_DEG, ISO_YAW_DEG } from "../gfx";
 
 // Hauteur du point visé au-dessus du sol (centre du corps, à peu près).
 const LOOK_HEIGHT = 0.5;
 // Constante de temps du recul (s) : l'orbite grandit par paliers (un anneau
 // de plus), la caméra suit sans à-coup.
 const ZOOM_TAU = 0.45;
-const PITCH = (CAMERA_PITCH_DEG * Math.PI) / 180;
-const HALF_FOV_TAN = Math.tan((CAMERA_FOV_DEG * Math.PI) / 360);
+// Essai du cadrage isométrique (?cam=iso, gfx.ts) : caméra tournée autour
+// de la verticale, champ étroit et donc bien plus loin, pour la même
+// largeur de sol au niveau du joueur que le cadrage partagé.
+const PITCH = ((CAM_ISO ? ISO_PITCH_DEG : CAMERA_PITCH_DEG) * Math.PI) / 180;
+const YAW = CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0;
+const HALF_FOV_TAN = Math.tan(((CAM_ISO ? ISO_FOV_DEG : CAMERA_FOV_DEG) * Math.PI) / 360);
+const BASE_DISTANCE = CAM_ISO
+  ? (CAMERA_DISTANCE * Math.tan((CAMERA_FOV_DEG * Math.PI) / 360)) / HALF_FOV_TAN
+  : CAMERA_DISTANCE;
 
 // Recul sur un écran étroit : largeur de sol visible au niveau du joueur
 // d'au moins CAMERA_MIN_VIEW_WIDTH, quel que soit le format.
 export function aspectDistanceFactor(aspect: number): number {
-  const width = 2 * CAMERA_DISTANCE * HALF_FOV_TAN * aspect;
+  const width = 2 * BASE_DISTANCE * HALF_FOV_TAN * aspect;
   return Math.max(1, CAMERA_MIN_VIEW_WIDTH / width);
 }
 
@@ -29,7 +37,9 @@ export class CameraRig {
   private target = new THREE.Vector3();
   private zoom = 1;
   private zoomTarget = 1;
-  private distance = CAMERA_DISTANCE;
+  // 0 jusqu'à la première frame : le premier calcul prévient toujours
+  // onDistance (en cadrage isométrique, le brouillard part de loin).
+  private distance = 0;
   public shake = new ScreenShake();
   // Même pose que la caméra, sans le tremblement : sert à projeter le
   // curseur sur le sol. Un screen shake ne doit pas faire trembler la
@@ -60,7 +70,7 @@ export class CameraRig {
 
   update(dt: number): void {
     this.zoom += (this.zoomTarget - this.zoom) * (1 - Math.exp(-dt / ZOOM_TAU));
-    const d = CAMERA_DISTANCE * aspectDistanceFactor(this.cam.aspect) * this.zoom;
+    const d = BASE_DISTANCE * aspectDistanceFactor(this.cam.aspect) * this.zoom;
     if (Math.abs(d - this.distance) > 1e-3) {
       this.distance = d;
       this.onDistance?.(d);
@@ -69,9 +79,9 @@ export class CameraRig {
     // la position avec un lookAt direct crée un wobble visuel quand la
     // caméra "rattrape" la cible, surtout à framerate élevé avec dt variable.
     this.cam.position.set(
-      this.target.x,
+      this.target.x + Math.sin(YAW) * Math.cos(PITCH) * d,
       Math.sin(PITCH) * d,
-      this.target.z + Math.cos(PITCH) * d,
+      this.target.z + Math.cos(YAW) * Math.cos(PITCH) * d,
     );
     this.steady.position.copy(this.cam.position);
     this.steady.lookAt(this.target.x, LOOK_HEIGHT, this.target.z);
@@ -82,7 +92,7 @@ export class CameraRig {
     // Secousse proportionnelle à la distance : même amplitude à l'écran
     // quand la caméra recule.
     const shake = this.shake.update(dt);
-    const k = d / CAMERA_DISTANCE;
+    const k = d / BASE_DISTANCE;
     this.cam.position.x += shake.x * k;
     this.cam.position.y += shake.y * k;
     this.cam.lookAt(this.target.x, LOOK_HEIGHT, this.target.z);

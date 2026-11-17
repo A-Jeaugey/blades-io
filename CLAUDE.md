@@ -22,7 +22,7 @@ client/    Vite + Three.js + SDK Colyseus. Prédiction + réconciliation du
 **Règles d'or** :
 - `shared/` est un **contrat**. Toute modif y casse client+serveur+balance. Touchez avec précaution.
 - Le **serveur est autoritatif**. Le client envoie `{dx, dy, boost, throw}` (plus `aimX/aimY`, la visée d'un lancer) et reçoit des snapshots. Ne tentez pas de "fixer" un comportement gameplay côté client — c'est forcément côté serveur.
-- **Tout est procédural** : zéro asset PNG/SVG. Géométries Three.js + shaders GLSL inline. Conséquence : tout s'instancie, tout se thème.
+- **Tout est procédural** : zéro asset PNG/SVG. Géométries Three.js + shaders GLSL inline. Conséquence : tout s'instancie, tout se thème. Seule exception, à l'essai : le kit de modèles du rendu v2 (`?gfx=v2`, section « Rendu v2 » plus bas), qui ne porte aucune couleur.
 
 ---
 
@@ -249,6 +249,64 @@ prend le sien.
   texte en 16 px (en dessous, iOS zoome au focus).
 - Formats vérifiés : 360×640, 390×844, 640×360, 844×390 (petits écrans :
   `max-width: 480px` pour le lobby, `max-height: 500px` pour le paysage).
+
+### Rendu v2 (essai de refonte graphique) — `?gfx=v2`, `?cam=iso`
+
+Branche `claude/refonte-graphique`. Deux paramètres d'adresse, lus par
+`client/src/gfx.ts` (rien d'enregistré, sans eux le jeu est inchangé) :
+
+- **`?gfx=v2`** : décor modélisé dans Blender, sol éclairé, ombres portées.
+  Actif seulement si le kit est chargé, en qualité haute ou moyenne
+  (matériaux éclairés) et sur un thème `cyber` (`gfxV2Active`,
+  `scene/v2/kit.ts`) ; sinon, rendu d'origine.
+  - **Kit** : `art/kit/build_kit.py` (Blender en ligne de commande :
+    `blender --background --python art/kit/build_kit.py`) écrit
+    `client/src/assets3d/cyber_kit.glb` et `art/kit/cyber_kit.blend`. Une
+    pièce par objet, à l'origine, à la taille de son collider. Les
+    matériaux du fichier ne sont que des **rôles** (`body`, `e_neon`,
+    `e_led`…) : `scene/v2/DecorV2.ts` leur donne les couleurs du thème
+    (`roleMaterials`). Aucune couleur du jeu dans le `.glb`. Une pièce
+    ajoutée au kit se place dans `createDecorV2`, un rôle ajouté dans
+    `roleMaterials` et `ROLE_PREVIEW`.
+  - **Chargement** : `preloadGraphics()` (`main.ts`), attendu par
+    `boot.ts` avant `new Game` (le décor, le sol et les joueurs
+    d'échantillon du préchauffage en ont besoin dès le constructeur). Le
+    lecteur de glTF est un fichier à part (`manualChunks`, `gltf`), chargé
+    avec le kit seulement.
+  - **Décor** (`DecorV2.ts`) : mêmes positions que `Decor.ts`,
+    `Structures.ts` et `Bushes.ts` (`shared/src/decor.ts`), même interface
+    `DecorHandle`. Une `InstancedMesh` par morceau de pièce. Le buisson du
+    joueur local s'efface en trame (`uReedFade`), pas en transparence :
+    passer un matériau en `transparent` change son programme.
+  - **Sol** (`GroundV2.ts`) : `MeshStandardMaterial` dont couleur,
+    rugosité et émission sont recalculées en coordonnées monde (dalles,
+    flaques, rails de 20 u). Couleurs du thème (`ground.colors.base`,
+    `palette.fogColor`, `decor.groundPad`), plafond `groundMaxLuma` gardé
+    en sortie. Les lueurs du décor sont peintes une fois dans une texture
+    (`decorLightPools`, `paintPools`) : pas une lumière par pièce.
+  - **Lumière** (`Scene.ts`) : la lumière principale devient une lune qui
+    porte des ombres (`followShadows`, appelée là où la caméra reçoit sa
+    cible ; la carte d'ombres avance par pas d'un texel). Seuls le décor
+    et le corps des joueurs portent une ombre, pas les lames.
+  - **Joueurs** (`PlayerView.ts`) : les quatre géométries partagées
+    viennent du kit (`PlayerTorso`, `PlayerHead`, `PlayerArm`,
+    `PlayerLeg`, centrées comme les capsules) ; matériaux, skins,
+    dissolution et animation inchangés.
+  - **Shaders** : toujours « +0 en partie » à `?debug=perf`. Le programme
+    d'ombre des maillages sans instance se compile au lobby grâce au
+    pilier central (maillage simple, sous la caméra du menu) : ne pas le
+    repasser en `InstancedMesh`.
+  - Pas encore refaits : lames, caisses, power-ups, effets, mur ; pièces
+    du Sanctuaire (`spirit`) ; reflets dans les flaques.
+- **`?cam=iso`** : caméra tournée de 45°, inclinée à 45°, champ de 14°
+  (`ISO_*` dans `gfx.ts`, `Camera.ts`), même largeur de sol au niveau du
+  joueur que le cadrage partagé. Côté client seulement : on voit moins
+  loin que la zone d'intérêt accordée. Clavier et joystick passent par
+  `screenToGround` ; la minimap tourne avec la caméra. À trancher avant
+  d'en faire le cadrage de tous : c'est une règle de jeu (`CAMERA_*`).
+- **Captures** : `art/shots/tour.js` (Playwright MCP, `browser_run_code_unsafe`
+  avec `filename`) entre en partie, marche jusqu'à des points de vue et
+  enregistre des images ; serveur et client lancés (`.claude/launch.json`).
 
 ---
 

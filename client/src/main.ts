@@ -75,6 +75,10 @@ import { DebugHitboxes, DebugOrbitFrame } from "./scene/DebugHitboxes";
 import { SceneStack } from "./scene/Scene";
 import { BoundaryWall, GroundSurface, createGround, createBoundaryWall } from "./scene/Ground";
 import { DecorHandle, createDecor } from "./scene/Decor";
+import { getKit, gfxV2Active, loadKit } from "./scene/v2/kit";
+import { createDecorV2, decorLightPools } from "./scene/v2/DecorV2";
+import { createGroundV2 } from "./scene/v2/GroundV2";
+import { GFX_V2_REQUESTED } from "./gfx";
 import { PostFX } from "./scene/PostFX";
 import { ShaderWarmup } from "./scene/shaderWarmup";
 import { PerfOverlay } from "./ui/PerfOverlay";
@@ -222,6 +226,18 @@ export interface LobbyParts {
   onboarding: Onboarding;
   sound: SoundManager;
   touch: { source: () => boolean };
+}
+
+// À attendre avant de construire Game : le kit de modèles du rendu v2,
+// seulement s'il est demandé (?gfx=v2). En cas d'échec, le jeu garde son
+// rendu d'origine.
+export async function preloadGraphics(): Promise<void> {
+  if (!GFX_V2_REQUESTED) return;
+  try {
+    await loadKit();
+  } catch (e) {
+    console.warn("[blade.io] kit v2 indisponible, rendu d'origine", e);
+  }
 }
 
 export class Game {
@@ -516,11 +532,14 @@ export class Game {
     this.combatFx = new CombatFx(this.quality);
     this.blades.setTrailSink(this.combatFx.trails);
     this.wisps = new AmbientWisps(this.quality);
-    this.ground = createGround(this.quality);
+    // Rendu v2 (?gfx=v2, scene/v2/) : sol éclairé et décor du kit, aux
+    // mêmes interfaces que ceux d'origine.
+    const kit = gfxV2Active(this.quality) ? getKit() : null;
+    this.ground = kit ? createGroundV2(decorLightPools()) : createGround(this.quality);
     this.sceneStack.scene.add(this.ground.mesh);
     this.wall = createBoundaryWall(this.quality);
     this.sceneStack.scene.add(this.wall.object);
-    this.decor = createDecor(this.quality);
+    this.decor = kit ? createDecorV2(this.quality, kit) : createDecor(this.quality);
     this.sceneStack.scene.add(this.decor.group);
     this.sceneStack.scene.add(this.blades.root);
     this.sceneStack.scene.add(this.crates.root);
@@ -1648,6 +1667,7 @@ export class Game {
       kc.y += (killerView.renderY - kc.y) * k;
     }
     this.camera.setTarget(kc.x, kc.y);
+    this.sceneStack.followShadows(kc.x, kc.y);
     this.camera.setOrbitRadius(killerState?.alive ? outerOrbitRadius(killerState.bladeCount) : 0);
     if (this.pendingDeath) {
       // Nombre de lames du tueur en direct : il ramasse le butin.
@@ -2809,7 +2829,10 @@ export class Game {
       if (this.killCam) {
         this.updateKillCam(now, dt);
       } else {
-        if (localView) this.camera.setTarget(localView.renderX, localView.renderY);
+        if (localView) {
+          this.camera.setTarget(localView.renderX, localView.renderY);
+          this.sceneStack.followShadows(localView.renderX, localView.renderY);
+        }
         // Recul selon l'orbite du joueur local (vivant et en partie).
         const meCam = this.room?.state?.players?.get(this.myId);
         this.camera.setOrbitRadius(meCam?.alive && !this.dead ? outerOrbitRadius(meCam.bladeCount) : 0);

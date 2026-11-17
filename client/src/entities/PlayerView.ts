@@ -3,6 +3,7 @@ import { RemoteMotion } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 import { SKIN_LOOKS, SkinLook, TRAIL_LOOKS, TrailLook, lookOf } from "../cosmetics/looks";
+import { getKit, gfxV2Active } from "../scene/v2/kit";
 
 // Traînée du joueur local (tâche 2.6) : ruban au sol qui couvre toujours
 // les TRAIL_MS dernières millisecondes de déplacement, échantillonné dans
@@ -196,7 +197,11 @@ export class PlayerView {
     // Tronc — segments capsule réduits selon detail.
     const torsoCapSeg = detail === "rich" ? 6 : detail === "low" ? 4 : 4;
     const torsoRadSeg = detail === "rich" ? 3 : 2;
-    const torsoGeo = sharedGeo(`torso:${detail}`, () => new THREE.CapsuleGeometry(0.28, 0.55, torsoRadSeg, torsoCapSeg));
+    // Rendu v2 (?gfx=v2) : mêmes pièces aux mêmes centres, mais modélisées
+    // (kit Blender) au lieu de capsules, et qui portent une ombre. Tout le
+    // reste (matériaux, skins, dissolution, animation) est inchangé.
+    const kit = gfxV2Active(q) ? getKit() : null;
+    const torsoGeo = sharedGeo(`torso:${detail}`, () => kit?.geometry("PlayerTorso") ?? new THREE.CapsuleGeometry(0.28, 0.55, torsoRadSeg, torsoCapSeg));
     const torsoMat = mkMat(primary, accentDim, 0.5);
     this.body = new THREE.Mesh(torsoGeo, torsoMat);
     this.body.position.y = 0.95;
@@ -206,7 +211,7 @@ export class PlayerView {
     // Tête — sphère segments selon detail.
     const headSeg = detail === "rich" ? 14 : detail === "low" ? 8 : 6;
     const headRingSeg = Math.max(6, headSeg - 4);
-    const headGeo = sharedGeo(`head:${detail}`, () => new THREE.SphereGeometry(0.26, headSeg, headRingSeg));
+    const headGeo = sharedGeo(`head:${detail}`, () => kit?.geometry("PlayerHead") ?? new THREE.SphereGeometry(0.26, headSeg, headRingSeg));
     this.sphereHeadGeo = headGeo;
     const headMat = mkMat(primary, accentDim, 0.4);
     this.head = new THREE.Mesh(headGeo, headMat);
@@ -219,7 +224,7 @@ export class PlayerView {
     if (detail !== "minimal") {
       const armCapSeg = detail === "rich" ? 6 : 4;
       const armRadSeg = detail === "rich" ? 3 : 2;
-      const armGeo = sharedGeo(`arm:${detail}`, () => new THREE.CapsuleGeometry(0.09, 0.45, armRadSeg, armCapSeg));
+      const armGeo = sharedGeo(`arm:${detail}`, () => kit?.geometry("PlayerArm") ?? new THREE.CapsuleGeometry(0.09, 0.45, armRadSeg, armCapSeg));
       const armMat = mkMat(primary, accentDim, 0.45);
       this.leftArm = new THREE.Mesh(armGeo, armMat);
       this.rightArm = new THREE.Mesh(armGeo, armMat);
@@ -231,7 +236,7 @@ export class PlayerView {
 
       const legCapSeg = detail === "rich" ? 6 : 4;
       const legRadSeg = detail === "rich" ? 3 : 2;
-      const legGeo = sharedGeo(`leg:${detail}`, () => new THREE.CapsuleGeometry(0.12, 0.5, legRadSeg, legCapSeg));
+      const legGeo = sharedGeo(`leg:${detail}`, () => kit?.geometry("PlayerLeg") ?? new THREE.CapsuleGeometry(0.12, 0.5, legRadSeg, legCapSeg));
       const legMat = mkMat(primary, accentDim, 0.35);
       this.leftLeg = new THREE.Mesh(legGeo, legMat);
       this.rightLeg = new THREE.Mesh(legGeo, legMat);
@@ -240,6 +245,12 @@ export class PlayerView {
       this.root.add(this.leftLeg);
       this.root.add(this.rightLeg);
       this.disposables.push(legMat);
+    }
+
+    if (kit) {
+      for (const part of [this.body, this.head, this.leftArm, this.rightArm, this.leftLeg, this.rightLeg]) {
+        if (part) part.castShadow = true;
+      }
     }
 
     // Anneau néon au sol (cercle d'ancrage). Segments réduits en low/ultra.

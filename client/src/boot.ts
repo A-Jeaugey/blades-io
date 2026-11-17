@@ -49,7 +49,10 @@ let game: Game | null = null;
 let waiting = false;
 const login = new LoginScreen((res) => void enter(res));
 const parts: LobbyParts = { login, settings, profile, onboarding, sound, touch };
-const engine = engineModule.then((m) => (game = new m.Game(parts)));
+const engine = engineModule.then(async (m) => {
+  await m.preloadGraphics();
+  return (game = new m.Game(parts));
+});
 engine.catch((e) => console.warn("[blade.io] game failed to load", e));
 
 // Entrée en partie ; si le moteur arrive encore, le bouton l'indique et

@@ -1,6 +1,7 @@
 import { Keyboard } from "./Keyboard";
 import { Mouse } from "./Mouse";
 import { TouchJoystick } from "./TouchJoystick";
+import { screenToGround } from "../gfx";
 
 export type InputMode = "keyboard" | "mouse" | "touch";
 
@@ -201,11 +202,13 @@ export class InputManager {
 
   private moveInput(): { dx: number; dy: number; boost: boolean } {
     if (this.isTouch) {
-      const d = this.touch.getDir();
+      // Joystick et clavier parlent dans le repère de l'écran : tournés
+      // vers le sol quand la caméra l'est (?cam=iso).
+      const d = screenToGround(this.touch.getDir().x, this.touch.getDir().y);
       return { dx: d.x, dy: d.y, boost: this.touch.boost };
     }
     if (this.desktopMode === "keyboard") {
-      const kbd = this.keyboard.dir;
+      const kbd = screenToGround(this.keyboard.dir.x, this.keyboard.dir.y);
       return { dx: kbd.x, dy: kbd.y, boost: this.keyboard.boost };
     }
     // Mode souris : suit le curseur. Shift reste actif pour le boost.
