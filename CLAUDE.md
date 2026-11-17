@@ -252,8 +252,15 @@ prend le sien.
 
 ### Rendu v2 (essai de refonte graphique) — `?gfx=v2`, `?cam=iso`
 
-Branche `claude/refonte-graphique`. Deux paramètres d'adresse, lus par
-`client/src/gfx.ts` (rien d'enregistré, sans eux le jeu est inchangé) :
+Version de test à l'adresse **`/v2`** (`https://game.arthurjeaugey.com/v2`) :
+rendu v2 et cadrage isométrique ensemble (`/v2?cam=std` garde le cadrage
+d'origine). Ce n'est pas un autre déploiement : le serveur renvoie la même
+page pour tout chemin sans extension, `client/src/gfx.ts` lit le chemin.
+Mêmes fichiers, même serveur, mêmes parties : les joueurs de `/v2` et de la
+racine jouent ensemble, seul l'affichage diffère. Ne jamais y faire
+dépendre une règle de jeu. Les deux réglages se demandent aussi séparément
+par paramètre d'adresse (rien d'enregistré ; hors de `/v2` et sans eux, le
+jeu est inchangé) :
 
 - **`?gfx=v2`** : décor modélisé dans Blender, sol éclairé, ombres portées.
   Actif seulement si le kit est chargé, en qualité haute ou moyenne
