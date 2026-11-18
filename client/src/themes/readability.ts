@@ -314,7 +314,9 @@ export function checkTheme(theme: Theme): CheckResult {
 
   // 5. Particules d'ambiance : petites lueurs qui flottent au-dessus du sol,
   // elles ne prennent pas la couleur d'une lame.
-  for (const w of new Set(theme.ambient.wisps?.colors ?? [])) {
+  const ambientColors = [...(theme.ambient.wisps?.colors ?? [])];
+  if (theme.ambient.weather) ambientColors.push(theme.ambient.weather.color);
+  for (const w of new Set(ambientColors)) {
     for (const r of RARITIES) {
       const d = deltaE2000(w, p.rarityColor[r]);
       if (d < R.rarityOnGroundMinDeltaE) {

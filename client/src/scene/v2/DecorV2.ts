@@ -13,6 +13,7 @@ import { QualityConfig } from "../../quality";
 import { DecorVariant, getActiveTheme } from "../../themes";
 import type { DecorHandle } from "../Decor";
 import { Kit } from "./kit";
+import { REED_PUSHERS, WorldFx } from "./WorldFx";
 
 // Décor du rendu v2 (?gfx=v2) : les mêmes obstacles aux mêmes endroits
 // (shared/src/decor.ts) que Decor.ts, Structures.ts et Bushes.ts, mais avec
@@ -143,12 +144,15 @@ function roleMaterials(v: Cyber): Record<string, THREE.Material> {
 
 // Roseaux : COLOR_0 du kit = hauteur le long de la lame (0 au pied, 1 à la
 // pointe). Pied sombre (la couleur est multipliée par cette hauteur),
-// pointe lumineuse, et un balancement lent qui grandit avec la hauteur.
+// pointe lumineuse, un balancement lent qui grandit avec la hauteur, et les
+// lames qui se couchent autour des joueurs qui les traversent (`push` :
+// positions des joueurs visibles, WorldFx.ts). Tout ça en coordonnées
+// monde : chaque buisson a sa rotation et son échelle.
 // `fade` (1 : plein, vers 0 : clairsemé) efface des pixels en trame au lieu
 // de rendre le matériau transparent : passer un matériau en transparent
 // change son programme, donc une compilation en pleine partie à la
 // première entrée dans un buisson.
-function reedsMaterial(v: Cyber, time: THREE.IUniform, fade: THREE.IUniform): THREE.MeshStandardMaterial {
+function reedsMaterial(v: Cyber, time: THREE.IUniform, fade: THREE.IUniform, push: THREE.IUniform): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({
     color: v.bushAccent,
     emissive: v.bushAccent,
@@ -161,14 +165,27 @@ function reedsMaterial(v: Cyber, time: THREE.IUniform, fade: THREE.IUniform): TH
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uReedTime = time;
     shader.uniforms.uReedFade = fade;
+    shader.uniforms.uReedPush = push;
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nuniform float uReedTime;")
+      .replace("#include <common>", `#include <common>\nuniform float uReedTime;\nuniform vec3 uReedPush[${REED_PUSHERS}];`)
       .replace(
-        "#include <begin_vertex>",
-        `#include <begin_vertex>
-        float reedH = color.r * color.r;
-        transformed.x += sin(uReedTime * 1.4 + position.x * 0.9 + position.z * 0.7) * 0.14 * reedH;
-        transformed.z += cos(uReedTime * 1.1 + position.x * 0.6 - position.z * 0.8) * 0.1 * reedH;`,
+        "#include <project_vertex>",
+        // Remplace la projection de three.js (maillage sans instance).
+        `float reedH = color.r * color.r;
+        vec4 reedWorld = modelMatrix * vec4(transformed, 1.0);
+        reedWorld.x += sin(uReedTime * 1.4 + reedWorld.x * 0.9 + reedWorld.z * 0.7) * 0.14 * reedH;
+        reedWorld.z += cos(uReedTime * 1.1 + reedWorld.x * 0.6 - reedWorld.z * 0.8) * 0.1 * reedH;
+        for (int i = 0; i < ${REED_PUSHERS}; i++) {
+          vec2 away = reedWorld.xz - uReedPush[i].xy;
+          float dist = length(away);
+          float bend = max(0.0, 1.0 - dist / 2.4) * uReedPush[i].z;
+          bend *= bend * reedH;
+          // Division bornée : un joueur pile sur le pied d'une lame.
+          reedWorld.xz += away / max(dist, 0.05) * (bend * 1.5);
+          reedWorld.y -= bend * 0.7;
+        }
+        vec4 mvPosition = viewMatrix * reedWorld;
+        gl_Position = projectionMatrix * mvPosition;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", "#include <common>\nuniform float uReedFade;")
@@ -190,7 +207,7 @@ function reedsMaterial(v: Cyber, time: THREE.IUniform, fade: THREE.IUniform): TH
   return mat;
 }
 
-export function createDecorV2(q: QualityConfig, kit: Kit): DecorHandle {
+export function createDecorV2(q: QualityConfig, kit: Kit, world: WorldFx): DecorHandle {
   const v = getActiveTheme().decor as Cyber;
   const group = new THREE.Group();
   const mats = roleMaterials(v);
@@ -284,7 +301,7 @@ export function createDecorV2(q: QualityConfig, kit: Kit): DecorHandle {
   const reeds = BUSHES.map((b, i) => {
     // Un matériau par buisson (même programme) : le fondu est le sien.
     const fade: THREE.IUniform = { value: 1 };
-    const mesh = new THREE.Mesh(reedsGeo, reedsMaterial(v, time, fade));
+    const mesh = new THREE.Mesh(reedsGeo, reedsMaterial(v, time, fade, world.uniforms.uReedPush));
     const s = b.radius / BUSH_MODEL_RADIUS;
     mesh.position.set(b.x, 0, b.y);
     mesh.rotation.y = i * 2.1;

@@ -282,6 +282,8 @@ export const FORGE_VERMEILLE_THEME: Theme = {
       drifSpeedMin: 0.8,        // un peu plus rapide que sanctuaire
       drifSpeedMax: 1.5,        // — la forge est agitée, pas contemplative
     },
+    // Braises qui montent du sol, à la couleur des étincelles.
+    weather: { kind: "embers", color: 0xff6a1f },
   },
 
   music: {

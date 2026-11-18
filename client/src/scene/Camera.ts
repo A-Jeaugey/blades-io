@@ -64,6 +64,15 @@ export class CameraRig {
     this.zoomTarget = cameraZoom(outerRadius);
   }
 
+  // Point du sol suivi (joueur local, ou tueur pendant la caméra de mort).
+  get focusX(): number {
+    return this.target.x;
+  }
+
+  get focusZ(): number {
+    return this.target.z;
+  }
+
   get viewDistance(): number {
     return this.distance;
   }

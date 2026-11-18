@@ -330,6 +330,9 @@ export const PROFONDEURS_GLACEES_THEME: Theme = {
       drifSpeedMin: 0.4,    // plus lent que sanctuaire (0.6) — monde gelé
       drifSpeedMax: 0.9,    // plus lent que sanctuaire (1.2) — languissant
     },
+    // Neige lente, d'un vert de givre assourdi : ni le blanc des lames
+    // communes, ni le bleu des rares, ni le violet des épiques.
+    weather: { kind: "snow", color: 0x7fb8ac },
   },
 
   music: {

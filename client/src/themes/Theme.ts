@@ -133,6 +133,14 @@ export interface ThemeBladeStyle {
   emissiveBoost: number;  // multiplier sur top de la compensation glow
 }
 
+// Météo du rendu v2 (scene/v2/Weather.ts) : pluie en traits, neige ou
+// braises en points. Sa couleur suit la règle des particules d'ambiance :
+// loin de celle des lames (check:themes).
+export interface ThemeWeather {
+  kind: "rain" | "snow" | "embers";
+  color: number;
+}
+
 export interface ThemeAmbient {
   // Particules ambient flottantes. null = pas de particules (cas neon).
   wisps: {
@@ -141,6 +149,8 @@ export interface ThemeAmbient {
     drifSpeedMin: number;       // u/s
     drifSpeedMax: number;
   } | null;
+  // Absente : temps sec.
+  weather?: ThemeWeather;
 }
 
 export interface ThemeMusic {

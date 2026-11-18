@@ -303,8 +303,33 @@ jeu est inchangé) :
     d'ombre des maillages sans instance se compile au lobby grâce au
     pilier central (maillage simple, sous la caméra du menu) : ne pas le
     repasser en `InstancedMesh`.
+  - **Monde vivant** (2026-11-18), tout côté client, rien qui dise au
+    joueur ce que l'écran ne montre pas déjà :
+    - `scene/v2/WorldFx.ts` : lumières de la partie au sol, lues par le sol
+      comme un tableau d'uniforms (`GROUND_LIGHTS`) : une lueur sous chaque
+      joueur visible (couleur de son anneau, les plus proches du point
+      suivi s'il y en a trop) et un éclair à chaque effet de combat
+      (`CombatFx.groundLights`, interface `GroundFlashSink` : un nouvel
+      effet positionnel y ajoute le sien ; réglage des flashs appliqué).
+      Les mêmes positions couchent les roseaux autour des joueurs
+      (`uReedPush`, en coordonnées monde dans le vertex shader).
+    - `scene/v2/Weather.ts` : météo du thème (`ambient.weather`, facultatif :
+      pluie en traits, neige ou braises en points), calculée dans le vertex
+      shader dans un volume qui suit le point visé. Sa couleur passe par
+      la règle des particules d'ambiance de `check:themes` (loin des
+      raretés). Sous la pluie, ronds dans les flaques (`uGRain`).
+    - `scene/v2/Reflection.ts` (qualité haute) : la scène rendue une
+      seconde fois à demi-résolution par une caméra symétrique sous le
+      sol, juste avant le rendu (`main.ts`) ; le sol la lit dans ses
+      flaques. Même genre de cible que la scène : aucun programme de plus.
+      Coupé en mode allégé (`postFx.isLite`). Ce qui ne doit pas se
+      refléter va dans `reflection.hidden`.
+    - Taille des points (`fovScale`, `scene/renderScale.ts`) : rapportée au
+      champ de la caméra, sinon les particules sont quatre fois plus
+      petites en cadrage isométrique. Tout nouveau shader de points la
+      prend en compte.
   - Pas encore refaits : lames, caisses, power-ups, effets, mur ; pièces
-    du Sanctuaire (`spirit`) ; reflets dans les flaques.
+    du Sanctuaire (`spirit`) ; ambiance sonore de la météo.
 - **`?cam=iso`** : caméra tournée de 45°, inclinée à 45°, champ de 14°
   (`ISO_*` dans `gfx.ts`, `Camera.ts`), même largeur de sol au niveau du
   joueur que le cadrage partagé. Côté client seulement : on voit moins

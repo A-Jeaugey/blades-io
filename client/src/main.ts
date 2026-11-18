@@ -78,6 +78,9 @@ import { DecorHandle, createDecor } from "./scene/Decor";
 import { getKit, gfxV2Active, loadKit } from "./scene/v2/kit";
 import { createDecorV2, decorLightPools } from "./scene/v2/DecorV2";
 import { createGroundV2 } from "./scene/v2/GroundV2";
+import { GroundReflection } from "./scene/v2/Reflection";
+import { WeatherHandle, createWeather } from "./scene/v2/Weather";
+import { WorldFx } from "./scene/v2/WorldFx";
 import { GFX_V2_REQUESTED } from "./gfx";
 import { PostFX } from "./scene/PostFX";
 import { ShaderWarmup } from "./scene/shaderWarmup";
@@ -307,6 +310,14 @@ export class Game {
     return this.tmpAt;
   };
   private wisps!: AmbientWisps;
+  // Rendu v2 (null sinon) : lumières et roseaux qui réagissent à la partie,
+  // météo du thème, reflet des flaques (qualité haute), et la couleur des
+  // joueurs en lumière.
+  private worldFx: WorldFx | null = null;
+  private weather: WeatherHandle | null = null;
+  private reflection: GroundReflection | null = null;
+  private readonly lightLocal = new THREE.Color();
+  private readonly lightRemote = new THREE.Color();
   // Moniteur FPS adaptatif : si fps reste sous le seuil pendant une fenêtre,
   // on baisse la résolution dynamiquement (resScale) ; si ça ne suffit pas,
   // on downgrade le preset (low → ultra). Si le fps remonte durablement, on
@@ -535,11 +546,31 @@ export class Game {
     // Rendu v2 (?gfx=v2, scene/v2/) : sol éclairé et décor du kit, aux
     // mêmes interfaces que ceux d'origine.
     const kit = gfxV2Active(this.quality) ? getKit() : null;
-    this.ground = kit ? createGroundV2(decorLightPools()) : createGround(this.quality);
+    if (kit) {
+      const theme = getActiveTheme();
+      this.worldFx = new WorldFx();
+      this.combatFx.groundLights = this.worldFx;
+      this.lightLocal.set(theme.palette.playerLocal.accent);
+      this.lightRemote.set(theme.palette.playerRemote.accent);
+      // Second rendu de la scène à chaque frame : qualité haute seulement.
+      if (this.quality.preset === "high") this.reflection = new GroundReflection(this.sceneStack.renderer, 0.6);
+      const weather = theme.ambient.weather;
+      if (weather) {
+        this.weather = createWeather(this.quality, weather);
+        this.sceneStack.scene.add(this.weather.object);
+      }
+      this.ground = createGroundV2(decorLightPools(), this.worldFx, this.reflection, weather?.kind === "rain");
+      if (this.reflection) {
+        this.reflection.hidden.push(this.ground.mesh);
+        if (this.weather) this.reflection.hidden.push(this.weather.object);
+      }
+    } else {
+      this.ground = createGround(this.quality);
+    }
     this.sceneStack.scene.add(this.ground.mesh);
     this.wall = createBoundaryWall(this.quality);
     this.sceneStack.scene.add(this.wall.object);
-    this.decor = kit ? createDecorV2(this.quality, kit) : createDecor(this.quality);
+    this.decor = kit && this.worldFx ? createDecorV2(this.quality, kit, this.worldFx) : createDecor(this.quality);
     this.sceneStack.scene.add(this.decor.group);
     this.sceneStack.scene.add(this.blades.root);
     this.sceneStack.scene.add(this.crates.root);
@@ -2752,6 +2783,7 @@ export class Game {
       const serverNowMs = this.serverNow();
       const serverEventMs = this.serverClock.isEpochReady ? this.serverClock.epochAt(now + EVENT_LEAD_MS) : serverNowMs;
       const myTeam = this.myTeam();
+      this.worldFx?.beginFrame();
       for (const [id, v] of this.players) {
         if (id === this.myId && !this.spectating) this.updateLocalPrediction(dt, v);
         else v.follow(this.shownTick, dt);
@@ -2773,6 +2805,10 @@ export class Game {
         // Mort : le corps reste le temps de se dissoudre (tâche 4.9).
         const shown = shouldBeVisible || dissolving;
         if (v.root.visible !== shown) v.root.visible = shown;
+        // Rendu v2 : sa lueur au sol, à la couleur de son anneau.
+        if (shouldBeVisible && !dissolving) {
+          this.worldFx?.addPlayer(v.renderX, v.renderY, isLocal || ally ? this.lightLocal : this.lightRemote);
+        }
         // Traînée : la sienne, et celle des autres joueurs qui en ont une
         // d'équipée (cosmétique visible par tous ; auparavant cachée ici,
         // seul son propriétaire la voyait).
@@ -2838,6 +2874,8 @@ export class Game {
         this.camera.setOrbitRadius(meCam?.alive && !this.dead ? outerOrbitRadius(meCam.bladeCount) : 0);
       }
       this.camera.update(dt);
+      this.worldFx?.endFrame(dt, this.camera.focusX, this.camera.focusZ);
+      this.weather?.update(this.elapsed * 0.001, this.camera.focusX, this.camera.focusZ);
       this.ground.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);
       this.wall.setRadius(this.arenaRadius());
@@ -2887,6 +2925,7 @@ export class Game {
         this.shaderWarmup.step(4);
         if (this.shaderWarmup.done) this.shaderWarmup = null;
       }
+      this.reflection?.render(this.sceneStack.scene, this.sceneStack.camera, !this.postFx.isLite);
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
       this.perfOverlay?.frame(now, { preset: this.quality.preset, scale: this.getRenderScale(), lite: this.postFx.isLite });
 

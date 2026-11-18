@@ -33,6 +33,12 @@ const VAULT_ECHO: WaveSpec = { radius: 7, width: 0.5, alpha: 0.5, duration: 0.5 
 const BLADE_Y = 0.9;
 const GROUND_Y = 0.06;
 
+// Lumière brève au sol à l'endroit d'un effet (rendu v2 : WorldFx.ts).
+export interface GroundFlashSink {
+  flash(x: number, z: number, color: number, radius: number, strength: number, ttl: number): void;
+  setFlashIntensity(k: number): void;
+}
+
 export class CombatFx {
   readonly object = new THREE.Group();
   readonly trails: BladeTrails;
@@ -50,6 +56,8 @@ export class CombatFx {
   // première élimination ; certains pilotes ne préparent aussi le pipeline
   // qu'au premier vrai dessin.
   private warm = true;
+  // Rendu v2 : chaque effet éclaire aussi le sol autour de lui. null : rien.
+  groundLights: GroundFlashSink | null = null;
 
   constructor(q: QualityConfig) {
     const budget = q.fx;
@@ -77,6 +85,7 @@ export class CombatFx {
     w.radius = (CLASH_WAVE.radius + Math.min(tier, 5) * 0.2) * k;
     w.alpha = CLASH_WAVE.alpha * (destroyed > 0 ? 1.2 : 1);
     this.shockwaves.spawn(x, BLADE_Y, z, color, w);
+    this.groundLights?.flash(x, z, color, 4.5 + Math.min(tier, 5) * 0.5, destroyed > 0 ? 0.9 : 0.5, 0.22);
   }
 
   // Lame brisée en (x, z), projetée selon (dirX, dirZ).
@@ -88,6 +97,7 @@ export class CombatFx {
   kill(x: number, z: number, color: number): void {
     this.shockwaves.spawn(x, GROUND_Y, z, color, KILL_WAVE);
     if (this.rich) this.shockwaves.spawn(x, GROUND_Y + 0.01, z, color, KILL_ECHO, 0.09);
+    this.groundLights?.flash(x, z, color, 13, 1.4, 0.75);
   }
 
   // Palier atteint par un joueur.
@@ -97,6 +107,7 @@ export class CombatFx {
     const orbit = outerOrbitRadius(TIER_THRESHOLDS[Math.min(tier, TIER_THRESHOLDS.length - 1)] ?? 0);
     w.radius = Math.max(TIER_WAVE.radius, orbit + TIER_WAVE_MARGIN);
     this.shockwaves.spawn(x, GROUND_Y, z, color, w);
+    this.groundLights?.flash(x, z, color, w.radius + 4, 1.0, 0.6);
   }
 
   // Puce tombée en (x, z) : onde au sol ; éclats de son boîtier si elle
@@ -104,6 +115,7 @@ export class CombatFx {
   processorImpact(x: number, z: number, color: number, shardColor: number, exploded: boolean): void {
     this.shockwaves.spawn(x, GROUND_Y, z, color, IMPACT_WAVE);
     if (exploded) this.shards.burst(x, z, shardColor, 0, 0, 1.3);
+    this.groundLights?.flash(x, z, color, exploded ? 11 : 7, exploded ? 1.3 : 0.8, 0.5);
   }
 
   // Coffre-fort ouvert en (x, z) : large onde, écho en haute qualité,
@@ -113,6 +125,7 @@ export class CombatFx {
     if (this.rich) this.shockwaves.spawn(x, GROUND_Y + 0.01, z, color, VAULT_ECHO, 0.12);
     this.shards.burst(x, z, shardColor, 0, 0, 1.8);
     this.shards.burst(x, z, color, 0, 0, 1.2);
+    this.groundLights?.flash(x, z, color, 18, 1.5, 0.9);
   }
 
   setFlashIntensity(k: number): void {
@@ -121,6 +134,7 @@ export class CombatFx {
     this.columns.setFlashIntensity(k);
     this.trails.setFlashIntensity(k);
     this.speedLines.setFlashIntensity(k);
+    this.groundLights?.setFlashIntensity(k);
   }
 
   // Après l'update des lames (qui alimente les traînées). now :

@@ -6,7 +6,7 @@ import { FORGE_VERMEILLE_THEME } from "./forge-vermeille";
 import { PROFONDEURS_GLACEES_THEME } from "./profondeurs-glacees";
 
 export type { Theme } from "./Theme";
-export type { DecorVariant } from "./Theme";
+export type { DecorVariant, ThemeWeather } from "./Theme";
 
 // Registre central des thèmes. Pour ajouter un thème : importer son module
 // et l'ajouter ici. C'est aussi ce que la future boutique listera.

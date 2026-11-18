@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { fxIntensity } from "./flash";
 import { BurstShape, BurstStart, burstStart } from "../cosmetics/looks";
+import { fovScale } from "../scene/renderScale";
 
 // Particules rondes (tâche 2.6) : PointsMaterial dessinait des carrés et
 // ignorait l'attribut de taille. Disque doux, taille et opacité par
@@ -113,11 +114,12 @@ export class ParticlePool {
     this.points.frustumCulled = false;
     // Taille en pixels de la cible de rendu courante (post-FX et résolution
     // dynamique compris), comme le fait PointsMaterial.
-    this.points.onBeforeRender = (renderer) => {
-      // Partie de la cible réellement dessinée (résolution dynamique).
+    this.points.onBeforeRender = (renderer, _scene, camera) => {
+      // Partie de la cible réellement dessinée (résolution dynamique), et
+      // champ de la caméra (cadrage isométrique).
       const target = renderer.getRenderTarget();
       const height = target ? target.viewport.w : renderer.getDrawingBufferSize(this.bufferSize).y;
-      this.material.uniforms.uScale.value = height * 0.5;
+      this.material.uniforms.uScale.value = height * 0.5 * fovScale(camera);
     };
 
     // Pré-alloue la pool d'objets pour éviter `new` par spawn.

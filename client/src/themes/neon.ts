@@ -179,6 +179,9 @@ export const NEON_THEME: Theme = {
     // Pas de wisps pour le neon : l'ambiance cyberpunk d'origine n'en avait
     // pas et ça matche la grille géométrique froide.
     wisps: null,
+    // Pluie fine sur les dalles : un gris sarcelle éteint, loin du blanc des
+    // lames communes, du bleu des rares et du violet des épiques.
+    weather: { kind: "rain", color: 0x4d7a78 },
   },
 
   music: {
