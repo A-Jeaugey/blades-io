@@ -30,6 +30,9 @@ const TIER_WAVE_MARGIN = 3;
 const IMPACT_WAVE: WaveSpec = { radius: 6, width: 0.8, alpha: 0.6, duration: 0.45 };
 const VAULT_WAVE: WaveSpec = { radius: 11, width: 1.1, alpha: 0.65, duration: 0.65 };
 const VAULT_ECHO: WaveSpec = { radius: 7, width: 0.5, alpha: 0.5, duration: 0.5 };
+// Onde d'un obélisque (décor interactif) : son rayon vient du serveur.
+const PULSE_WAVE: WaveSpec = { radius: 11, width: 1.3, alpha: 0.75, duration: 0.5 };
+const PULSE_ECHO: WaveSpec = { radius: 6, width: 0.6, alpha: 0.5, duration: 0.4 };
 const BLADE_Y = 0.9;
 const GROUND_Y = 0.06;
 
@@ -49,6 +52,7 @@ export class CombatFx {
   private readonly rich: boolean;
   private clashWave: WaveSpec = { ...CLASH_WAVE };
   private tierWave: WaveSpec = { ...TIER_WAVE };
+  private pulseWave: WaveSpec = { ...PULSE_WAVE };
   // Préchauffage : à la première frame (au lobby), chaque effet dessine une
   // instance invisible (sous le sol, de taille ou d'opacité nulle). Son
   // shader se compile et son pipeline se prépare au chargement, et non au
@@ -126,6 +130,15 @@ export class CombatFx {
     this.shards.burst(x, z, shardColor, 0, 0, 1.8);
     this.shards.burst(x, z, color, 0, 0, 1.2);
     this.groundLights?.flash(x, z, color, 18, 1.5, 0.9);
+  }
+
+  // Onde lâchée par un obélisque en (x, z), jusqu'à radius.
+  obeliskPulse(x: number, z: number, radius: number, color: number): void {
+    const w = this.pulseWave;
+    w.radius = radius;
+    this.shockwaves.spawn(x, GROUND_Y, z, color, w);
+    if (this.rich) this.shockwaves.spawn(x, GROUND_Y + 0.01, z, color, PULSE_ECHO, 0.1);
+    this.groundLights?.flash(x, z, color, radius + 4, 1.5, 0.8);
   }
 
   setFlashIntensity(k: number): void {

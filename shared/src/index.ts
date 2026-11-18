@@ -19,6 +19,7 @@ export * from "./botNames";
 export * from "./cosmetics";
 export * from "./modes";
 export * from "./mapEvents";
+export * from "./interactive";
 export * from "./arena";
 export * from "./powerups";
 export * from "./ranked";

@@ -23,4 +23,7 @@ export class Crate extends Schema {
   // Coffre-fort : heure du dernier évènement crateHit envoyé (cf.
   // ArenaRoom.handleCrateHit). Champ serveur.
   lastHitEventAt = 0;
+  // Heure du dernier dégât reçu (obélisque : sa charge retombe quand on le
+  // laisse, cf. InteractiveSystem). Champ serveur.
+  lastDamageAt = 0;
 }

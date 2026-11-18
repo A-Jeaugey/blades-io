@@ -82,6 +82,8 @@ import { GroundReflection } from "./scene/v2/Reflection";
 import { WeatherHandle, createWeather } from "./scene/v2/Weather";
 import { WorldFx } from "./scene/v2/WorldFx";
 import { GFX_V2_REQUESTED } from "./gfx";
+import { PulseView } from "./entities/PulseView";
+import { ObeliskArmedEvent, ObeliskPulseEvent } from "@bladeio/shared";
 import { PostFX } from "./scene/PostFX";
 import { ShaderWarmup } from "./scene/shaderWarmup";
 import { PerfOverlay } from "./ui/PerfOverlay";
@@ -310,6 +312,8 @@ export class Game {
     return this.tmpAt;
   };
   private wisps!: AmbientWisps;
+  // Décor interactif : cercles des ondes d'obélisque en préavis.
+  private pulses!: PulseView;
   // Rendu v2 (null sinon) : lumières et roseaux qui réagissent à la partie,
   // météo du thème, reflet des flaques (qualité haute), et la couleur des
   // joueurs en lumière.
@@ -543,6 +547,8 @@ export class Game {
     this.combatFx = new CombatFx(this.quality);
     this.blades.setTrailSink(this.combatFx.trails);
     this.wisps = new AmbientWisps(this.quality);
+    this.pulses = new PulseView();
+    this.sceneStack.scene.add(this.pulses.root);
     // Rendu v2 (?gfx=v2, scene/v2/) : sol éclairé et décor du kit, aux
     // mêmes interfaces que ceux d'origine.
     const kit = gfxV2Active(this.quality) ? getKit() : null;
@@ -783,6 +789,8 @@ export class Game {
     this.crates.add(sample("crate"), 0, 0, 1, 1, CrateKind.Normal);
     this.crates.add(sample("vault"), 0, 0, 1, 1, CrateKind.Vault);
     this.crates.add(sample("chip"), 0, 0, 1, 1, CrateKind.Chip);
+    this.crates.add(sample("rack"), 0, 0, 1, 1, CrateKind.Rack);
+    this.crates.add(sample("obelisk"), 0, 0, 1, 1, CrateKind.Obelisk);
     for (const type of POWERUP_TYPE_VALUES) {
       this.powerups.add(sample(`pu${type}`), type, BladeRarity.Common, 0, 0);
       this.powerups.add(sample(`pu${type}e`), type, BladeRarity.Epic, 0, 0);
@@ -1082,6 +1090,11 @@ export class Game {
       this.atTick(state.tick, () => {
         if (this.room?.state?.crates?.get(key) === c) this.crates.add(key, c.x, c.y, c.hp, c.maxHp, kind);
       }, false);
+      // Décor interactif : la charge d'un obélisque retombe sans qu'aucun
+      // coup ne le dise ; sa jauge suit ses PV dans l'état.
+      if (kind === CrateKind.Rack || kind === CrateKind.Obelisk) {
+        callbacks.listen(c, "hp", (hp: number) => this.crates.setHp(key, hp));
+      }
     }, true);
     callbacks.onRemove(state, "crates", (_c, key) => {
       if (this.crates.kindOf(key) === CrateKind.Normal) this.crates.remove(key);
@@ -1160,6 +1173,28 @@ export class Game {
       else this.particles.spawnExplosion(msg.x, 1.0, msg.y, this.theme.palette.fx.crateDestroyExplosion, 28);
       if (kind !== CrateKind.Vault) this.sound.crateBreak(this.audibleGain(msg.x, msg.y));
       if (msg.byId === this.myId) this.scorePop(msg.x, msg.y, SCORE_CRATE, "small");
+    }));
+    // Décor interactif : obélisque armé (cercle de son onde pendant le
+    // préavis), puis l'onde, chacun à son tick.
+    room.onMessage("obeliskArmed", (msg: ObeliskArmedEvent) => this.atTick(msg.tick, () => {
+      const by = msg.byId ? this.playerState(msg.byId) : undefined;
+      const spared = msg.byId === this.myId || (!!by && sameTeam(this.myTeam(), by.team ?? TEAM_NONE));
+      this.pulses.arm(msg.x, msg.y, msg.radius, msg.delayMs, spared);
+      this.sound.vaultHit(this.audibleGain(msg.x, msg.y));
+    }));
+    room.onMessage("obeliskPulse", (msg: ObeliskPulseEvent) => this.atTick(msg.tick, () => {
+      this.pulses.release(msg.x, msg.y);
+      const color = this.theme.decor.obeliskInner;
+      this.combatFx.obeliskPulse(msg.x, msg.y, msg.radius, color);
+      this.particles.spawnExplosion(msg.x, 1.5, msg.y, color, 26);
+      this.sound.processorImpact(true, this.audibleGain(msg.x, msg.y));
+      // Touché : la secousse est pour soi, et ses lames tombent.
+      if (msg.hit.includes(this.myId)) {
+        this.camera.shake.add(0.6);
+        this.sound.bladeLost();
+      } else {
+        this.nearShake(msg.x, msg.y, 0.3, msg.radius + 14);
+      }
     }));
     // Chute de processeurs : la puce touche le sol, à son tick (la puce qui
     // tombe est réglée sur la même heure, cf. ProcessorFallView).
@@ -1383,6 +1418,7 @@ export class Game {
     this.clearPlayerViews();
     this.blades.clear();
     this.crates.clear();
+    this.pulses.clear();
     this.powerups.clear();
     this.flagsView.clear();
     this.resetPrediction();
@@ -2162,6 +2198,7 @@ export class Game {
     // (sans ça, lames fantômes héritées de la session précédente).
     this.blades.clear();
     this.crates.clear();
+    this.pulses.clear();
     this.powerups.clear();
     this.flagsView.clear();
     this.flagHud.hide();
@@ -2861,6 +2898,7 @@ export class Game {
       this.powerups.update(dt, this.elapsed * 0.001);
       // Après les lames, qui alimentent les traînées.
       this.combatFx.update(dt, now, this.renderPosOf);
+      this.pulses.update(dt);
       this.particles.update(dt);
       if (this.killCam) {
         this.updateKillCam(now, dt);

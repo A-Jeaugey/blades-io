@@ -754,6 +754,38 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   map_events_summary;` : part des joueurs venus jusqu'à lui). Les bots y
   vont par `botGoal`, combiné avec celui du mode (le plus pressant des
   deux). Le coffre et les puces comptent comme caisses cassées (défis).
+- **Décor interactif (2026-11-18)** : deux genres de pièces de la carte
+  avec lesquelles on joue, réglés dans `shared/src/interactive.ts`. Ce
+  sont des caisses à place et à identifiant fixes (`CrateKind.Rack`,
+  `CrateKind.Obelisk`, `rack-<i>`, `obelisk-<i>`), remises en place par
+  `InteractiveSystem` (`server/src/systems/interactive.ts`) : collisions,
+  lancers, PV et `damageCrate` sont ceux de toutes les caisses. Leurs
+  colliders ne changent jamais (`decor.ts`) : vidée ou non, la pièce reste
+  un obstacle et `stepMovement` n'a rien à savoir.
+  Racks (`RACK_SITES`, les six racks) : `RACK_HP`, butin `RACK_LOOT_*`
+  projeté depuis leur bord, retour après `RACK_RESPAWN_MS` ; comptent
+  comme une caisse cassée (score, défis). Obélisques (`PULSE_OBELISKS`,
+  les huit de l'anneau intérieur) : charge `PULSE_CHARGE` plafonnée par
+  joueur (`PULSE_PLAYER_DPS`, même réserve que le coffre-fort), qui
+  retombe si on les laisse (`PULSE_REGEN_*`) ; chargé, l'obélisque
+  s'arme (`obeliskArmed`, ni points ni caisse cassée) et lâche son onde
+  `PULSE_WARNING_MS` plus tard (`firePulse`, `ArenaRoom` : évènement
+  `obeliskPulse`) : recul `PULSE_KNOCKBACK` et `pulseShedCount` lames au
+  sol (les moins rares, `recordRelease` et non `recordLoss` : elles
+  existent encore) pour tout joueur en vie dans `PULSE_RADIUS`, sauf
+  l'auteur du dernier coup, ses alliés et un joueur sous protection
+  d'apparition. Les bots récoltent les racks, n'arment pas les obélisques
+  (`scoreFarmCrates`) et ne lancent sur aucun des deux. Une pièce hors de
+  l'arène du moment ne revient pas (`zoneInner`). Les dégâts mesurés en
+  jeu sont bien plus bas que ceux du coffre (on ne frappe une pièce que
+  d'une part de son orbite) : régler `RACK_HP` et `PULSE_CHARGE` en
+  jouant, pas au calcul. Client (les deux rendus) :
+  `entities/CrateView.ts` (jauge en anneau au sol, losange au-dessus d'un
+  rack plein ; `setHp` suit la charge qui retombe, lue dans l'état),
+  `entities/PulseView.ts` (cercle du préavis : plein et à sa couleur pour
+  qui est épargné, rouge en tirets pour qui est visé),
+  `CombatFx.obeliskPulse`, texte `howto.interactive`. Tests :
+  `server/test/interactive.test.ts`. Captures : `art/shots/interactive.js`.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client

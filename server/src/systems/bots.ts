@@ -10,6 +10,7 @@ import {
   CHAMPION_NAME_MARK,
   CHAMPION_PREY_RATIO,
   CHAMPION_RESPAWN_MS,
+  CrateKind,
   CHAMPION_SECOND_AT,
   CHAMPION_SIZE_RATIO,
   MAP_RADIUS,
@@ -945,6 +946,9 @@ export class BotController {
       const d = Math.hypot(dx, dy);
 
       if (d > 60) return;
+      // Un obélisque ne donne rien à récolter : l'armer est un coup tactique,
+      // que les bots ne jouent pas (ils en subissent les ondes).
+      if (c.kind === CrateKind.Obelisk) return;
       if (!reachable(arena, c.x, c.y)) return;
       if (this.nearGraced(bot, c.x, c.y)) return;
 
@@ -1152,6 +1156,9 @@ export class BotController {
       let best = Infinity;
       arena.crates?.forEach((c) => {
         if (c.hp <= 0) return;
+        // Pas de lancer sur un rack ou un obélisque : la lame y est
+        // consommée pour une fraction de leurs PV.
+        if (c.kind === CrateKind.Rack || c.kind === CrateKind.Obelisk) return;
         const d = Math.hypot(c.x - st.targetX, c.y - st.targetY);
         if (d < best) { best = d; crateX = c.x; crateY = c.y; }
       });

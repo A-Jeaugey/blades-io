@@ -17,6 +17,10 @@ import {
   PROCESSOR_LOOT_MAX,
   PROCESSOR_LOOT_MIN,
   PROCESSOR_RARITY_WEIGHTS,
+  RACK_HITBOX,
+  RACK_LOOT_MAX,
+  RACK_LOOT_MIN,
+  RACK_RARITY_WEIGHTS,
   RARITY_HP,
   VAULT_DROP_SPEED_MAX,
   VAULT_DROP_SPEED_MIN,
@@ -193,6 +197,15 @@ export class CrateSystem {
       scatterLoot(state, c.x, c.y, eventLoot(c.kind), VAULT_HITBOX, VAULT_DROP_SPEED_MIN, VAULT_DROP_SPEED_MAX, 400);
     } else if (c.kind === CrateKind.Chip) {
       scatterLoot(state, c.x, c.y, eventLoot(c.kind), crateHitbox(c.kind) * 0.5, CRATE_DROP_SPEED * 0.6, CRATE_DROP_SPEED * 1.1, 250);
+    } else if (c.kind === CrateKind.Rack) {
+      // Rack à butin : projeté depuis son bord (le rack reste un obstacle,
+      // des lames nées dedans y resteraient coincées).
+      const loot: BladeRarity[] = [];
+      const n = randInt(RACK_LOOT_MIN, RACK_LOOT_MAX);
+      for (let i = 0; i < n; i++) loot.push(pickWeighted(RACK_RARITY_WEIGHTS));
+      scatterLoot(state, c.x, c.y, loot, RACK_HITBOX + 0.4, CRATE_DROP_SPEED * 0.8, CRATE_DROP_SPEED * 1.4, 300);
+    } else if (c.kind === CrateKind.Obelisk) {
+      // Obélisque chargé : pas de butin, une onde (InteractiveSystem).
     } else {
       // Tirages dans l'ordre d'avant (angle, vitesse, rareté) : une room de
       // bots seuls (bancs) doit jouer à l'identique.

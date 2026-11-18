@@ -95,6 +95,7 @@ import { RestartAware, registerRoom, restartDeadline, trackWrite, unregisterRoom
 import { LifeEnd, recordLife, recordMapEvent } from "../telemetry";
 import { BotController } from "../systems/bots";
 import { CrateSystem } from "../systems/crates";
+import { InteractiveSystem, PendingPulse } from "../systems/interactive";
 import { MapEventSystem } from "../systems/mapEvents";
 import { ArenaSizer } from "../systems/arenaSize";
 import { PowerUpSystem } from "../systems/powerups";
@@ -106,6 +107,16 @@ import {
 } from "../systems/throws";
 import { BladeThrownEvent, ChallengeDoneEvent, CrateKind, GameModeId, MapEventKind, MatchEndEvent, MatchPhase, MatchStanding, ProjectileImpactEvent, gameModeOf, levelForXp, modeHasAdaptiveArena, modeHasMapEvents } from "@bladeio/shared";
 import { modeAllowsUpgrades, upgradeLevelsFromInventory } from "@bladeio/shared";
+import {
+  ObeliskArmedEvent,
+  ObeliskPulseEvent,
+  PULSE_KNOCKBACK,
+  PULSE_RADIUS,
+  PULSE_SHED_SPEED,
+  PULSE_WARNING_MS,
+  pulseShedCount,
+  sameTeam,
+} from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
@@ -181,6 +192,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private crates = new CrateSystem();
   // Évènements de carte (tâche 4.4), dans les modes qui en ont.
   private mapEvents = new MapEventSystem();
+  // Décor interactif : racks à butin, obélisques qui se chargent.
+  private interactive = new InteractiveSystem();
   private mapEventsOn = false;
   // Arène à la taille de sa population (tâche 4.5), dans les modes qui la
   // veulent ; la carte entière sinon.
@@ -1004,6 +1017,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     resolveProjectileCollisions(this.state, throwCb, this.orbitCache, dt);
     this.spawning.update(dt, this.state, this.isPrivate);
     this.crates.update(dt, this.state, this.isPrivate);
+    const nowPulse = Date.now();
+    for (const pulse of this.interactive.update(dt, this.state, nowPulse)) this.firePulse(pulse, nowPulse);
     this.powerups.update(dt, this.state, this.isPrivate, (player, pu, durationMs) => this.handlePowerUpPickup(player, pu, durationMs));
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
@@ -1100,6 +1115,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     this.state.players.forEach((p) => this.startLife(p));
     this.mode.onMatchStart(Date.now());
     this.mapEvents.reset(this.state);
+    this.interactive.reset();
   }
 
   // Ce que la zone d'intérêt ne donne plus : classement complet, joueurs de
@@ -1223,8 +1239,9 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private handleCrateHit(crate: Crate, attacker: Player | null): void {
     // Coffre-fort : une orbite de 40 lames le frappe ~200 fois par seconde.
     // Un évènement toutes les VAULT_HIT_EVENT_MS suffit au client (effets
-    // espacés, PV de la jauge lus dans le suivant).
-    if (crate.kind === CrateKind.Vault) {
+    // espacés, PV de la jauge lus dans le suivant). De même pour un rack ou
+    // un obélisque, qui encaissent aussi longtemps.
+    if (crate.kind !== CrateKind.Normal && crate.kind !== CrateKind.Chip) {
       const now = Date.now();
       if (now - crate.lastHitEventAt < VAULT_HIT_EVENT_MS) return;
       crate.lastHitEventAt = now;
@@ -1234,6 +1251,20 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   }
 
   private handleCrateDestroyed(crate: Crate, attacker: Player | null): void {
+    const now = Date.now();
+    const pulse = this.interactive.onDestroyed(crate, attacker, now);
+    if (crate.kind === CrateKind.Obelisk) {
+      // Obélisque chargé à fond : ni points ni butin, il s'arme. L'onde
+      // partira de firePulse, à pulse.at.
+      if (pulse) {
+        const armed: Omit<ObeliskArmedEvent, "tick"> = { x: pulse.x, y: pulse.y, delayMs: PULSE_WARNING_MS, radius: PULSE_RADIUS };
+        // Comme pour une caisse : son auteur n'est pas nommé s'il est caché.
+        if (attacker && !isInBush(attacker.x, attacker.y)) armed.byId = attacker.id;
+        this.emit("obeliskArmed", armed, { to: [attacker?.id], at: { x: pulse.x, y: pulse.y } });
+      }
+      this.crates.destroyCrate(this.state, crate);
+      return;
+    }
     if (attacker) {
       attacker.cratesDestroyed++;
       updateScore(attacker);
@@ -1317,7 +1348,64 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     }
   }
 
-  private removePlayerBlades(player: Player, count: number): void {
+  // Onde d'un obélisque armé (décor interactif) : tout joueur en vie dans
+  // le rayon est repoussé et perd une part de ses lames, qui tombent au sol
+  // vers l'extérieur (ramassables par tous). Épargnés : celui qui l'a armé,
+  // ses alliés (toute source de dégâts saute les alliés), et un joueur
+  // encore sous sa protection d'apparition.
+  private firePulse(pulse: PendingPulse, now: number): void {
+    const hit: string[] = [];
+    this.state.players.forEach((p) => {
+      if (!p.alive || p.id === pulse.ownerId) return;
+      if (sameTeam(pulse.ownerTeam, p.team)) return;
+      if (p.spawnProtectionUntil > now) return;
+      const dx = p.x - pulse.x;
+      const dy = p.y - pulse.y;
+      const d = Math.hypot(dx, dy);
+      if (d > PULSE_RADIUS) return;
+      // Un joueur pile sur l'axe de l'obélisque part vers +x.
+      const ux = d > 1e-3 ? dx / d : 1;
+      const uy = d > 1e-3 ? dy / d : 0;
+      p.knockbackVx = ux * PULSE_KNOCKBACK;
+      p.knockbackVy = uy * PULSE_KNOCKBACK;
+      const shed = pulseShedCount(p.bladeCount);
+      if (shed > 0) this.removePlayerBlades(p, shed, (rarity) => this.dropShedBlade(p, rarity, ux, uy, now));
+      hit.push(p.id);
+    });
+    const ev: Omit<ObeliskPulseEvent, "tick"> = { x: pulse.x, y: pulse.y, radius: PULSE_RADIUS, hit };
+    this.emit("obeliskPulse", ev, { to: [pulse.ownerId], players: hit, at: { x: pulse.x, y: pulse.y } });
+  }
+
+  // Lame arrachée par une onde : posée juste devant le joueur, côté
+  // extérieur, avec de l'élan (éparpillée d'un quart de tour), à échéance
+  // comme le butin. Elle existe encore dans le monde : recordRelease, pas
+  // recordLoss (elle ne retombe pas une seconde fois à sa mort).
+  private dropShedBlade(player: Player, rarity: BladeRarity, ux: number, uy: number, now: number): void {
+    const a = Math.atan2(uy, ux) + (Math.random() - 0.5) * (Math.PI / 2);
+    const speed = PULSE_SHED_SPEED * (0.7 + Math.random() * 0.6);
+    const nb = new Blade();
+    nb.id = randomId();
+    nb.rarity = rarity;
+    nb.hp = RARITY_HP[rarity];
+    nb.x = player.x + Math.cos(a) * 1.2;
+    nb.y = player.y + Math.sin(a) * 1.2;
+    nb.vx = Math.cos(a) * speed;
+    nb.vy = Math.sin(a) * speed;
+    nb.pickupLockUntil = now + 500;
+    nb.expiresAt = now + GROUND_BLADE_TTL_MS;
+    this.state.blades.set(nb.id, nb);
+    recordRelease(player, nb.id, now);
+  }
+
+  // onRemoved : ce que devient chaque lame retirée (par défaut, celle d'un
+  // boost : elle tombe derrière le joueur, selon BOOST_DROP_RATIO).
+  private removePlayerBlades(
+    player: Player,
+    count: number,
+    onRemoved: (rarity: BladeRarity) => void = (rarity) => {
+      if (BOOST_DROP_RATIO >= 1 || Math.random() < BOOST_DROP_RATIO) this.dropBoostBlade(player, rarity);
+    },
+  ): void {
     for (let i = 0; i < count; i++) {
       if (player.bladeIds.length === 0) break;
 
@@ -1353,7 +1441,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       this.state.blades.delete(id);
       player.bladeCount = Math.max(0, player.bladeCount - 1);
       recompactOwnerRing(this.state, player.id, ring);
-      if (BOOST_DROP_RATIO >= 1 || Math.random() < BOOST_DROP_RATIO) this.dropBoostBlade(player, rarity);
+      onRemoved(rarity);
     }
   }
 

@@ -8,6 +8,17 @@ import { ChipKit, VAULT_GAUGE_SEGMENTS, VaultKit } from "./eventModels";
 // puce qui tombe, à la taille de sa hitbox (CHIP_HITBOX), à moitié plantée
 // et penchée par l'impact.
 const CHIP_CRATE_SCALE = 1.25;
+// Décor interactif (shared/src/interactive.ts) : un rack à butin ou un
+// obélisque qui se charge n'a pas de modèle à lui (la pièce est dans le
+// décor, dans les deux rendus). Ce qui se joue se lit au sol : une jauge en
+// anneau autour de la pièce (rack : ce qu'il lui reste ; obélisque : sa
+// charge), et un losange qui tourne au-dessus d'un rack plein. Pièce vidée
+// ou au repos : plus rien.
+const SITE_GAUGE_SEGMENTS = 48;
+const RACK_GAUGE_RADIUS = 2.5;
+const OBELISK_GAUGE_RADIUS = 2.7;
+const RACK_MARKER_Y = 4.7;
+
 // Un coup sur le coffre : au plus un effet (étincelles, son) par intervalle.
 // Une orbite de 40 lames le touche ~200 fois par seconde : un effet par
 // coup saturait les particules et le son.
@@ -28,6 +39,10 @@ interface CrateEntry {
   dial: THREE.Object3D | null;
   dialSpeed: number;
   gauge: THREE.Mesh | null;
+  // Décor interactif : géométrie de la jauge (une par pièce, sa part
+  // dessinée lui est propre) et losange d'un rack.
+  siteGeo: THREE.BufferGeometry | null;
+  marker: THREE.Object3D | null;
   lastFxAt: number;
   x: number;
   z: number;
@@ -52,6 +67,14 @@ export class CrateRenderer {
   private readonly chipCore = new THREE.Color();
   private readonly hdr: boolean;
   private flash = 1;
+  // Décor interactif : jauges (pleine, fond) et losange, aux couleurs du
+  // thème (celle des caisses pour le rack, celle de l'obélisque pour le sien).
+  private readonly rackGauge: THREE.MeshBasicMaterial;
+  private readonly rackGaugeBack: THREE.MeshBasicMaterial;
+  private readonly obeliskGauge: THREE.MeshBasicMaterial;
+  private readonly obeliskGaugeBack: THREE.MeshBasicMaterial;
+  private readonly markerGeo = new THREE.OctahedronGeometry(0.45, 0);
+  private readonly markerMat: THREE.MeshBasicMaterial;
 
   constructor(q: QualityConfig) {
     const simpleMaterials = q.simpleMaterials;
@@ -72,6 +95,14 @@ export class CrateRenderer {
           opacity: 0.5,
         });
     this.materials.push(this.innerMat);
+    const ring = (color: number, opacity: number) =>
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
+    this.rackGauge = ring(t.palette.crate.edge, 0.75);
+    this.rackGaugeBack = ring(t.palette.crate.edge, 0.13);
+    this.obeliskGauge = ring(t.decor.obeliskInner, 0.8);
+    this.obeliskGaugeBack = ring(t.decor.obeliskInner, 0.13);
+    this.markerMat = new THREE.MeshBasicMaterial({ color: t.palette.crate.edge });
+    this.materials.push(this.rackGauge, this.rackGaugeBack, this.obeliskGauge, this.obeliskGaugeBack, this.markerMat);
     if (this.wireframeEnabled) {
       this.wireGeo = new THREE.EdgesGeometry(this.boxGeo);
       this.wireMat = new THREE.LineBasicMaterial({
@@ -98,7 +129,27 @@ export class CrateRenderer {
     let baseY: number;
     let dial: THREE.Object3D | null = null;
     let gauge: THREE.Mesh | null = null;
-    if (kind === CrateKind.Vault) {
+    let siteGeo: THREE.BufferGeometry | null = null;
+    let marker: THREE.Object3D | null = null;
+    if (kind === CrateKind.Rack || kind === CrateKind.Obelisk) {
+      const rack = kind === CrateKind.Rack;
+      const r = rack ? RACK_GAUGE_RADIUS : OBELISK_GAUGE_RADIUS;
+      group = new THREE.Group();
+      siteGeo = new THREE.RingGeometry(r - 0.22, r, SITE_GAUGE_SEGMENTS, 1);
+      const back = new THREE.Mesh(siteGeo, rack ? this.rackGaugeBack : this.obeliskGaugeBack);
+      gauge = new THREE.Mesh(siteGeo.clone(), rack ? this.rackGauge : this.obeliskGauge);
+      for (const m of [back, gauge]) {
+        m.rotation.x = -Math.PI / 2;
+        m.position.y = 0.06;
+        group.add(m);
+      }
+      if (rack) {
+        marker = new THREE.Mesh(this.markerGeo, this.markerMat);
+        marker.position.y = RACK_MARKER_Y;
+        group.add(marker);
+      }
+      baseY = 0;
+    } else if (kind === CrateKind.Vault) {
       // Posé au sol, porte face à la caméra : ni flottement ni rotation.
       const parts = this.vaultKit.build();
       group = parts.group;
@@ -125,10 +176,21 @@ export class CrateRenderer {
       id, kind, mesh: group, baseY, hp, maxHp,
       bobPhase: Math.random() * Math.PI * 2,
       shake: 0,
-      dial, dialSpeed: 0, gauge, lastFxAt: -Infinity,
+      dial, dialSpeed: 0, gauge, siteGeo, marker, lastFxAt: -Infinity,
       x, z: y,
     });
-    if (gauge) this.setGauge(gauge, hp, maxHp);
+    const e = this.entries.get(id)!;
+    if (siteGeo) this.setSiteGauge(e);
+    else if (gauge) this.setGauge(gauge, hp, maxHp);
+  }
+
+  // PV lus dans l'état, hors de tout coup (charge d'un obélisque qui
+  // retombe) : la jauge suit, sans effet.
+  setHp(id: string, hp: number): void {
+    const e = this.entries.get(id);
+    if (!e || !e.siteGeo) return;
+    e.hp = hp;
+    this.setSiteGauge(e);
   }
 
   // Genre de la caisse (CrateKind), -1 si elle n'est pas (ou plus) là.
@@ -143,6 +205,15 @@ export class CrateRenderer {
     if (!e) return false;
     e.hp = hp;
     e.shake = 1;
+    if (e.siteGeo) {
+      // Rack, obélisque : frappés aussi souvent qu'un coffre, effets
+      // espacés de même.
+      this.setSiteGauge(e);
+      const t = performance.now();
+      if (t - e.lastFxAt < VAULT_FX_INTERVAL_MS) return false;
+      e.lastFxAt = t;
+      return true;
+    }
     if (e.kind !== CrateKind.Vault) return true;
     // La molette tourne sous les coups, plus vite quand il cède.
     e.dialSpeed = Math.min(14, e.dialSpeed + 3);
@@ -157,12 +228,32 @@ export class CrateRenderer {
     const e = this.entries.get(id);
     if (!e) return;
     this.root.remove(e.mesh);
+    this.disposeSite(e);
     this.entries.delete(id);
   }
 
   clear(): void {
-    this.entries.forEach((e) => this.root.remove(e.mesh));
+    this.entries.forEach((e) => {
+      this.root.remove(e.mesh);
+      this.disposeSite(e);
+    });
     this.entries.clear();
+  }
+
+  // Jauge d'une pièce du décor interactif : ses deux géométries (fond,
+  // part pleine) sont les siennes.
+  private disposeSite(e: CrateEntry): void {
+    if (!e.siteGeo) return;
+    e.siteGeo.dispose();
+    e.gauge?.geometry.dispose();
+  }
+
+  // Rack : ce qu'il lui reste. Obélisque : sa charge (ses PV perdus).
+  private setSiteGauge(e: CrateEntry): void {
+    if (!e.gauge) return;
+    const left = e.maxHp > 0 ? Math.max(0, Math.min(1, e.hp / e.maxHp)) : 0;
+    const frac = e.kind === CrateKind.Obelisk ? 1 - left : left;
+    e.gauge.geometry.setDrawRange(0, 6 * Math.ceil(SITE_GAUGE_SEGMENTS * frac));
   }
 
   update(dt: number, elapsedSec: number): void {
@@ -175,6 +266,14 @@ export class CrateRenderer {
       }
       if (e.kind === CrateKind.Chip) {
         this.updateChip(e, dt);
+        return;
+      }
+      if (e.siteGeo) {
+        // Posée au sol, immobile ; seul le losange du rack tourne et flotte.
+        if (e.marker) {
+          e.marker.rotation.y += dt * 1.6;
+          e.marker.position.y = RACK_MARKER_Y + Math.sin(elapsedSec * 2 + e.bobPhase) * 0.18;
+        }
         return;
       }
       e.bobPhase += dt;
@@ -246,6 +345,7 @@ export class CrateRenderer {
   dispose(): void {
     this.entries.forEach((e) => this.root.remove(e.mesh));
     this.entries.clear();
+    this.markerGeo.dispose();
     this.boxGeo.dispose();
     this.wireGeo?.dispose();
     for (const m of this.materials) m.dispose();

@@ -53,12 +53,15 @@ export const RAIN_RARITY_WEIGHTS: Array<{ rarity: BladeRarity; weight: number }>
 ];
 
 // Genre d'une caisse (Crate.kind) : caisse ordinaire, coffre-fort et puce
-// restée entière d'une chute de processeurs. Le client en tire le modèle,
-// le serveur la hitbox, les PV et le butin.
+// restée entière d'une chute de processeurs, puis les pièces du décor
+// interactif (interactive.ts) : rack à butin, obélisque qui se charge. Le
+// client en tire le modèle, le serveur la hitbox, les PV et le butin.
 export const CrateKind = {
   Normal: 0,
   Vault: 1,
   Chip: 2,
+  Rack: 3,
+  Obelisk: 4,
 } as const;
 export type CrateKind = (typeof CrateKind)[keyof typeof CrateKind];
 
@@ -169,8 +172,17 @@ export interface ProcessorImpactEvent extends TickStamped {
 export function crateHitbox(kind: number): number {
   if (kind === CrateKind.Vault) return VAULT_HITBOX;
   if (kind === CrateKind.Chip) return CHIP_HITBOX;
+  if (kind === CrateKind.Rack) return RACK_HITBOX;
+  if (kind === CrateKind.Obelisk) return OBELISK_HITBOX;
   return CRATE_HITBOX;
 }
+
+// Décor interactif (interactive.ts) : plus que le corps de la pièce (rack :
+// deux colliders de 0,75 u à 0,6 u du centre ; obélisque : 1,5 u), pour
+// qu'un joueur collé à elle la frappe d'une bonne part de son premier
+// anneau, d'où qu'il l'aborde.
+export const RACK_HITBOX = 1.9;
+export const OBELISK_HITBOX = 2.0;
 
 // Zone dorée : au centre de la carte, annoncée GOLDEN_WARNING_MS avant ;
 // pendant GOLDEN_DURATION_MS, tout point gagné à l'intérieur compte double.
