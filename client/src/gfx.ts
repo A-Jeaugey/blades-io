@@ -2,7 +2,9 @@
 //   /v2       la version de test : rendu v2 et cadrage isométrique ;
 //   ?gfx=v2   rendu v2 seul : décor modélisé (kit Blender), sol éclairé,
 //             ombres portées ;
-//   ?cam=iso  cadrage isométrique seul (caméra tournée de 45°, champ étroit).
+//   ?cam=iso  cadrage isométrique seul (caméra tournée de 45°, champ étroit) ;
+//   ?cam=tps  essai de vue à la troisième personne : caméra basse derrière
+//             le joueur, qui tourne avec lui.
 // Sous /v2, ?cam=std garde le cadrage d'origine. Rien n'est enregistré :
 // ailleurs que sous /v2 et sans ces paramètres, le jeu est celui d'avant.
 // Ce module ne tire ni three.js ni le moteur : le lobby peut le lire.
@@ -17,6 +19,21 @@ const onTestPath = /\/v2\/?$/.test(here?.pathname ?? "");
 
 export const GFX_V2_REQUESTED = onTestPath || params.get("gfx") === "v2";
 export const CAM_ISO = params.has("cam") ? params.get("cam") === "iso" : onTestPath;
+export const CAM_TPS = params.get("cam") === "tps";
+
+// Vue à la troisième personne (essai) : caméra derrière le joueur, à
+// TPS_DISTANCE, inclinée de TPS_PITCH_DEG, qui vise TPS_LOOK_AHEAD devant
+// lui (il est dans le tiers bas de l'écran, la vue porte loin devant). Elle
+// se replace dans son dos en TPS_TURN_TAU secondes quand il change de
+// direction : assez lentement pour qu'on puisse le diriger à la souris sans
+// que la vue ne s'emballe. On y voit jusqu'à l'horizon : le serveur, lui,
+// n'envoie toujours que la zone d'intérêt (viewRadiusLimit), les joueurs
+// lointains apparaissent donc en s'approchant.
+export const TPS_FOV_DEG = 62;
+export const TPS_PITCH_DEG = 27;
+export const TPS_DISTANCE = 12.5;
+export const TPS_LOOK_AHEAD = 5;
+export const TPS_TURN_TAU = 0.55;
 
 // Cadrage isométrique. Mêmes 50 u de sol en largeur au niveau du joueur que
 // la caméra d'origine (CAMERA_* de shared/) : on ne voit pas plus loin sur
@@ -30,10 +47,22 @@ export const ISO_YAW_DEG = 45;
 // Direction à l'écran → direction au sol. Clavier et joystick donnent une
 // direction dans le repère de l'écran (haut = -y) ; caméra tournée, le haut
 // de l'écran n'est plus le nord de la carte.
-const YAW = CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0;
-const COS = Math.cos(YAW);
-const SIN = Math.sin(YAW);
+// Le lacet de la caméra est fixe en cadrage isométrique, suivi à chaque
+// frame à la troisième personne (setViewYaw, depuis CameraRig).
+let viewYawRad = CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0;
+let viewCos = Math.cos(viewYawRad);
+let viewSin = Math.sin(viewYawRad);
+export function setViewYaw(yaw: number): void {
+  viewYawRad = yaw;
+  viewCos = Math.cos(yaw);
+  viewSin = Math.sin(yaw);
+}
+
+export function viewYaw(): number {
+  return viewYawRad;
+}
+
 export function screenToGround(x: number, y: number): { x: number; y: number } {
-  if (!CAM_ISO) return { x, y };
-  return { x: x * COS + y * SIN, y: -x * SIN + y * COS };
+  if (viewYawRad === 0) return { x, y };
+  return { x: x * viewCos + y * viewSin, y: -x * viewSin + y * viewCos };
 }

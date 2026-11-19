@@ -2643,6 +2643,7 @@ export class Game {
     } else if (mev.kind !== MapEventKind.None) {
       events.push({ kind: mev.kind, x: mev.x, y: mev.y, radius: mev.radius, active: this.serverNow() >= mev.startsAt });
     }
+    this.minimap.followView();
     this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events, this.shownArenaTarget);
   }
 

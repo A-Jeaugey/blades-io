@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { CRATE_SCALE, CrateKind } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
+import { kitFor } from "../scene/v2/kit";
 import { getActiveTheme } from "../themes";
 import { ChipKit, VAULT_GAUGE_SEGMENTS, VaultKit } from "./eventModels";
 
@@ -73,6 +74,10 @@ export class CrateRenderer {
   private readonly rackGaugeBack: THREE.MeshBasicMaterial;
   private readonly obeliskGauge: THREE.MeshBasicMaterial;
   private readonly obeliskGaugeBack: THREE.MeshBasicMaterial;
+  // Rendu v2 : la caisse ordinaire du kit (coffre blindé modélisé dans
+  // Blender), morceau par morceau avec son matériau. null : la boîte
+  // d'origine.
+  private kitCrate: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material }> | null = null;
   private readonly markerGeo = new THREE.OctahedronGeometry(0.45, 0);
   private readonly markerMat: THREE.MeshBasicMaterial;
 
@@ -95,6 +100,25 @@ export class CrateRenderer {
           opacity: 0.5,
         });
     this.materials.push(this.innerMat);
+    const kit = kitFor(simpleMaterials);
+    if (kit) {
+      // Rôles du kit aux couleurs du thème : coque et renforts sombres,
+      // bandeau à la couleur des caisses, filets à celle de leurs arêtes.
+      const dark = new THREE.Color(t.decor.baseDark);
+      const white = new THREE.Color(1, 1, 1);
+      const solid = (lighten: number) =>
+        new THREE.MeshStandardMaterial({ color: dark.clone().lerp(white, lighten), roughness: 0.5, metalness: 0.4 });
+      const glow = (color: number, intensity: number) =>
+        new THREE.MeshStandardMaterial({ color: dark, emissive: color, emissiveIntensity: intensity, roughness: 0.4, metalness: 0.2 });
+      const byRole: Record<string, THREE.Material> = {
+        crate_body: solid(0.12),
+        body_mid: solid(0.26),
+        e_crate: glow(t.palette.crate.emissive, 2.0),
+        crate_edge: glow(t.palette.crate.edge, 1.8),
+      };
+      this.materials.push(...Object.values(byRole));
+      this.kitCrate = kit.parts("Crate").map((part) => ({ geometry: part.geometry, material: byRole[part.role] }));
+    }
     const ring = (color: number, opacity: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
     this.rackGauge = ring(t.palette.crate.edge, 0.75);
@@ -166,8 +190,18 @@ export class CrateRenderer {
       baseY = 0.12;
     } else {
       group = new THREE.Group();
-      group.add(new THREE.Mesh(this.boxGeo, this.innerMat));
-      if (this.wireframeEnabled && this.wireGeo && this.wireMat) group.add(new THREE.LineSegments(this.wireGeo, this.wireMat));
+      if (this.kitCrate) {
+        // Modèle de 1,6 u de côté, comme la boîte : même échelle.
+        for (const part of this.kitCrate) {
+          const mesh = new THREE.Mesh(part.geometry, part.material);
+          mesh.castShadow = true;
+          group.add(mesh);
+        }
+        group.scale.setScalar(CRATE_SCALE);
+      } else {
+        group.add(new THREE.Mesh(this.boxGeo, this.innerMat));
+        if (this.wireframeEnabled && this.wireGeo && this.wireMat) group.add(new THREE.LineSegments(this.wireGeo, this.wireMat));
+      }
       baseY = CRATE_SCALE;
     }
     group.position.set(x, baseY, y);

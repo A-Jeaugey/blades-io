@@ -1,6 +1,6 @@
 import { BladeRarity, MAP_RADIUS, MapEventKind, WALL_KILL_THICKNESS } from "@bladeio/shared";
 import { THREAT_COLORS, getActiveTheme } from "../themes";
-import { CAM_ISO, ISO_YAW_DEG } from "../gfx";
+import { CAM_ISO, CAM_TPS, ISO_YAW_DEG, viewYaw } from "../gfx";
 
 function rgba(color: number, alpha: number): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
@@ -65,6 +65,18 @@ export class Minimap {
   private vaultColor: number;
   private chipColor: number;
 
+  // Troisième personne (?cam=tps) : la carte suit le lacet de la caméra, au
+  // degré près (un style changé à chaque frame coûterait un calcul de mise
+  // en page pour rien).
+  private shownYaw = 0;
+  followView(): void {
+    if (!CAM_TPS) return;
+    const deg = Math.round((viewYaw() * 180) / Math.PI);
+    if (deg === this.shownYaw) return;
+    this.shownYaw = deg;
+    this.canvas.style.transform = `rotate(${deg}deg)`;
+  }
+
   constructor() {
     this.canvas = document.getElementById("minimap") as HTMLCanvasElement;
     this.ctx = this.canvas.getContext("2d")!;
@@ -72,6 +84,7 @@ export class Minimap {
     // Cadrage isométrique (?cam=iso) : la carte tourne avec la caméra, pour
     // que « vers le haut de la minimap » reste « vers le haut de l'écran ».
     if (CAM_ISO) this.canvas.style.transform = `rotate(${ISO_YAW_DEG}deg)`;
+    this.shownYaw = CAM_ISO ? ISO_YAW_DEG : 0;
     // Couleurs du thème actif (celles d'avant pour le Néon). Les flèches des
     // légendaires prennent la couleur de la rareté, palette daltonienne
     // comprise (tâche 3.8).

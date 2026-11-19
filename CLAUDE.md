@@ -250,7 +250,7 @@ prend le sien.
 - Formats vérifiés : 360×640, 390×844, 640×360, 844×390 (petits écrans :
   `max-width: 480px` pour le lobby, `max-height: 500px` pour le paysage).
 
-### Rendu v2 (essai de refonte graphique) — `?gfx=v2`, `?cam=iso`
+### Rendu v2 (essai de refonte graphique) — `?gfx=v2`, `?cam=iso`, `?cam=tps`
 
 Version de test à l'adresse **`/v2`** (`https://game.arthurjeaugey.com/v2`) :
 rendu v2 et cadrage isométrique ensemble (`/v2?cam=std` garde le cadrage
@@ -307,6 +307,22 @@ jeu est inchangé) :
     viennent du kit (`PlayerTorso`, `PlayerHead`, `PlayerArm`,
     `PlayerLeg`, centrées comme les capsules) ; matériaux, skins,
     dissolution et animation inchangés.
+  - **Lames, power-ups, caisse** (2026-11-19) : `kitFor(simpleMaterials)`
+    (`scene/v2/kit.ts`) donne le kit aux modules qui n'ont pas la
+    configuration de qualité. Lames (`Blade0` à `Blade9`, `BladeView.ts`)
+    et power-ups (`PowerUp0` à `PowerUp4`, `PowerUpView.ts`) ne sont pas
+    redessinés : `node art/kit/dump_shapes.mjs` relit leurs formes du jeu
+    (`bladeGeometries.ts`, `entities/powerUpShapes.ts`) vers
+    `art/kit/src/`, et `build_kit.py` les chanfreine (`add_solid` : faces
+    planes refondues, arêtes vives seulement, jamais celles de la
+    pointe). La pointe d'une lame est une portée de jeu
+    (`BLADE_TIP_REACH`) : le script refuse un écart de plus de 0,012.
+    **Toute retouche d'une forme se fait dans le jeu, puis
+    `dump_shapes.mjs` et `build_kit.py`** ; matériaux inchangés (rareté,
+    palier, styles), reflet spéculaire des lames au tiers. Caisse
+    ordinaire (`Crate`, `CrateView.ts`) : modèle du kit à l'échelle
+    `CRATE_SCALE`, rôles `crate_body`, `e_crate`, `crate_edge`.
+    Planche de contrôle : `art/kit/preview_kit.py`.
   - **Shaders** : toujours « +0 en partie » à `?debug=perf`. Le programme
     d'ombre des maillages sans instance se compile au lobby grâce au
     pilier central (maillage simple, sous la caméra du menu) : ne pas le
@@ -337,14 +353,24 @@ jeu est inchangé) :
       champ de la caméra, sinon les particules sont quatre fois plus
       petites en cadrage isométrique. Tout nouveau shader de points la
       prend en compte.
-  - Pas encore refaits : lames, caisses, power-ups, effets, mur ; pièces
-    du Sanctuaire (`spirit`) ; ambiance sonore de la météo.
+  - Pas encore refaits : coffre-fort et puces, effets, mur ; pièces du
+    Sanctuaire (`spirit`) ; ambiance sonore de la météo.
 - **`?cam=iso`** : caméra tournée de 45°, inclinée à 45°, champ de 14°
   (`ISO_*` dans `gfx.ts`, `Camera.ts`), même largeur de sol au niveau du
   joueur que le cadrage partagé. Côté client seulement : on voit moins
   loin que la zone d'intérêt accordée. Clavier et joystick passent par
   `screenToGround` ; la minimap tourne avec la caméra. À trancher avant
   d'en faire le cadrage de tous : c'est une règle de jeu (`CAMERA_*`).
+- **`?cam=tps`** (essai, 2026-11-19) : vue à la troisième personne.
+  Caméra basse derrière le joueur (`TPS_*` dans `gfx.ts`), dont le lacet
+  suit sa direction de course (`CameraRig.followBehind`, lissé :
+  `TPS_TURN_TAU`) ; `setViewYaw` tient `screenToGround` (clavier,
+  joystick) et la minimap à jour. On le dirige au clavier (haut = droit
+  devant) ou à la souris (le curseur tire le joueur, la caméra suit).
+  Côté client seulement : on voit jusqu'à l'horizon mais le serveur
+  n'envoie que la zone d'intérêt, les joueurs lointains apparaissent en
+  approchant. Rien n'est encore pensé pour cette vue (carte plate, pas de
+  ciel ni de fond, lancers visés au curseur).
 - **Captures** : `art/shots/tour.js` (Playwright MCP, `browser_run_code_unsafe`
   avec `filename`) entre en partie, marche jusqu'à des points de vue et
   enregistre des images ; serveur et client lancés (`.claude/launch.json`).

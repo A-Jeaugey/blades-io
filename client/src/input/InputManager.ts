@@ -228,7 +228,11 @@ export class InputManager {
     const s = pr.screenOf(me.x, me.y);
     if (Math.hypot(this.mouse.x - s.x, this.mouse.y - s.y) < MOUSE_DEAD_ZONE_PX) return null;
     const g = pr.groundAt(this.mouse.x, this.mouse.y);
-    return g ? unit(g.x - me.x, g.y - me.y) : null;
+    if (g) return unit(g.x - me.x, g.y - me.y);
+    // Curseur au-dessus de l'horizon (vue à la troisième personne) : aucun
+    // point du sol dessous, la direction se lit à l'écran.
+    const d = screenToGround(this.mouse.x - s.x, this.mouse.y - s.y);
+    return unit(d.x, d.y);
   }
 
   // Direction au sol d'un glisser à l'écran, depuis le joueur : le trait de

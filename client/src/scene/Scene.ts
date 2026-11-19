@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CAMERA_DISTANCE, CAMERA_FOV_DEG, CAMERA_PITCH_DEG } from "@bladeio/shared";
-import { CAM_ISO, ISO_FOV_DEG } from "../gfx";
+import { CAM_ISO, CAM_TPS, ISO_FOV_DEG, TPS_FOV_DEG } from "../gfx";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 import { gfxV2Active } from "./v2/kit";
@@ -82,7 +82,7 @@ export class SceneStack {
     // Cadrage partagé (shared/), le même pour tous les thèmes ; la
     // CameraRig le pilote ensuite.
     this.camera = new THREE.PerspectiveCamera(
-      CAM_ISO ? ISO_FOV_DEG : CAMERA_FOV_DEG,
+      CAM_TPS ? TPS_FOV_DEG : CAM_ISO ? ISO_FOV_DEG : CAMERA_FOV_DEG,
       window.innerWidth / window.innerHeight,
       0.5,
       Math.max(220, this.fogFar + 40),

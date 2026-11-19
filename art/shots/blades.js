@@ -2,8 +2,9 @@
 // /blades (serveur lancé avec CHEATS=1 : configuration « server-cheats » de
 // .claude/launch.json), puis une image. Outil de travail, pas un test.
 async (page) => {
-  // query : "x=1" pour le rendu d'origine, "gfx=v2&cam=iso" ou "gfx=v2".
-  const cfg = { query: "gfx=v2&cam=iso", tag: "blades_v2", theme: "forge-vermeille", quality: "high", blades: 24 };
+  // query : "x=1" pour le rendu d'origine, "gfx=v2", "gfx=v2&cam=iso" ou
+  // "gfx=v2&cam=tps" (troisième personne).
+  const cfg = { query: "gfx=v2&cam=tps", tag: "tps", theme: "neon", quality: "high", blades: 30 };
   const dir = "C:/dev/blades-io/art/shots/";
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`http://localhost:5173/?${cfg.query}&debug=perf`);
@@ -37,5 +38,22 @@ async (page) => {
   const me = await page.evaluate(() => window.__bladePerf?.me?.());
   await page.screenshot({ path: `${dir}${cfg.tag}.png` });
   await page.screenshot({ path: `${dir}${cfg.tag}_zoom.png`, clip: { x: 440, y: 190, width: 400, height: 400 } });
-  return me;
+  // Quelques secondes de course au clavier : la caméra à la troisième
+  // personne se place dans le dos du joueur.
+  await page.keyboard.down("w");
+  await page.waitForTimeout(1200);
+  await page.keyboard.down("d");
+  await page.waitForTimeout(1600);
+  await page.screenshot({ path: `${dir}${cfg.tag}_run.png` });
+  await page.keyboard.up("d");
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: `${dir}${cfg.tag}_run2.png` });
+  // Suite de la course : de quoi croiser une caisse ou un power-up.
+  for (let i = 0; i < 5; i++) {
+    await page.waitForTimeout(1800);
+    await page.screenshot({ path: `${dir}${cfg.tag}_walk${i}.png` });
+  }
+  await page.keyboard.up("w");
+  const perf = await page.evaluate(() => [...document.querySelectorAll("div")].map((d) => d.textContent).find((t) => t && t.startsWith("perf ·")));
+  return { me, perf };
 }

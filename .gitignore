@@ -18,3 +18,6 @@ art/**/*.blend1
 # Concept Blender : fichier de scène et rendus, régénérés par build_concept.py
 art/concept/*.blend
 art/concept/*.png
+# Kit : formes relues du jeu (dump_shapes.mjs) et planche de contrôle
+art/kit/src/
+art/kit/preview.png

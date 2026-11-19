@@ -12,6 +12,7 @@ import { FLASH_COLOR } from "../themes/Theme";
 import { createTierGeometry } from "./bladeGeometries";
 import { TRAIL_PROJECTILE, TRAIL_SUCTION, TrailStyle } from "../fx/BladeTrails";
 import { fxIntensity } from "../fx/flash";
+import { kitFor } from "../scene/v2/kit";
 
 export interface PlayerPositionProvider {
   getRenderPosition(
@@ -261,7 +262,12 @@ export class BladeRenderer {
   public root = new THREE.Group();
 
   constructor(simpleMaterials = false) {
-    const geos = Array.from({ length: TIER_BUCKETS }, (_, t) => createTierGeometry(t, simpleMaterials));
+    // Rendu v2 : les mêmes formes (même pointe, donc même portée que la
+    // hitbox du serveur), chanfreinées dans Blender pour accrocher la
+    // lumière (art/kit/build_kit.py les repart des formes de
+    // bladeGeometries.ts et vérifie leur pointe).
+    const kit = kitFor(simpleMaterials);
+    const geos = Array.from({ length: TIER_BUCKETS }, (_, t) => kit?.geometry(`Blade${t}`) ?? createTierGeometry(t, simpleMaterials));
     this.tierGeos = geos;
     const theme = getActiveTheme();
     const rarities: BladeRarity[] = [
@@ -286,7 +292,12 @@ export class BladeRenderer {
                 theme.palette.rarityGlowComp[r] *
                 theme.blades.emissiveBoost,
               shininess: theme.blades.shininess,
-              specular: theme.blades.specularColor,
+              // Rendu v2 : reflet spéculaire au tiers. La lune y est plus
+              // forte que la lumière d'origine, et une caméra libre
+              // (troisième personne) finit toujours par la voir en miroir
+              // sur le plat des lames : à plein, l'orbite repart en tache
+              // blanche (retour du 2026-11-19).
+              specular: kit ? new THREE.Color(theme.blades.specularColor).multiplyScalar(0.33) : theme.blades.specularColor,
             });
         addInstanceShading(mat, this.time, this.styleFlash);
         const key = bucketKey(r, t);

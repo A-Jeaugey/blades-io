@@ -63,5 +63,11 @@ export function getKit(): Kit | null {
 // est en MeshBasic, sans lumière ni ombre) et thème de la famille « cyber »
 // (le kit n'a pas encore les pièces du Sanctuaire).
 export function gfxV2Active(q: QualityConfig): boolean {
-  return GFX_V2_REQUESTED && kit !== null && !q.simpleMaterials && getActiveTheme().decor.kind === "cyber";
+  return kitFor(q.simpleMaterials) !== null;
+}
+
+// Le kit si le rendu v2 est actif, null sinon. Pour les modules qui ne
+// reçoivent que simpleMaterials (lames, power-ups, aperçu de la boutique).
+export function kitFor(simpleMaterials: boolean): Kit | null {
+  return GFX_V2_REQUESTED && kit !== null && !simpleMaterials && getActiveTheme().decor.kind === "cyber" ? kit : null;
 }
