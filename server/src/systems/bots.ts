@@ -20,9 +20,12 @@ import {
   SPAWN_GRACE_RAMP_MS,
   THROW_PROJECTILE_MAX_RANGE,
   THROW_PROJECTILE_SPEED,
+  VIEW_BLOCK_HEIGHT,
   WALL_KILL_THICKNESS,
   botNameKey,
   isHiddenFrom,
+  mapSegmentHit,
+  type GameMap,
   outerOrbitRadius,
   sameTeam,
 } from "@bladeio/shared";
@@ -30,10 +33,14 @@ import { ArenaState } from "../state/ArenaState";
 import { Player } from "../state/Player";
 import { reachOf } from "./interest";
 import { zoneInner } from "./spawnPoint";
+import { navToward, type NavMemory } from "./nav";
 
 // Rayon de sécurité : marge confortable pour que ni le corps, ni les lames
 // orbitantes ne touchent la zone de mort. Il suit le rayon de l'arène, qui
 // se resserre à la fin d'une manche (tâche 7.1).
+// Carte à murs : en deçà, un bot devine un joueur même derrière un immeuble.
+const LOS_NEAR = 14;
+
 function botSafeRadius(arena: ArenaState): number {
   return arena.mapRadius - WALL_KILL_THICKNESS - 8;
 }
@@ -195,6 +202,8 @@ export enum BotPersonality {
 }
 
 interface BotState {
+  // Chemin en cours sur une carte à murs (systems/nav.ts).
+  nav: NavMemory;
   targetX: number;
   targetY: number;
   nextThinkAt: number;
@@ -407,7 +416,11 @@ export class BotController {
     this.leaderBounty = bounty;
   }
 
+  // Carte à murs de la room (null : l'arène ronde), relevée à chaque tick.
+  private map: GameMap | null = null;
+
   update(dt: number, arena: ArenaState): void {
+    this.map = arena.map;
     const now = (Date.now() / 1000);
     // Mise à jour cache vélocité avant les décisions des bots — toutes les
     // prédictions d'intercept en dépendent.
@@ -439,6 +452,7 @@ export class BotController {
         // joueurs en rampe de grâce tranquilles, cf. leavesAlone).
         const personality = p.champion ? BotPersonality.Hunter : Math.floor(Math.random() * 4) as BotPersonality;
         st = {
+          nav: {},
           targetX: p.x,
           targetY: p.y,
           nextThinkAt: 0,
@@ -564,6 +578,15 @@ export class BotController {
   // Avant, les buissons ne cachaient rien aux bots. Un porteur de drapeau
   // ne se cache pas.
   private hiddenFrom(bot: Player, other: Player): boolean {
+    // Carte à murs : pas de buissons, mais un immeuble cache ce qui est
+    // derrière lui, sauf de tout près (on s'entend au coin d'une rue).
+    if (this.map) {
+      if (other.revealed) return false;
+      const dx = other.x - bot.x;
+      const dy = other.y - bot.y;
+      if (dx * dx + dy * dy < LOS_NEAR * LOS_NEAR) return false;
+      return mapSegmentHit(this.map, bot.x, bot.y, other.x, other.y, VIEW_BLOCK_HEIGHT, 0) < 1;
+    }
     return !other.revealed && isHiddenFrom(bot.x, bot.y, reachOf(bot), other.x, other.y, reachOf(other));
   }
 
@@ -1041,9 +1064,21 @@ export class BotController {
   }
 
   private applyInput(bot: Player, st: BotState, now: number, safeRadius: number): void {
-    const dx = st.targetX - bot.x;
-    const dy = st.targetY - bot.y;
-    const d = Math.hypot(dx, dy);
+    let dx = st.targetX - bot.x;
+    let dy = st.targetY - bot.y;
+    let d = Math.hypot(dx, dy);
+    // Carte à murs : on vise le prochain point du chemin, pas la cible à
+    // travers les immeubles.
+    const map = this.map;
+    if (map && d >= 0.5) {
+      const lim = map.half - 2;
+      const tx = Math.max(-lim, Math.min(lim, st.targetX));
+      const ty = Math.max(-lim, Math.min(lim, st.targetY));
+      const w = navToward(map, st.nav, bot.x, bot.y, tx, ty, now * 1000);
+      dx = w.x - bot.x;
+      dy = w.y - bot.y;
+      d = Math.hypot(dx, dy);
+    }
 
     if (d < 0.5) {
       bot.inputDx = 0;
@@ -1208,6 +1243,8 @@ export class BotController {
     // Jamais sur un allié (modes équipe) : le projectile le traverserait.
     if (sameTeam(bot.team, target.team)) return null;
     if (this.hiddenFrom(bot, target)) return null;
+    // Carte à murs : pas de lancer dans un mur ou un meuble.
+    if (this.map && mapSegmentHit(this.map, bot.x, bot.y, target.x, target.y, 0, 0.3) < 1) return null;
     const d = Math.hypot(target.x - bot.x, target.y - bot.y);
     if (d < minDist || d > maxDist) return null;
     const v = this.reactedVelocity(target.id, now / 1000, reaction);

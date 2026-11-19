@@ -821,6 +821,59 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   qui est épargné, rouge en tirets pour qui est visé),
   `CombatFx.obeliskPulse`, texte `howto.interactive`. Tests :
   `server/test/interactive.test.ts`. Captures : `art/shots/interactive.js`.
+- **Mode Quartier, cartes à murs (2026-11-19, essai)** : `district`
+  (`shared/src/modes.ts`, salon privé seulement), les règles de l'arène sans
+  fin sur une carte de ville vue à la troisième personne. Une **carte**
+  (`GameMap`, `shared/src/maps.ts`) est faite d'obstacles rectangulaires
+  alignés sur les axes (`boxes` : immeubles puis mobilier, avec leur
+  hauteur) et ronds (`circles`), tirés de ce qui se dessine (`buildings`,
+  `props`, `dressing` sans collider). `GameModeInfo.map` la désigne,
+  `mapForMode(id)` la donne (null : l'arène ronde, dont **rien ne change**).
+  Tout se décrit sur la moitié x ≥ 0 puis se reflète ; côtés d'un immeuble
+  multiples de `FACADE_MODULE` (4 u), étages de `FLOOR_HEIGHT` ; le mobilier
+  a les dimensions de `PROP_SHAPES`, sa face regarde +y au quart de tour 0.
+  Une carte ajoutée ou retouchée passe `server/test/district.test.ts`
+  (module, recouvrements, enceinte fermée, mobilier hors des murs, **tout
+  ce qui est libre se rejoint**, `navIslands`).
+  - **Collisions** : `MoveContext.map` dans `stepMovement`
+    (`resolveMapCollision`), donnée par le serveur (`ArenaState.map`, champ
+    serveur posé à la création de la room) et par le client
+    (`InputPredictor.map`, `setRemoteMotionMap` pour les joueurs
+    extrapolés, `Game.applyMap` dans `main.ts`) : toujours les trois, sinon
+    la prédiction se trompe à chaque pas le long d'un mur.
+  - **Serveur** : tout ce qui apparaît passe par `mapBlocked`
+    (`obstacleAt`, `systems/spawnPoint.ts` ; caisses, power-ups, lames,
+    joueurs) ; plafonds du butin d'après `GameMap.walkArea` (`areaShare`) ;
+    un lancer s'arrête au premier mur ou meuble (`mapSegmentHit`,
+    `updateProjectiles`) ; une lame tombée dans un immeuble (butin
+    éparpillé, boost) en est ressortie quatre fois par seconde
+    (`DistrictMode.tick`, `server/src/modes/district.ts`) plutôt que de
+    corriger chaque façon de poser une lame. Ni buissons, ni décor
+    interactif, ni évènements de carte (ils sont placés pour l'arène) : un
+    nouveau système lié au décor de l'arène se garde par `state.map`. Le
+    mur tueur reste à `map.radius`, dans les immeubles d'enceinte.
+  - **Bots** (`server/src/systems/nav.ts`) : grille de 2 u tirée de la
+    carte, plus court chemin (A*) refait au plus toutes les 350 ms,
+    `navToward` donne le point à viser (`BotController.applyInput`). Un
+    immeuble cache un joueur à un bot au-delà de `LOS_NEAR` (`hiddenFrom`),
+    et un bot ne lance pas dans un mur.
+  - **Client** : `scene/v2/DistrictView.ts`. Avec le kit, les immeubles
+    naissent de leurs colliders : un panneau de façade par module et par
+    étage (`art/kit/district_pieces.py`, exécuté par `build_kit.py` ; rôles
+    `tint` et `window`, colorés par sommet), toits, mobilier, le tout fondu
+    en un maillage par matériau et par case de carte ; sol peint une fois
+    (chaussées, trottoirs, marquages, lueurs). La géométrie se construit à
+    la première partie du mode ; **les matériaux existent dès le lobby avec
+    un triangle témoin** (`seed`), pour le préchauffage des shaders (« +0 en
+    partie » vérifié). Sans le kit : des blocs aux dimensions des colliders.
+    Caméra : `CameraRig.setThirdPerson` (cadrage de `?cam=tps`), tirée
+    devant un immeuble (`setOccluder`, `VIEW_BLOCK_HEIGHT`) ; rien de
+    suspendu sous 8 u (la caméra est entre 6 et 7 u). Minimap : `setMap`.
+    Planche des pièces : `art/kit/preview_district.py` ; captures :
+    `art/shots/district.js`.
+  - Pas encore : ciel et lointain, sol mouillé (reflets, lumières de la
+    partie), ambiance sonore, modes équipe ou manches sur cette carte,
+    partie rapide.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client

@@ -59,6 +59,12 @@ import {
   TEAM_NONE,
   bushAt,
   isInBush,
+  DISTRICT_MAP,
+  VIEW_BLOCK_HEIGHT,
+  mapForMode,
+  mapSegmentHit,
+  setRemoteMotionMap,
+  type GameMap,
   isTeamMode,
   modeRespawns,
   modeShrinks,
@@ -77,6 +83,7 @@ import { BoundaryWall, GroundSurface, createGround, createBoundaryWall } from ".
 import { DecorHandle, createDecor } from "./scene/Decor";
 import { getKit, gfxV2Active, loadKit } from "./scene/v2/kit";
 import { createDecorV2, decorLightPools } from "./scene/v2/DecorV2";
+import { DistrictHandle, createDistrictView } from "./scene/v2/DistrictView";
 import { createGroundV2 } from "./scene/v2/GroundV2";
 import { GroundReflection } from "./scene/v2/Reflection";
 import { WeatherHandle, createWeather } from "./scene/v2/Weather";
@@ -253,6 +260,10 @@ export class Game {
   private ground: GroundSurface;
   private wall: BoundaryWall;
   private decor: DecorHandle;
+  // Carte à murs (mode « district ») : son décor, caché hors de ce mode, et
+  // la carte de la partie en cours (null : l'arène ronde).
+  private district: DistrictHandle;
+  private map: GameMap | null = null;
   // Buisson où se trouve le joueur local (-1 : aucun), tâche 4.7.
   private localBush = -1;
   private players = new Map<string, PlayerView>();
@@ -582,6 +593,10 @@ export class Game {
     this.sceneStack.scene.add(this.wall.object);
     this.decor = kit && this.worldFx ? createDecorV2(this.quality, kit, this.worldFx) : createDecor(this.quality);
     this.sceneStack.scene.add(this.decor.group);
+    // Dans la scène dès le lobby, caché : ses shaders passent au
+    // préchauffage, sa géométrie attend la première partie du mode.
+    this.district = createDistrictView(this.quality, kit, DISTRICT_MAP, this.sceneStack.renderer.capabilities.getMaxAnisotropy());
+    this.sceneStack.scene.add(this.district.group);
     this.sceneStack.scene.add(this.blades.root);
     this.sceneStack.scene.add(this.crates.root);
     this.sceneStack.scene.add(this.powerups.root);
@@ -926,6 +941,10 @@ export class Game {
       this.hud.setRoomCode(state.isPrivate ? (state.code ?? "") : "");
     };
     applyRoomInfo();
+    // Carte du mode : celle du serveur, déduite du même registre.
+    const applyMode = () => this.applyMap(mapForMode(state.mode ?? "ffa"));
+    applyMode();
+    callbacks.listen(state, "mode", applyMode);
     callbacks.listen(state, "code", applyRoomInfo);
     callbacks.listen(state, "isPrivate", applyRoomInfo);
 
@@ -1461,7 +1480,7 @@ export class Game {
     }
     // Un joueur qui disparaît dans un buisson (le serveur ne l'envoie
     // plus) : rafale de pixels là où il est entré (tâche 4.7).
-    if (key !== this.myId && bushAt(v.renderX, v.renderY) >= 0) {
+    if (key !== this.myId && !this.map && bushAt(v.renderX, v.renderY) >= 0) {
       this.particles.spawnSparks(v.renderX, 1.2, v.renderY, this.decor.bushBurstColor, 12, 3);
     }
     this.disposePlayerView(v);
@@ -2196,6 +2215,7 @@ export class Game {
     }
     this.room = null;
     this.myId = "";
+    this.applyMap(null);
     this.resetPrediction();
     this.clearPlayerViews();
     // clear() au lieu de recréer : voir attemptReconnect pour le pourquoi
@@ -2252,6 +2272,27 @@ export class Game {
     this.predictor.push(this.inputSeq, { dx, dy, boost });
     this.sound.setBoost(!!boost && (dx !== 0 || dy !== 0));
     this.localBoosting = !!boost && (dx !== 0 || dy !== 0) && (this.room.state?.players?.get(this.myId)?.bladeCount ?? 0) > 0;
+  }
+
+  // Passe de l'arène ronde à une carte à murs, ou en revient : collisions
+  // de la prédiction et des joueurs extrapolés, décor, sol, caméra à la
+  // troisième personne (tirée devant les immeubles), minimap.
+  private applyMap(map: GameMap | null): void {
+    if (map === this.map) return;
+    this.map = map;
+    this.predictor.map = map;
+    setRemoteMotionMap(map);
+    this.district.setActive(map !== null);
+    this.decor.group.visible = map === null;
+    this.wall.object.visible = map === null;
+    this.ground.mesh.visible = !(map && this.district.ownsGround);
+    this.camera.setThirdPerson(map !== null);
+    this.camera.setOccluder(map ? (x0, z0, x1, z1) => mapSegmentHit(map, x0, z0, x1, z1, VIEW_BLOCK_HEIGHT, 0.5) : null);
+    this.minimap.setMap(map);
+    if (map && this.localBush >= 0) {
+      this.localBush = -1;
+      this.decor.setInsideBush(-1);
+    }
   }
 
   private resetPrediction(): void {
@@ -2450,7 +2491,7 @@ export class Game {
     const me = state?.players?.get(this.myId);
     const view = this.players.get(this.myId);
     if (!me?.alive || this.dead || !view) return;
-    if (isInBush(view.renderX, view.renderY)) this.onboarding.hint("bush");
+    if (!this.map && isInBush(view.renderX, view.renderY)) this.onboarding.hint("bush");
     if (this.borderIntensity > 0.2) this.onboarding.hint("border");
     const move = this.input.peekDirBoost();
     if (me.bladeCount >= 6 && Math.hypot(move.dx, move.dy) > 0.05) this.onboarding.hint("boost");
@@ -2471,7 +2512,7 @@ export class Game {
   private updateLocalBush(localView: PlayerView | undefined): void {
     const me = this.room?.state?.players?.get(this.myId);
     const alive = !!localView && !!me?.alive && !this.dead;
-    const bush = alive ? bushAt(localView!.renderX, localView!.renderY) : -1;
+    const bush = alive && !this.map ? bushAt(localView!.renderX, localView!.renderY) : -1;
     if (bush === this.localBush) return;
     if (alive) {
       this.particles.spawnSparks(localView!.renderX, 1.2, localView!.renderY, this.decor.bushBurstColor, 14, 3);
@@ -2968,7 +3009,7 @@ export class Game {
         this.shaderWarmup.step(4);
         if (this.shaderWarmup.done) this.shaderWarmup = null;
       }
-      this.reflection?.render(this.sceneStack.scene, this.sceneStack.camera, !this.postFx.isLite);
+      this.reflection?.render(this.sceneStack.scene, this.sceneStack.camera, !this.postFx.isLite && !this.map);
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
       this.perfOverlay?.frame(now, { preset: this.quality.preset, scale: this.getRenderScale(), lite: this.postFx.isLite });
 

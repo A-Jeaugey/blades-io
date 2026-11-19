@@ -1,3 +1,4 @@
+import type { GameMap } from "@bladeio/shared";
 import {
   BOOST_DRAIN_INTERVAL,
   INPUT_BACKLOG_KEEP,
@@ -97,7 +98,7 @@ export function updateMovement(
     if (!p.alive) return;
     // Bots : un pas par tick avec leur input courant.
     if (p.isBot) {
-      applyStep(p, { dx: p.inputDx, dy: p.inputDy, boost: p.inputBoost }, now, dt, removePlayerBlades);
+      applyStep(p, { dx: p.inputDx, dy: p.inputDy, boost: p.inputBoost }, now, dt, removePlayerBlades, state.map);
       return;
     }
     // Humains : un pas de SERVER_DT par input reçu, dans l'ordre, comme le
@@ -113,7 +114,7 @@ export function updateMovement(
       p.inputDx = input.dx;
       p.inputDy = input.dy;
       p.inputBoost = input.boost;
-      applyStep(p, input, now, SERVER_DT, removePlayerBlades);
+      applyStep(p, input, now, SERVER_DT, removePlayerBlades, state.map);
       p.lastSeq = input.seq;
     }
     trimInputBacklog(p);
@@ -165,6 +166,7 @@ function applyStep(
   now: number,
   dt: number,
   removePlayerBlades: (player: Player, count: number) => void,
+  map: GameMap | null,
 ): void {
   const x0 = p.x;
   const y0 = p.y;
@@ -173,6 +175,7 @@ function applyStep(
     // Hitlag : déplacement figé, recul conservé pour la sortie du gel.
     frozen: p.hitlagUntil > now,
     canBoost: p.bladeCount > 0,
+    map,
   }, dt);
   p.boost = r.boosting;
   // Déplacement réel du pas : le long d'un mur, il glisse ; contre un

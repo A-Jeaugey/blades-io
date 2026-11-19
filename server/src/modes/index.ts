@@ -5,6 +5,7 @@ import { RoundsMode } from "./rounds";
 import { LtsMode, TdmMode } from "./teams";
 import { CtfMode } from "./ctf";
 import { RankedMode } from "./ranked";
+import { DistrictMode } from "./district";
 
 export type { GameMode, ModeHost, PlayerStanding, Point } from "./GameMode";
 
@@ -17,6 +18,7 @@ const FACTORIES: Record<GameModeId, (host: ModeHost) => GameMode> = {
   lts: (host) => new LtsMode(host),
   ctf: (host) => new CtfMode(host),
   ranked: (host) => new RankedMode(host),
+  district: (host) => new DistrictMode(host),
 };
 
 export function createMode(id: GameModeId, host: ModeHost): GameMode {

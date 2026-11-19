@@ -1,3 +1,4 @@
+import { resolveMapCollision, type GameMap } from "./maps";
 import {
   INPUT_TICK_RESYNC,
   INPUT_TICK_SMOOTHING,
@@ -63,6 +64,13 @@ export class InputTickClock {
 // pas), extrapolé jusqu'au tick dessiné. Quand un nouvel état contredit
 // l'estimation (virage, arrêt, recul), l'écart est absorbé en
 // REMOTE_CORRECTION_TAU au lieu de faire sauter le joueur.
+// Carte à murs de la partie en cours (client seulement : une partie à la
+// fois). Un joueur extrapolé ne traverse pas plus un mur qu'un pilier.
+let remoteMap: GameMap | null = null;
+export function setRemoteMotionMap(map: GameMap | null): void {
+  remoteMap = map;
+}
+
 export class RemoteMotion {
   renderX: number;
   renderY: number;
@@ -123,7 +131,9 @@ export class RemoteMotion {
     let x = this.rawX(shownTick);
     let y = this.rawY(shownTick);
     if (x !== this.x || y !== this.y) {
-      const p = resolveDecorCollision(x, y, PLAYER_BODY_RADIUS);
+      const p = remoteMap
+        ? resolveMapCollision(remoteMap, x, y, PLAYER_BODY_RADIUS)
+        : resolveDecorCollision(x, y, PLAYER_BODY_RADIUS);
       x = p.x;
       y = p.y;
     }

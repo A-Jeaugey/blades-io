@@ -1,5 +1,5 @@
 import { ArraySchema, Schema, type, view, MapSchema } from "@colyseus/schema";
-import { MAP_RADIUS } from "@bladeio/shared";
+import { MAP_RADIUS, type GameMap } from "@bladeio/shared";
 import { Player } from "./Player";
 import { Blade } from "./Blade";
 import { Crate } from "./Crate";
@@ -34,6 +34,9 @@ export class ArenaState extends Schema {
   // jeu, ou entracte d'un mode à fin (MatchPhase) ; phaseEndsAt est la fin
   // de la phase en heure du serveur (0 : sans échéance).
   @type("string") mode: string = "ffa";
+  // Carte à murs du mode (mapForMode), posée à la création de la room ;
+  // null : l'arène ronde. Champ serveur : le client la déduit du mode.
+  map: GameMap | null = null;
   @type("uint8") phase: number = 0;
   @type("float64") phaseEndsAt: number = 0;
   // Score des deux équipes (modes équipe, tâche 7.2) : éliminations,

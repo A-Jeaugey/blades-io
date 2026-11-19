@@ -1,3 +1,4 @@
+import type { GameMap } from "./maps";
 import { SERVER_DT } from "./constants";
 import { MoveBody, MoveInput, stepMovement } from "./movement";
 
@@ -42,6 +43,9 @@ export class InputPredictor {
   prevY = 0;
   private pending: PendingInput[] = [];
   private ack: AckState | null = null;
+  // Carte à murs de la partie (mapForMode), la même que celle du serveur :
+  // sans elle, chaque pas le long d'un mur serait à corriger.
+  map: GameMap | null = null;
 
   get ready(): boolean {
     return this.ack !== null;
@@ -105,6 +109,7 @@ export class InputPredictor {
       speed: ack.speedUntil > serverTimeMs,
       frozen: ack.hitlagUntil > serverTimeMs,
       canBoost: ack.bladeCount > 0,
+      map: this.map,
     }, SERVER_DT);
   }
 }

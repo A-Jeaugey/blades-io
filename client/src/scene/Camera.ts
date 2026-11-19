@@ -18,6 +18,7 @@ import {
   TPS_LOOK_AHEAD,
   TPS_PITCH_DEG,
   TPS_TURN_TAU,
+  setThirdPersonView,
   setViewYaw,
 } from "../gfx";
 
@@ -31,26 +32,52 @@ const ZOOM_TAU = 0.45;
 // largeur de sol au niveau du joueur que le cadrage partagé.
 // Essai de la troisième personne (?cam=tps) : caméra basse derrière le
 // joueur, dont le lacet le suit (cf. gfx.ts).
-const PITCH = ((CAM_TPS ? TPS_PITCH_DEG : CAM_ISO ? ISO_PITCH_DEG : CAMERA_PITCH_DEG) * Math.PI) / 180;
-const YAW = CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0;
-const HALF_FOV_TAN = Math.tan(((CAM_TPS ? TPS_FOV_DEG : CAM_ISO ? ISO_FOV_DEG : CAMERA_FOV_DEG) * Math.PI) / 360);
-const BASE_DISTANCE = CAM_TPS
-  ? TPS_DISTANCE
-  : CAM_ISO
-    ? (CAMERA_DISTANCE * Math.tan((CAMERA_FOV_DEG * Math.PI) / 360)) / HALF_FOV_TAN
-    : CAMERA_DISTANCE;
+// Un cadrage : inclinaison, lacet de départ, champ, distance de base. Celui
+// de l'adresse (d'origine ou isométrique) et celui de la troisième
+// personne ; la caméra passe de l'un à l'autre en entrant dans une partie
+// sur une carte à murs (setThirdPerson).
+interface Framing {
+  tps: boolean;
+  pitch: number;
+  yaw: number;
+  fovDeg: number;
+  halfFovTan: number;
+  base: number;
+}
+
+function framing(tps: boolean): Framing {
+  const fovDeg = tps ? TPS_FOV_DEG : CAM_ISO ? ISO_FOV_DEG : CAMERA_FOV_DEG;
+  const halfFovTan = Math.tan((fovDeg * Math.PI) / 360);
+  return {
+    tps,
+    pitch: ((tps ? TPS_PITCH_DEG : CAM_ISO ? ISO_PITCH_DEG : CAMERA_PITCH_DEG) * Math.PI) / 180,
+    yaw: !tps && CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0,
+    fovDeg,
+    halfFovTan,
+    base: tps
+      ? TPS_DISTANCE
+      : CAM_ISO
+        ? (CAMERA_DISTANCE * Math.tan((CAMERA_FOV_DEG * Math.PI) / 360)) / halfFovTan
+        : CAMERA_DISTANCE,
+  };
+}
+
 // Vitesse (u/s) sous laquelle la caméra ne cherche plus le dos du joueur :
 // à l'arrêt ou presque, sa direction ne veut rien dire.
 const TPS_FOLLOW_SPEED = 2.5;
+// Caméra tirée devant un mur (troisième personne) : distance minimale au
+// joueur, marge devant le mur, et temps de retour une fois la vue dégagée
+// (elle avance tout de suite, recule doucement).
+const PULL_MIN = 3.2;
+const PULL_MARGIN = 0.8;
+const PULL_RELEASE_TAU = 0.35;
+// Tirée tout près, elle se redresse d'autant (rad) : sinon, basse et collée
+// au joueur, elle ne montrerait que son dos.
+const PULL_PITCH = 0.45;
 
-// Recul sur un écran étroit : largeur de sol visible au niveau du joueur
-// d'au moins CAMERA_MIN_VIEW_WIDTH, quel que soit le format. Pas à la
-// troisième personne, où l'on voit jusqu'à l'horizon.
-export function aspectDistanceFactor(aspect: number): number {
-  if (CAM_TPS) return 1;
-  const width = 2 * BASE_DISTANCE * HALF_FOV_TAN * aspect;
-  return Math.max(1, CAMERA_MIN_VIEW_WIDTH / width);
-}
+// Part libre du segment au sol (x0, z0) → (x1, z1) avant un obstacle qui
+// cache la vue : 1 si rien ne gêne.
+export type ViewOccluder = (x0: number, z0: number, x1: number, z1: number) => number;
 
 // Cadrage : constantes de gameplay partagées (shared/), identiques pour tous
 // les thèmes. Distance = base × format d'écran × orbite.
@@ -63,7 +90,11 @@ export class CameraRig {
   private distance = 0;
   // Troisième personne : lacet courant (0 : caméra au sud, regard au nord)
   // et dernière cible, pour en tirer la direction de course du joueur.
-  private yaw = YAW;
+  private frame: Framing = framing(CAM_TPS);
+  private yaw = this.frame.yaw;
+  private occluder: ViewOccluder | null = null;
+  // Part de la distance gardée devant un mur (1 : rien ne gêne).
+  private pull = 1;
   private lastX = 0;
   private lastZ = 0;
   private hasLast = false;
@@ -82,6 +113,38 @@ export class CameraRig {
   // onDistance : appelé quand la distance change (brouillard et plan
   // lointain la suivent).
   constructor(private cam: THREE.PerspectiveCamera, private onDistance?: (distance: number) => void) {}
+
+  // Passe à la troisième personne ou revient au cadrage de l'adresse
+  // (?cam=tps la garde). Le champ de la caméra change avec le cadrage.
+  setThirdPerson(on: boolean): void {
+    const tps = on || CAM_TPS;
+    if (tps === this.frame.tps) return;
+    this.frame = framing(tps);
+    this.yaw = this.frame.yaw;
+    this.hasLast = false;
+    this.pull = 1;
+    this.distance = 0;
+    setThirdPersonView(tps);
+    setViewYaw(this.yaw);
+    this.cam.fov = this.frame.fovDeg;
+    this.cam.updateProjectionMatrix();
+  }
+
+  // Ce qui cache la vue à la troisième personne (immeubles d'une carte à
+  // murs) ; null : rien.
+  setOccluder(occluder: ViewOccluder | null): void {
+    this.occluder = occluder;
+    this.pull = 1;
+  }
+
+  // Recul sur un écran étroit : largeur de sol visible au niveau du joueur
+  // d'au moins CAMERA_MIN_VIEW_WIDTH, quel que soit le format. Pas à la
+  // troisième personne, où l'on voit jusqu'à l'horizon.
+  private aspectFactor(): number {
+    if (this.frame.tps) return 1;
+    const width = 2 * this.frame.base * this.frame.halfFovTan * this.cam.aspect;
+    return Math.max(1, CAMERA_MIN_VIEW_WIDTH / width);
+  }
 
   setTarget(x: number, y: number): void {
     this.target.set(x, 0, y);
@@ -107,24 +170,42 @@ export class CameraRig {
 
   update(dt: number): void {
     this.zoom += (this.zoomTarget - this.zoom) * (1 - Math.exp(-dt / ZOOM_TAU));
-    const d = BASE_DISTANCE * aspectDistanceFactor(this.cam.aspect) * this.zoom;
-    if (Math.abs(d - this.distance) > 1e-3) {
-      this.distance = d;
-      this.onDistance?.(d);
+    const f = this.frame;
+    const full = f.base * this.aspectFactor() * this.zoom;
+    if (Math.abs(full - this.distance) > 1e-3) {
+      this.distance = full;
+      this.onDistance?.(full);
     }
     // Caméra rigide : position = cible + décalage, pas de lerp. Un lerp sur
     // la position avec un lookAt direct crée un wobble visuel quand la
     // caméra "rattrape" la cible, surtout à framerate élevé avec dt variable.
-    if (CAM_TPS) this.followBehind(dt);
+    if (f.tps) this.followBehind(dt);
     const yaw = this.yaw;
+    let d = full;
+    let pitch = f.pitch;
+    // Un immeuble entre le joueur et la caméra : elle vient devant lui.
+    if (f.tps && this.occluder) {
+      const reach = Math.cos(pitch) * full;
+      const free = this.occluder(
+        this.target.x,
+        this.target.z,
+        this.target.x + Math.sin(yaw) * reach,
+        this.target.z + Math.cos(yaw) * reach,
+      );
+      const want = free >= 1 ? 1 : Math.max(PULL_MIN / full, free - PULL_MARGIN / reach);
+      if (want < this.pull) this.pull = want;
+      else this.pull += (want - this.pull) * (1 - Math.exp(-dt / PULL_RELEASE_TAU));
+      d = full * this.pull;
+      pitch += (1 - this.pull) * PULL_PITCH;
+    }
     this.cam.position.set(
-      this.target.x + Math.sin(yaw) * Math.cos(PITCH) * d,
-      Math.sin(PITCH) * d,
-      this.target.z + Math.cos(yaw) * Math.cos(PITCH) * d,
+      this.target.x + Math.sin(yaw) * Math.cos(pitch) * d,
+      Math.sin(pitch) * d,
+      this.target.z + Math.cos(yaw) * Math.cos(pitch) * d,
     );
     // Point visé : le joueur, ou un peu devant lui à la troisième personne.
-    const ahead = CAM_TPS ? TPS_LOOK_AHEAD : 0;
-    this.look.set(this.target.x - Math.sin(yaw) * ahead, CAM_TPS ? 1 : LOOK_HEIGHT, this.target.z - Math.cos(yaw) * ahead);
+    const ahead = f.tps ? TPS_LOOK_AHEAD : 0;
+    this.look.set(this.target.x - Math.sin(yaw) * ahead, f.tps ? 1 : LOOK_HEIGHT, this.target.z - Math.cos(yaw) * ahead);
     this.steady.position.copy(this.cam.position);
     this.steady.lookAt(this.look);
     this.steady.updateMatrixWorld();
@@ -134,7 +215,7 @@ export class CameraRig {
     // Secousse proportionnelle à la distance : même amplitude à l'écran
     // quand la caméra recule.
     const shake = this.shake.update(dt);
-    const k = d / BASE_DISTANCE;
+    const k = d / f.base;
     this.cam.position.x += shake.x * k;
     this.cam.position.y += shake.y * k;
     this.cam.lookAt(this.look);

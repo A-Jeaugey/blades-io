@@ -8,6 +8,7 @@ import {
   PRIVATE_ROOM_DENSITY_MULT,
   BladeRarity,
   DECOR_COLLIDERS,
+  mapBlocked,
   GROUND_BLADE_BLINK_MS,
   RARITY_HP,
   RARITY_SPAWN_WEIGHTS,
@@ -66,7 +67,7 @@ function randomPositionAwayFromPlayers(state: ArenaState): { x: number; y: numbe
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r;
     const y = Math.sin(a) * r;
-    if (insideAnyDecor(x, y, 1)) continue;
+    if (state.map ? mapBlocked(state.map, x, y, 1) : insideAnyDecor(x, y, 1)) continue;
     let ok = true;
     state.players.forEach((p) => {
       if (!p.alive) return;

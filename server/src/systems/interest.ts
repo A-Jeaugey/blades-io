@@ -159,7 +159,8 @@ export class InterestManager {
     this.entries.length = 0;
     this.entryById.clear();
     state.players.forEach((p) => {
-      const inBush = !p.revealed && isInBush(p.x, p.y);
+      // Les buissons sont ceux de l'arène ronde : une carte à murs n'en a pas.
+      const inBush = !state.map && !p.revealed && isInBush(p.x, p.y);
       const e: PlayerEntry = { p, x: p.x, y: p.y, reach: reachOf(p), inBush, alive: p.alive, team: p.team };
       this.entries.push(e);
       this.entryById.set(p.id, e);

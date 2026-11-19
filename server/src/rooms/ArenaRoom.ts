@@ -27,6 +27,7 @@ import {
   RoomSummary,
   ViewMessage,
   isInBush,
+  mapForMode,
   GROUND_BLADE_TTL_MS,
   INITIAL_BLADE_COUNT,
   MAP_RADIUS,
@@ -253,6 +254,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     state.isPrivate = this.isPrivate;
     state.botsEnabled = this.botsEnabled;
     state.mode = modeId;
+    state.map = mapForMode(modeId);
+    if (state.map) state.mapRadius = this.baseRadius = state.map.radius;
     this.setState(state);
     const room = this;
     const host: ModeHost = {
@@ -1018,7 +1021,10 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     this.spawning.update(dt, this.state, this.isPrivate);
     this.crates.update(dt, this.state, this.isPrivate);
     const nowPulse = Date.now();
-    for (const pulse of this.interactive.update(dt, this.state, nowPulse)) this.firePulse(pulse, nowPulse);
+    // Décor interactif : celui de l'arène ronde, pas d'une carte à murs.
+    if (!this.state.map) {
+      for (const pulse of this.interactive.update(dt, this.state, nowPulse)) this.firePulse(pulse, nowPulse);
+    }
     this.powerups.update(dt, this.state, this.isPrivate, (player, pu, durationMs) => this.handlePowerUpPickup(player, pu, durationMs));
     // (Auto-fusion supprimée — la progression se fait par accumulation.)
     // Mise à jour du score composite pour tous les joueurs vivants (composante survival).
@@ -1124,7 +1130,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private buildSummary(): RoomSummary {
     const summary: RoomSummary = { board: [], map: [], legendaries: [], leader: null };
     this.state.players.forEach((p) => {
-      if (p.alive && (p.revealed || !isInBush(p.x, p.y))) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
+      if (p.alive && (p.revealed || this.state.map !== null || !isInBush(p.x, p.y))) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
       if (p.id === this.leaderId) summary.leader = [summary.board.length, bountyFor(p.score)];
       summary.board.push([p.id, p.name, this.mode.standing(p).score, p.bladeCount, p.isBot, p.team]);
     });
@@ -1272,7 +1278,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     const ev: CrateDestroyedEvent = { crateId: crate.id, x: crate.x, y: crate.y };
     // L'auteur n'est pas nommé s'il est caché dans un buisson : l'évènement
     // part à tous les clients proches de la caisse.
-    if (attacker && !isInBush(attacker.x, attacker.y)) ev.byId = attacker.id;
+    if (attacker && (this.state.map !== null || !isInBush(attacker.x, attacker.y))) ev.byId = attacker.id;
     this.emit("crateDestroyed", ev, { to: [attacker?.id], at: { x: crate.x, y: crate.y } });
     this.crates.destroyCrate(this.state, crate);
   }

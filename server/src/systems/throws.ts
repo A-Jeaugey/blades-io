@@ -1,3 +1,4 @@
+import { mapSegmentHit } from "@bladeio/shared";
 import {
   BladeRarity,
   BladeThrownEvent,
@@ -156,8 +157,21 @@ export function updateProjectiles(dt: number, state: ArenaState, cb: ThrowCallba
   const wallR = state.mapRadius - WALL_KILL_THICKNESS - 0.2;
   state.blades.forEach((b) => {
     if (!b.isProjectile) return;
+    const fromX = b.x;
+    const fromY = b.y;
     b.x += b.vx * dt;
     b.y += b.vy * dt;
+    // Carte à murs : un mur ou un meuble arrête le lancer, la lame tombe à
+    // son pied (un rien avant, pour rester ramassable).
+    if (state.map) {
+      const t = mapSegmentHit(state.map, fromX, fromY, b.x, b.y, 0, 0.3);
+      if (t < 1) {
+        b.x = fromX + (b.x - fromX) * t;
+        b.y = fromY + (b.y - fromY) * t;
+        toLand.push(b);
+        return;
+      }
+    }
     // Bord de map = zone de mort : le projectile se désintègre (kind=3).
     if (Math.hypot(b.x, b.y) > wallR) { toDestroy.push(b); return; }
     // TTL : sécurité — en pratique la portée max retombe la lame avant.

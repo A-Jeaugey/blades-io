@@ -7,6 +7,7 @@ import {
   POWERUP_SPEED_MULT,
 } from "./constants";
 import { resolveDecorCollision } from "./decor";
+import { resolveMapCollision, type GameMap } from "./maps";
 
 // Pas de mouvement d'un joueur, partagé par le serveur (un pas par input
 // reçu) et le client (prédiction, puis rejeu des inputs pas encore
@@ -35,6 +36,13 @@ export interface MoveContext {
   frozen: boolean;
   // Le boost demande au moins une lame.
   canBoost: boolean;
+  // Carte à murs du mode (maps.ts). Absente : le décor de l'arène ronde.
+  // Le serveur et la prédiction du client doivent donner la même.
+  map?: GameMap | null;
+}
+
+function resolveObstacles(map: GameMap | null | undefined, x: number, y: number): { x: number; y: number } {
+  return map ? resolveMapCollision(map, x, y, PLAYER_BODY_RADIUS) : resolveDecorCollision(x, y, PLAYER_BODY_RADIUS);
 }
 
 export interface MoveResult {
@@ -53,7 +61,7 @@ export function stepMovement(body: MoveBody, input: MoveInput, ctx: MoveContext,
   if (ctx.frozen) {
     // Pas de déplacement ; la poussée du décor s'applique quand même (on
     // pourrait avoir été poussé dedans).
-    const pushed = resolveDecorCollision(body.x, body.y, PLAYER_BODY_RADIUS);
+    const pushed = resolveObstacles(ctx.map, body.x, body.y);
     body.x = pushed.x;
     body.y = pushed.y;
     return FROZEN;
@@ -87,7 +95,10 @@ export function stepMovement(body: MoveBody, input: MoveInput, ctx: MoveContext,
   // Vitesse totale = input + recul.
   body.x += (dx * speed + body.knockbackVx) * dt;
   body.y += (dy * speed + body.knockbackVy) * dt;
-  const pushed = resolveDecorCollision(body.x, body.y, PLAYER_BODY_RADIUS);
+  // Carte à murs : un second passage, pour le coin de deux obstacles (le
+  // premier peut repousser dans le voisin).
+  let pushed = resolveObstacles(ctx.map, body.x, body.y);
+  if (ctx.map) pushed = resolveMapCollision(ctx.map, pushed.x, pushed.y, PLAYER_BODY_RADIUS);
   body.x = pushed.x;
   body.y = pushed.y;
   return { dx, dy, speed, moving, boosting };

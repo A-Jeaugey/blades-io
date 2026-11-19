@@ -5,6 +5,7 @@ export * from "./camera";
 export * from "./tiers";
 export * from "./bounty";
 export * from "./decor";
+export * from "./maps";
 export * from "./shop";
 export * from "./upgrades";
 export * from "./movement";

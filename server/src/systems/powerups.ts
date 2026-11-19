@@ -1,6 +1,7 @@
 import {
   BladeRarity,
   DECOR_COLLIDERS,
+  mapBlocked,
   POWERUP_BLADES_COUNT,
   POWERUP_HITBOX,
   POWERUP_MAX_TOTAL,
@@ -68,7 +69,7 @@ function pickSpawnPoint(state: ArenaState): { x: number; y: number } | null {
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r;
     const y = Math.sin(a) * r;
-    if (insideAnyDecor(x, y, 2)) continue;
+    if (state.map ? mapBlocked(state.map, x, y, 2) : insideAnyDecor(x, y, 2)) continue;
     let ok = true;
     state.players.forEach((p) => {
       if (!p.alive) return;

@@ -1,6 +1,6 @@
-import { BladeRarity, MAP_RADIUS, MapEventKind, WALL_KILL_THICKNESS } from "@bladeio/shared";
+import { BladeRarity, MAP_RADIUS, MapEventKind, WALL_KILL_THICKNESS, type GameMap } from "@bladeio/shared";
 import { THREAT_COLORS, getActiveTheme } from "../themes";
-import { CAM_ISO, CAM_TPS, ISO_YAW_DEG, viewYaw } from "../gfx";
+import { BASE_VIEW_YAW, CAM_ISO, ISO_YAW_DEG, thirdPerson, viewYaw } from "../gfx";
 
 function rgba(color: number, alpha: number): string {
   return `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, ${alpha})`;
@@ -9,6 +9,9 @@ function rgba(color: number, alpha: number): string {
 // Portée minimale de la minimap (u) : en fin de manche, l'arène se
 // resserre jusqu'à 80 u.
 const MIN_RANGE = 90;
+// Portée sur une carte à murs : son quartier, pas la carte entière, pour
+// qu'on y lise les rues.
+const MAP_RANGE = 75;
 
 export interface MinimapPlayer {
   id: string;
@@ -70,11 +73,19 @@ export class Minimap {
   // en page pour rien).
   private shownYaw = 0;
   followView(): void {
-    if (!CAM_TPS) return;
-    const deg = Math.round((viewYaw() * 180) / Math.PI);
+    const deg = Math.round(((thirdPerson() ? viewYaw() : BASE_VIEW_YAW) * 180) / Math.PI);
     if (deg === this.shownYaw) return;
     this.shownYaw = deg;
     this.canvas.style.transform = `rotate(${deg}deg)`;
+  }
+
+  // Carte à murs de la partie (mode « district ») : ses immeubles et son
+  // mobilier se dessinent sous les joueurs. null : l'arène ronde.
+  private map: GameMap | null = null;
+  private wallFill = "";
+  private propFill = "";
+  setMap(map: GameMap | null): void {
+    this.map = map;
   }
 
   constructor() {
@@ -94,6 +105,8 @@ export class Minimap {
     this.background = rgba(theme.palette.clearColor, 0.7);
     this.rim = `rgba(${theme.ui.accentCoolRgb}, 0.3)`;
     this.othersFill = theme.ui.accentCool;
+    this.wallFill = `rgba(${theme.ui.accentCoolRgb}, 0.22)`;
+    this.propFill = `rgba(${theme.ui.accentCoolRgb}, 0.4)`;
     this.legendaryFill = rgba(theme.palette.rarityColor[BladeRarity.Legendary], 1);
     this.meFill = rgba(theme.palette.playerLocal.primary, 1);
     // Équipes : couleurs des anneaux (le sien, celui des autres).
@@ -134,7 +147,7 @@ export class Minimap {
     // Portée : l'arène du moment autour de soi. Avant, toute la carte (250 u)
     // quelle que soit l'arène : à ~170 u, elle n'occupait que le milieu de
     // la minimap, cerclée de zone mortelle, et les joueurs s'y tassaient.
-    const range = Math.min(MAP_RADIUS, Math.max(MIN_RANGE, arenaRadius));
+    const range = this.map ? MAP_RANGE : Math.min(MAP_RADIUS, Math.max(MIN_RANGE, arenaRadius));
     const scale = (S / 2 - 6) / range;
     // Bord de l'arène et zone mortelle au-delà. La minimap est centrée sur
     // le joueur : le cercle se rapproche du centre quand on approche du
@@ -150,13 +163,30 @@ export class Minimap {
     ctx.rect(0, 0, S, S);
     ctx.moveTo(ax + ar, ay);
     ctx.arc(ax, ay, ar, 0, Math.PI * 2);
-    ctx.fillStyle = this.outsideFill;
-    ctx.fill("evenodd");
-    ctx.beginPath();
-    ctx.arc(ax, ay, ar, 0, Math.PI * 2);
-    ctx.strokeStyle = this.arenaEdge;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+    if (this.map) {
+      // Carte à murs : pas de mur tueur à montrer (l'enceinte ferme la
+      // carte), mais ses obstacles. Immeubles d'abord, le mobilier ensuite.
+      const map = this.map;
+      const n = map.buildings.length;
+      for (let i = 0; i < map.boxes.length; i++) {
+        const b = map.boxes[i];
+        const bx = S / 2 + (b.x - me.x) * scale;
+        const by = S / 2 + (b.y - me.y) * scale;
+        const hw = b.hw * scale;
+        const hh = b.hh * scale;
+        if (bx + hw < 0 || bx - hw > S || by + hh < 0 || by - hh > S) continue;
+        ctx.fillStyle = i < n ? this.wallFill : this.propFill;
+        ctx.fillRect(bx - hw, by - hh, hw * 2, hh * 2);
+      }
+    } else {
+      ctx.fillStyle = this.outsideFill;
+      ctx.fill("evenodd");
+      ctx.beginPath();
+      ctx.arc(ax, ay, ar, 0, Math.PI * 2);
+      ctx.strokeStyle = this.arenaEdge;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
     // Future limite d'un resserrement annoncé : en tirets, comme au sol.
     if (arenaTarget > 0) {
       ctx.beginPath();

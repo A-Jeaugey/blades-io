@@ -21,7 +21,7 @@ import { REED_PUSHERS, WorldFx } from "./WorldFx";
 // ombre. Une InstancedMesh par morceau de pièce : une trentaine d'appels de
 // rendu pour toute la carte.
 
-type Cyber = Extract<DecorVariant, { kind: "cyber" }>;
+export type Cyber = Extract<DecorVariant, { kind: "cyber" }>;
 
 // Rayon des modèles du kit (art/kit/build_kit.py) : mis à l'échelle du
 // collider, pour qu'on bute là où on voit la pièce.
@@ -105,7 +105,7 @@ export function decorLightPools(): LightPool[] {
 }
 
 // --- Matériaux : un par rôle du kit, aux couleurs du thème ---------------
-function roleMaterials(v: Cyber): Record<string, THREE.Material> {
+export function roleMaterials(v: Cyber): Record<string, THREE.Material> {
   const dark = new THREE.Color(v.baseDark);
   const white = new THREE.Color(1, 1, 1);
   // Sans carte d'environnement, un métal pur ne reflète rien et reste noir :

@@ -360,6 +360,8 @@ export const en = {
   "lobby.gameMode": "GAME MODE",
   "mode.ffa.name": "ARENA",
   "mode.ffa.hint": "endless · respawn anytime",
+  "mode.district.name": "DISTRICT",
+  "mode.district.hint": "city map · third person",
   "mode.rounds.name": "ROUNDS",
   "mode.rounds.hint": "5 min · podium",
   "mode.tdm.name": "TEAM DEATHMATCH",

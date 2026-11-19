@@ -45,6 +45,10 @@ ROLE_PREVIEW = {
     "e_led": ((0.2, 0.9, 0.4), True),
     "e_cube": ((1.0, 0.1, 0.6), True),
     "e_pad": ((0.0, 0.85, 1.0), True),
+    # Quartier (district_pieces.py)
+    "tint": ((0.3, 0.32, 0.36), False),
+    "window": ((0.9, 0.75, 0.45), True),
+    "plant": ((0.05, 0.4, 0.25), False),
 }
 MATS = {}
 
@@ -492,8 +496,8 @@ for t in range(5):
     o = bpy.data.objects[f"PowerUp{t}"]
     bm = bmesh.new()
     bm.from_mesh(o.data)
-    ring = [v for v in bm.verts if math.hypot(v.co.x, v.co.y) > 1.08 and abs(v.co.z) < 0.06]
-    bmesh.ops.rotate(bm, verts=ring, cent=(0, 0, 0), matrix=Matrix.Rotation(math.pi / 2, 3, "X"))
+    rim = [v for v in bm.verts if math.hypot(v.co.x, v.co.y) > 1.08 and abs(v.co.z) < 0.06]
+    bmesh.ops.rotate(bm, verts=rim, cent=(0, 0, 0), matrix=Matrix.Rotation(math.pi / 2, 3, "X"))
     bm.to_mesh(o.data)
     bm.free()
 
@@ -513,6 +517,9 @@ for sx in (-1, 1):
     p.box(0.05, C * 0.7, 0.05, "crate_edge", loc=(sx * (C / 2 + 0.005), 0, C * 0.24))
     p.box(C * 0.7, 0.05, 0.05, "crate_edge", loc=(0, sx * (C / 2 + 0.005), C * 0.24))
 p.finish()
+
+# --- Quartier : façades, toits, mobilier urbain (mode « district ») ------
+exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "district_pieces.py"), encoding="utf-8").read(), "district_pieces.py", "exec"))
 
 # --- Export --------------------------------------------------------------
 os.makedirs(os.path.dirname(OUT_GLB), exist_ok=True)

@@ -9,7 +9,9 @@ import {
   SPAWN_LOOT_RADIUS,
   SPAWN_RADIUS,
   WALL_KILL_THICKNESS,
+  mapBlocked,
   resolveDecorCollision,
+  resolveMapCollision,
   sameTeam,
 } from "@bladeio/shared";
 import { ArenaState } from "../state/ArenaState";
@@ -48,6 +50,8 @@ export function zoneRadius(state: ArenaState): number {
 // par les power-ups toujours à portée, ne chassaient plus guère, et le
 // leader changeait deux fois moins souvent.
 export function areaShare(state: ArenaState): number {
+  // Carte à murs : la part de ce qu'on peut y parcourir (rues, places).
+  if (state.map) return Math.min(1, state.map.walkArea / (Math.PI * MAP_RADIUS * MAP_RADIUS));
   const r = zoneRadius(state);
   return Math.min(1, (r * r) / (MAP_RADIUS * MAP_RADIUS));
 }
@@ -57,7 +61,30 @@ export function zoneInner(state: ArenaState, margin: number): number {
   return Math.max(0, zoneRadius(state) - WALL_KILL_THICKNESS - margin);
 }
 
-function inDecor(x: number, y: number): boolean {
+// Un obstacle (à `margin` près) occupe-t-il ce point ? Carte à murs du
+// mode, sinon le décor de l'arène ronde : pour tout ce qui apparaît.
+export function obstacleAt(state: ArenaState, x: number, y: number, margin: number): boolean {
+  if (state.map) return mapBlocked(state.map, x, y, margin);
+  for (const d of DECOR_COLLIDERS) {
+    const dx = x - d.x;
+    const dy = y - d.y;
+    const minR = d.radius + margin;
+    if (dx * dx + dy * dy < minR * minR) return true;
+  }
+  return false;
+}
+
+// Point de repli quand aucun tirage ne convient : le centre, hors obstacle.
+function fallbackPoint(state: ArenaState): Point {
+  if (state.map) {
+    const p = resolveMapCollision(state.map, 0, 0, PLAYER_BODY_RADIUS + 1);
+    return { x: p.x, y: p.y };
+  }
+  return resolveDecorCollision(0, 0, PLAYER_BODY_RADIUS);
+}
+
+function inDecor(state: ArenaState, x: number, y: number): boolean {
+  if (state.map) return mapBlocked(state.map, x, y, PLAYER_BODY_RADIUS + 1);
   for (const d of DECOR_COLLIDERS) {
     const dx = x - d.x;
     const dy = y - d.y;
@@ -111,7 +138,7 @@ export function pickSpawnPoint(state: ArenaState, camp?: SpawnCamp): Point {
     const a = Math.random() * Math.PI * 2;
     const x = cx + Math.cos(a) * r;
     const y = cy + Math.sin(a) * r;
-    if (inDecor(x, y)) continue;
+    if (inDecor(state, x, y)) continue;
     let margin = Infinity;
     for (const o of others) {
       margin = Math.min(margin, Math.hypot(o.x - x, o.y - y) - o.need);
@@ -136,7 +163,7 @@ export function pickSpawnPoint(state: ArenaState, camp?: SpawnCamp): Point {
       bestScore = score;
     }
   }
-  return best ?? resolveDecorCollision(0, 0, PLAYER_BODY_RADIUS);
+  return best ?? fallbackPoint(state);
 }
 
 // Point d'apparition d'un bot : uniforme dans presque toute l'arène, à
@@ -154,7 +181,7 @@ export function randomSpawnPoint(state: ArenaState): Point {
     const a = Math.random() * Math.PI * 2;
     const x = Math.cos(a) * r;
     const y = Math.sin(a) * r;
-    if (inDecor(x, y)) continue;
+    if (inDecor(state, x, y)) continue;
     let gap2 = Infinity;
     state.players.forEach((p) => {
       if (!p.alive) return;
@@ -168,5 +195,5 @@ export function randomSpawnPoint(state: ArenaState): Point {
       best = { x, y };
     }
   }
-  return best ?? resolveDecorCollision(0, 0, PLAYER_BODY_RADIUS);
+  return best ?? fallbackPoint(state);
 }

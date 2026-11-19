@@ -3,7 +3,9 @@
 // règles de chaque mode (apparition, score, fin de partie) vivent côté
 // serveur, dans server/src/modes/.
 
-export type GameModeId = "ffa" | "rounds" | "tdm" | "lts" | "ctf" | "ranked";
+import { GAME_MAPS, type GameMap, type MapId } from "./maps";
+
+export type GameModeId = "ffa" | "rounds" | "tdm" | "lts" | "ctf" | "ranked" | "district";
 
 export interface GameModeInfo {
   id: GameModeId;
@@ -26,6 +28,8 @@ export interface GameModeInfo {
   // Améliorations des power-ups achetées en trophées appliquées : pas dans
   // un mode où tout le monde doit partir à égalité.
   upgrades: boolean;
+  // Carte à murs du mode (shared/src/maps.ts) ; sans elle, l'arène ronde.
+  map?: MapId;
 }
 
 // L'arène sans fin, le jeu d'origine.
@@ -48,7 +52,18 @@ export const GAME_MODES: readonly GameModeInfo[] = [
   // rien ne compte en salon privé. Sans améliorations, tout le monde à
   // égalité.
   { id: "ranked", quickPlay: true, privateRoom: false, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: false },
+  // Quartier (2026-11-19, essai) : les règles de l'arène sur une carte à
+  // murs, vue à la troisième personne. En salon privé tant qu'il s'essaie :
+  // sans le rendu v2, la carte n'est faite que de blocs. Ni évènements de
+  // carte ni décor interactif, placés pour l'arène ronde.
+  { id: "district", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true, map: "district" },
 ];
+
+// Carte à murs d'un mode ; null : l'arène ronde et son décor (decor.ts).
+export function mapForMode(id: string): GameMap | null {
+  const mapId = GAME_MODES.find((m) => m.id === id)?.map;
+  return mapId ? GAME_MAPS[mapId] : null;
+}
 
 export function modeShrinks(id: string): boolean {
   return GAME_MODES.some((m) => m.id === id && m.shrinks);

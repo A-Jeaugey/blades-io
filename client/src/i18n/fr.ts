@@ -363,6 +363,8 @@ export const fr: Record<keyof typeof en, string> = {
   "lobby.gameMode": "MODE DE JEU",
   "mode.ffa.name": "ARÈNE",
   "mode.ffa.hint": "sans fin · on réapparaît",
+  "mode.district.name": "QUARTIER",
+  "mode.district.hint": "carte de ville · troisième personne",
   "mode.rounds.name": "MANCHES",
   "mode.rounds.hint": "5 min · podium",
   "mode.tdm.name": "MATCH À MORT",

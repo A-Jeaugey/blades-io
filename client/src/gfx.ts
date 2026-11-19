@@ -49,7 +49,19 @@ export const ISO_YAW_DEG = 45;
 // de l'écran n'est plus le nord de la carte.
 // Le lacet de la caméra est fixe en cadrage isométrique, suivi à chaque
 // frame à la troisième personne (setViewYaw, depuis CameraRig).
-let viewYawRad = CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0;
+// Troisième personne en cours : demandée par l'adresse (?cam=tps), ou par
+// la partie (mode « district », carte à murs : CameraRig.setThirdPerson).
+let tpsOn = CAM_TPS;
+export function thirdPerson(): boolean {
+  return tpsOn;
+}
+export function setThirdPersonView(on: boolean): void {
+  tpsOn = on;
+}
+
+// Lacet de la caméra hors troisième personne.
+export const BASE_VIEW_YAW = CAM_ISO ? (ISO_YAW_DEG * Math.PI) / 180 : 0;
+let viewYawRad = BASE_VIEW_YAW;
 let viewCos = Math.cos(viewYawRad);
 let viewSin = Math.sin(viewYawRad);
 export function setViewYaw(yaw: number): void {

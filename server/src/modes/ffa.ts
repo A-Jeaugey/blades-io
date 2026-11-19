@@ -1,3 +1,4 @@
+import type { GameModeId } from "@bladeio/shared";
 import type { Player } from "../state/Player";
 import { pickSpawnPoint, randomSpawnPoint } from "../systems/spawnPoint";
 import type { GameMode, ModeHost, PlayerStanding, Point } from "./GameMode";
@@ -7,9 +8,9 @@ import type { GameMode, ModeHost, PlayerStanding, Point } from "./GameMode";
 // au score de la vie en cours ; jamais de fin de partie ; arène à la
 // taille de sa population.
 export class FfaMode implements GameMode {
-  readonly id = "ffa" as const;
+  readonly id: GameModeId = "ffa";
 
-  constructor(private readonly host: ModeHost) {}
+  constructor(protected readonly host: ModeHost) {}
 
   onJoin(): void {}
 
