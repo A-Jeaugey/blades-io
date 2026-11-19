@@ -353,8 +353,57 @@ jeu est inchangé) :
       champ de la caméra, sinon les particules sont quatre fois plus
       petites en cadrage isométrique. Tout nouveau shader de points la
       prend en compte.
-  - Pas encore refaits : coffre-fort et puces, effets, mur ; pièces du
-    Sanctuaire (`spirit`) ; ambiance sonore de la météo.
+  - **Passe réaliste** (2026-11-19) : ce qui fait passer d'aplats de
+    couleur à des matières éclairées. Tout est côté client, sous
+    `gfxV2Active` ; hors du rendu v2, l'image ne change pas d'un pixel
+    (chaque réglage de `PostFX` est un uniform à zéro).
+    - **Ciel et environnement** (`scene/v2/Sky.ts`) : un ciel de nuit
+      calculé d'après la direction du regard (dégradé, nuages, lune,
+      étoiles, deux rangs d'immeubles lointains), dessiné après les objets
+      opaques au plan lointain (il ne coûte que les pixels de ciel). Le
+      même ciel, plus quelques panneaux lumineux, donne la carte
+      d'environnement (`buildEnvironment`, `scene.environment`) : lumière
+      ambiante qui dépend de l'orientation et reflets des matériaux
+      `MeshStandardMaterial`. **À poser avant la première compilation**
+      (`SceneStack`, constructeur) : un environnement change les
+      programmes de tous les matériaux éclairés. L'aplat ambiant du thème
+      ne garde qu'une part (`V2_AMBIENT_SHARE`), pour les matériaux Phong
+      (lames, power-ups) que l'environnement n'éclaire pas. Brouillard à
+      la couleur de l'horizon (`muted` : le brouillard du thème tiré vers
+      son gris, sinon toute la scène baigne dans une seule teinte).
+    - **Post-traitement** (`PostFX`, `PostFxLook`) : courbe filmique
+      (`uFilmic`, `FILMIC_EXPOSURE`) dans la passe finale ; occlusion
+      ambiante en qualité haute (`AoChain` : profondeur de la cible de la
+      scène, demi-résolution, deux flous qui respectent les bords), qui
+      n'assombrit pas ce qui éclaire (pixels clairs) et se coupe en mode
+      allégé. `?debug=ao` affiche l'occlusion seule. La cible de la scène
+      porte une `DepthTexture` de 24 bits (le format du tampon
+      multiéchantillonné, sans quoi sa résolution échoue).
+    - **Matière des surfaces** (`scene/v2/surface.ts`, `addSurface`) :
+      grain, taches, relief, coulures, pellicule de pluie et lueur des
+      alentours (la texture des lueurs du sol, lue par les murs et le
+      mobilier : `SurfaceLight`), plaqués depuis les coordonnées monde.
+      **Pour ce qui ne bouge pas seulement** : sur une pièce mobile, le
+      motif glisserait (`roleMaterials(v)` sans `surface` pour les drones,
+      cristaux et cubes ; `floating` dans `DecorV2.ts`). La texture de
+      détail ne porte aucune couleur. Un seuil serré sur cette texture
+      (huit bits) se découpe en marches : pour un masque net (flaques),
+      un bruit calculé dans le shader.
+    - **Quartier** (`DistrictView.ts`) : sol mouillé (`wetGround` : grain,
+      flaques, reflet du monde à force de Fresnel, lumières de la partie,
+      sortie plafonnée à `groundMaxLuma` comme le sol de l'arène), vitres
+      en verre (`windowMaterial` : la couleur par sommet est la lumière de
+      la pièce), ombres de contact peintes au sol, cônes de brume sous les
+      lampadaires (`lampCones`). Le reflet (`Reflection.ts`) a des niveaux
+      réduits : le bitume le lit flou, la flaque net ; le sol du quartier
+      est dans `reflection.hidden` (`DistrictHandle.unreflected`).
+    - Après un réglage de lumière : `art/shots/look.js` (trois images du
+      quartier, ou de l'arène), puis les orbites de 25 et 80 lames
+      (`art/shots/blades.js`), et « +0 en partie » à `?debug=perf` en
+      qualité haute et moyenne.
+  - Pas encore refaits : personnages (figurines du kit), coffre-fort et
+    puces, effets, mur, sol de l'arène (dalles et rails : un repère de
+    jeu) ; pièces du Sanctuaire (`spirit`) ; ambiance sonore de la météo.
 - **`?cam=iso`** : caméra tournée de 45°, inclinée à 45°, champ de 14°
   (`ISO_*` dans `gfx.ts`, `Camera.ts`), même largeur de sol au niveau du
   joueur que le cadrage partagé. Côté client seulement : on voit moins
@@ -871,9 +920,9 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
     suspendu sous 8 u (la caméra est entre 6 et 7 u). Minimap : `setMap`.
     Planche des pièces : `art/kit/preview_district.py` ; captures :
     `art/shots/district.js`.
-  - Pas encore : ciel et lointain, sol mouillé (reflets, lumières de la
-    partie), ambiance sonore, modes équipe ou manches sur cette carte,
-    partie rapide.
+  - Ciel, sol mouillé et matières : « Passe réaliste » de la section
+    « Rendu v2 ». Pas encore : ambiance sonore, modes équipe ou manches
+    sur cette carte, partie rapide.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client
