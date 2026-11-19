@@ -4,14 +4,29 @@
     {
       "name": "server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:server"],
+      "runtimeArgs": [
+        "run",
+        "dev:server"
+      ],
       "port": 2567
     },
     {
       "name": "client",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:client"],
+      "runtimeArgs": [
+        "run",
+        "dev:client"
+      ],
       "port": 5173
+    },
+    {
+      "name": "server-cheats",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "process.env.CHEATS='1';require('child_process').spawn('npm',['run','dev:server'],{stdio:'inherit',shell:true})"
+      ],
+      "port": 2567
     }
   ]
 }

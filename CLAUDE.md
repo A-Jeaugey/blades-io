@@ -294,7 +294,15 @@ jeu est inchangé) :
   - **Lumière** (`Scene.ts`) : la lumière principale devient une lune qui
     porte des ombres (`followShadows`, appelée là où la caméra reçoit sa
     cible ; la carte d'ombres avance par pas d'un texel). Seuls le décor
-    et le corps des joueurs portent une ombre, pas les lames.
+    et le corps des joueurs portent une ombre, pas les lames. **Jamais de
+    lune en face de la caméra** (`MOON_DIR`) : tout ce qui est à plat
+    (sol, lames) la renvoie alors dans l'objectif. Presque en miroir du
+    cadrage isométrique, son reflet couvrait chaque lame et une orbite de
+    25 lames devenait une tache blanche qui cachait son joueur (retour du
+    2026-11-19). Après tout changement de lumière, comparer une orbite
+    de 25 et de 80 lames à l'ancien rendu : `art/shots/blades.js` (salon
+    privé, triche `/blades`, serveur `server-cheats` de
+    `.claude/launch.json`).
   - **Joueurs** (`PlayerView.ts`) : les quatre géométries partagées
     viennent du kit (`PlayerTorso`, `PlayerHead`, `PlayerArm`,
     `PlayerLeg`, centrées comme les capsules) ; matériaux, skins,
@@ -323,7 +331,8 @@ jeu est inchangé) :
       sol, juste avant le rendu (`main.ts`) ; le sol la lit dans ses
       flaques. Même genre de cible que la scène : aucun programme de plus.
       Coupé en mode allégé (`postFx.isLite`). Ce qui ne doit pas se
-      refléter va dans `reflection.hidden`.
+      refléter va dans `reflection.hidden` : le sol, la météo, et les
+      lames (leur reflet dessinait une seconde orbite sous la vraie).
     - Taille des points (`fovScale`, `scene/renderScale.ts`) : rapportée au
       champ de la caméra, sinon les particules sont quatre fois plus
       petites en cadrage isométrique. Tout nouveau shader de points la

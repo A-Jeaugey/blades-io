@@ -5,11 +5,22 @@ import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 import { gfxV2Active } from "./v2/kit";
 
-// Lune du rendu v2 : direction vers laquelle on la voit depuis le sol
-// (derrière et à gauche de la caméra d'origine : les ombres tombent vers le
-// joueur, là où elles se lisent), demi-côté de la zone d'ombres autour du
-// point suivi et distance de la lumière.
-const MOON_DIR = new THREE.Vector3(-0.42, 0.76, -0.49).normalize();
+// Lune du rendu v2 : direction vers laquelle on la voit depuis le sol,
+// demi-côté de la zone d'ombres autour du point suivi et distance de la
+// lumière. Elle vient de la gauche et un peu de l'avant : les ombres
+// tombent sur le côté, là où elles se lisent dans les deux cadrages.
+// Surtout pas en face de la caméra (derrière la scène) : le sol, les lames
+// et tout ce qui est à plat la renvoient alors droit dans l'objectif. Avec
+// (-0,42 ; 0,76 ; -0,49), presque le miroir du cadrage isométrique, le
+// reflet spéculaire couvrait chaque lame (trois fois le blanc avant bloom)
+// et une orbite de 25 lames n'était plus qu'une tache blanche qui cachait
+// son joueur (retour du 2026-11-19). Ici, la demi-direction lune / caméra
+// reste à plus de 30° de la verticale dans les deux cadrages : seul un
+// biseau de lame bien orienté accroche encore un éclat, en passant.
+const MOON_DIR = new THREE.Vector3(-0.6, 0.7, 0.4).normalize();
+// Plus forte que la lumière principale d'origine (0,4 à 0,45), pour que les
+// ombres se lisent, sans doubler ce que reçoivent les lames et les joueurs.
+const MOON_INTENSITY = 0.85;
 const SHADOW_HALF = 48;
 const SHADOW_DISTANCE = 90;
 
@@ -90,7 +101,7 @@ export class SceneStack {
       // programmes de tous les matériaux éclairés.
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      const moon = new THREE.DirectionalLight(theme.lighting.key.color, 1.1);
+      const moon = new THREE.DirectionalLight(theme.lighting.key.color, MOON_INTENSITY);
       moon.castShadow = true;
       const size = q.preset === "high" ? 2048 : 1024;
       moon.shadow.mapSize.set(size, size);

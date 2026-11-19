@@ -569,6 +569,10 @@ export class Game {
       if (this.reflection) {
         this.reflection.hidden.push(this.ground.mesh);
         if (this.weather) this.reflection.hidden.push(this.weather.object);
+        // Pas les lames : dans une flaque, leur reflet dessinait une
+        // seconde orbite, décalée, sous la vraie. Rien ne doit ressembler à
+        // une lame qui n'en est pas une.
+        this.reflection.hidden.push(this.blades.root);
       }
     } else {
       this.ground = createGround(this.quality);

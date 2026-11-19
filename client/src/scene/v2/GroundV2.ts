@@ -32,7 +32,7 @@ const GROUND_FADE = 60;
 // Lumière reçue par le sol (lune, ciel) : environ 0,4 fois sa couleur.
 // Compensé en partie : la dalle sèche reste un peu sous la couleur déclarée
 // par le thème, pour que les lueurs du décor s'en détachent.
-const ALBEDO_BOOST = 1.7;
+const ALBEDO_BOOST = 2.0;
 
 const GROUND_PARS = /* glsl */ `
   uniform vec3 uGBase;
@@ -143,11 +143,12 @@ const GROUND_EMISSIVE = /* glsl */ `
   totalEmissiveRadiance += uGRail * gRail * 0.45;
 `;
 
-// Reflet de la lune : les deux cadrages la voient presque en miroir sur le
-// sol. Il s'étalait en liseré clair au bord des flaques (rugosité moyenne)
-// et en aplat gris dedans : coupé sur l'eau, atténué sur la dalle sèche
-// (un sol sombre et calme, cf. readability.ts). Les flaques ne renvoient
-// que le ciel et les lueurs du décor.
+// Reflet de la lune : il s'étalait en liseré clair au bord des flaques
+// (rugosité moyenne) et en aplat gris dedans quand elle était en face de la
+// caméra. Elle n'y est plus (MOON_DIR, Scene.ts), mais la règle reste :
+// coupé sur l'eau, atténué sur la dalle sèche (un sol sombre et calme, cf.
+// readability.ts). Les flaques ne renvoient que le ciel, les lueurs du
+// décor et le reflet du monde.
 const GROUND_SPECULAR = /* glsl */ `
   float gDry = 1.0 - gWet;
   reflectedLight.directSpecular *= 0.3 * gDry * gDry;
