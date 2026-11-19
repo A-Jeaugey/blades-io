@@ -21,3 +21,4 @@ art/concept/*.png
 # Kit : formes relues du jeu (dump_shapes.mjs) et planche de contrôle
 art/kit/src/
 art/kit/preview.png
+art/kit/preview_players.png

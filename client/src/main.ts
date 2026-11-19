@@ -659,6 +659,17 @@ export class Game {
           ev.drops?.forEach((d: any) => drops.push({ x: d.x, y: d.y, at: d.at, state: d.state }));
           return { kind: ev.kind, x: ev.x, y: ev.y, hp: crate?.hp ?? 0, drops, serverNow: this.serverNow() };
         },
+        // Essayage (captures) : habille les joueurs à l'écran des skins
+        // donnés, à tour de rôle. Affichage de ce client seulement ; la
+        // tenue reste jusqu'au départ du joueur.
+        dress: (skins: string[]) => {
+          let i = 0;
+          for (const v of this.players.values()) {
+            delete (v as any).applyCosmetics;
+            v.applyCosmetics(skins[i++ % skins.length], "");
+            (v as any).applyCosmetics = () => {};
+          }
+        },
       };
     }
     if (new URLSearchParams(window.location.search).get("debug") === "hitbox") {

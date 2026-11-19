@@ -7,6 +7,8 @@ import { BladeRenderer, PlayerPositionProvider } from "../entities/BladeView";
 import { ParticlePool } from "../fx/Particles";
 import { BLADE_STYLES, KILL_FX_LOOKS, lookOf } from "../cosmetics/looks";
 import { cosmeticName, t } from "../i18n";
+import { kitFor } from "../scene/v2/kit";
+import { buildEnvironment } from "../scene/v2/Sky";
 
 // Aperçu 3D de la boutique (tâche 6.4) : le personnage avec l'équipement
 // essayé (skin, style de lames, traînée, effet d'élimination), avec les vrais
@@ -20,6 +22,10 @@ const RARITIES = [BladeRarity.Common, BladeRarity.Rare, BladeRarity.Epic, BladeR
 const WALK_RADIUS = 1.4;
 const WALK_SPEED = 2.1;
 const BURST_EVERY = 2.6;
+
+// Direction de la lune dans l'environnement de l'aperçu (derrière la caméra,
+// en hauteur : elle n'y est jamais dans le champ).
+const STAGE_SKY_LIGHT = new THREE.Vector3(-0.4, 0.7, 0.6).normalize();
 
 export class PreviewStage {
   readonly el: HTMLElement;
@@ -72,6 +78,15 @@ export class PreviewStage {
       rim.position.set(-30, 20, -20);
       this.scene.add(key, rim);
     }
+    // Rendu v2 : personnage modélisé, dont le métal et le poli ne se lisent
+    // qu'avec un environnement à refléter (celui du jeu) et une lumière
+    // franche de trois quarts.
+    if (kitFor(q.simpleMaterials)) {
+      this.scene.environment = buildEnvironment(this.renderer, STAGE_SKY_LIGHT);
+      const front = new THREE.DirectionalLight(theme.lighting.key.color, 1.6);
+      front.position.set(-6, 9, 12);
+      this.scene.add(front);
+    }
     // Socle : le sol du thème, et son anneau. Opaque : dessiné avant les
     // objets transparents, il ne recouvre pas la traînée.
     const disc = new THREE.Mesh(
@@ -102,6 +117,11 @@ export class PreviewStage {
     // objet, sa traînée au sol comprise.
     this.camera.position.set(0, 4.6, 7.8);
     this.camera.lookAt(0, 0.6, 0);
+    // Personnage modélisé : plus près, pour qu'on voie sa tenue.
+    if (kitFor(q.simpleMaterials)) {
+      this.camera.position.set(0, 3.5, 6.0);
+      this.camera.lookAt(0, 0.8, 0);
+    }
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && this.raf) this.last = performance.now();
     });

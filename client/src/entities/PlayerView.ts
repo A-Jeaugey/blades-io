@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { RemoteMotion } from "@bladeio/shared";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
-import { SKIN_LOOKS, SkinLook, TRAIL_LOOKS, TrailLook, lookOf } from "../cosmetics/looks";
-import { getKit, gfxV2Active } from "../scene/v2/kit";
+import { KIT_BASE, KIT_SKINS, KitSkin, SKIN_LOOKS, SkinLook, TRAIL_LOOKS, TrailLook, lookOf } from "../cosmetics/looks";
+import { Kit, getKit, gfxV2Active } from "../scene/v2/kit";
 
 // Traînée du joueur local (tâche 2.6) : ruban au sol qui couvre toujours
 // les TRAIL_MS dernières millisecondes de déplacement, échantillonné dans
@@ -75,6 +75,58 @@ vec3 dissolveTint = mix(uDissolveColor, vec3(1.0), dissolveEdge * 0.6);
 gl_FragColor.rgb = mix(gl_FragColor.rgb, dissolveTint, clamp(dissolveEdge + min(1.0, uDissolve * 5.0) * 0.4, 0.0, 1.0) * uDissolveGlow);
 `;
 
+// --- Personnage modélisé (rendu v2) -----------------------------------------
+// Les pièces du kit (art/kit/player_pieces.py) n'ont qu'un maillage chacune,
+// dont la couleur par sommet dit la matière de chaque face : rouge et bleu
+// choisissent entre quatre matières (a, b, c, d), vert marque ce qui luit.
+// Un seul matériau par joueur leur donne les couleurs de son skin : autant
+// d'appels de rendu qu'avec les capsules, et un seul programme pour tous.
+const SKIN_PARS = /* glsl */ `
+uniform vec3 uSkinCol[4];
+uniform vec3 uSkinGlow;
+uniform vec4 uSkinMetal;
+uniform vec4 uSkinRough;
+`;
+// À la place de la couleur par sommet de three.js (qui la multiplierait).
+const SKIN_COLOR = /* glsl */ `
+float skG = vColor.g;
+vec4 skW = vec4((1.0 - vColor.r) * (1.0 - vColor.b), vColor.r * (1.0 - vColor.b), vColor.b * (1.0 - vColor.r), vColor.r * vColor.b);
+diffuseColor.rgb = (uSkinCol[0] * skW.x + uSkinCol[1] * skW.y + uSkinCol[2] * skW.z + uSkinCol[3] * skW.w) * (1.0 - skG) + uSkinGlow * (0.05 * skG);
+`;
+const SKIN_SURFACE = /* glsl */ `
+roughnessFactor = mix(dot(uSkinRough, skW), 0.4, skG);
+metalnessFactor = dot(uSkinMetal, skW) * (1.0 - skG);
+`;
+// Ce qui luit, et un fond de sa propre couleur : dans une ruelle sans
+// lumière, un joueur ne doit pas devenir une silhouette noire.
+const SKIN_GLOW = /* glsl */ `
+totalEmissiveRadiance = uSkinGlow * skG + diffuseColor.rgb * 0.07;
+`;
+// Au-dessus de 1 : la cible de la scène est en HDR, le bloom y mord.
+const SKIN_GLOW_POWER = 1.5;
+// Hauteur des hanches (le haut du corps penche autour), des épaules, et
+// distance de ces pivots au centre des pièces qu'ils portent.
+const HIP_Y = 0.62;
+const LEG_PIVOT_Y = 0.68;
+const LEG_REACH = 0.33;
+const ARM_PIVOT_Y = 1.33;
+const ARM_REACH = 0.28;
+
+interface SkinUniforms {
+  uSkinCol: { value: THREE.Color[] };
+  uSkinGlow: { value: THREE.Color };
+  uSkinMetal: { value: THREE.Vector4 };
+  uSkinRough: { value: THREE.Vector4 };
+}
+
+// Membre qui tourne autour de son attache (épaule, hanche) : la pièce est
+// centrée sur elle-même, à `reach` sous le pivot.
+function swingLimb(mesh: THREE.Mesh, pivotY: number, reach: number, angle: number): void {
+  mesh.rotation.x = angle;
+  mesh.position.y = pivotY - Math.cos(angle) * reach;
+  mesh.position.z = -Math.sin(angle) * reach;
+}
+
 // Géométries partagées par tous les joueurs d'un même niveau de détail : un
 // joueur qui entre dans le champ ne recalcule plus ses capsules, sphères et
 // anneaux ni ne les renvoie au GPU, et ne les jette plus en sortant.
@@ -90,8 +142,8 @@ function sharedGeo(key: string, make: () => THREE.BufferGeometry): THREE.BufferG
 
 export class PlayerView {
   root: THREE.Group;
-  body: THREE.Mesh;
-  head: THREE.Mesh;
+  body!: THREE.Mesh;
+  head!: THREE.Mesh;
   ring: THREE.Mesh;
   protHalo!: THREE.Mesh | null;
   private protPhase = 0;
@@ -138,9 +190,19 @@ export class PlayerView {
   // appliqués d'après les champs synchronisés du joueur.
   private readonly q: QualityConfig;
   private readonly isLocal: boolean;
+  // Personnage modélisé (rendu v2) : le kit, le haut du corps (il penche
+  // autour des hanches), les matières du skin, la tenue de base aux couleurs
+  // du thème, et l'allure de la marche (balancement, penché, repos).
+  private kit: Kit | null = null;
+  private upper: THREE.Group | null = null;
+  private skin: SkinUniforms | null = null;
+  private baseKit: KitSkin | null = null;
+  private swing = 0;
+  private lean = 0;
+  private idle = 0;
   private bodyMats: Array<THREE.MeshStandardMaterial | THREE.MeshBasicMaterial> = [];
   private baseColors: Array<{ color: number; emissive: number; intensity: number }> = [];
-  private sphereHeadGeo: THREE.BufferGeometry;
+  private sphereHeadGeo!: THREE.BufferGeometry;
   private accessory: THREE.Group | null = null;
   private accessoryDisposables: Array<THREE.BufferGeometry | THREE.Material> = [];
   private skinId = "";
@@ -194,64 +256,11 @@ export class PlayerView {
       return mat;
     };
 
-    // Tronc — segments capsule réduits selon detail.
-    const torsoCapSeg = detail === "rich" ? 6 : detail === "low" ? 4 : 4;
-    const torsoRadSeg = detail === "rich" ? 3 : 2;
-    // Rendu v2 (?gfx=v2) : mêmes pièces aux mêmes centres, mais modélisées
-    // (kit Blender) au lieu de capsules, et qui portent une ombre. Tout le
-    // reste (matériaux, skins, dissolution, animation) est inchangé.
+    // Rendu v2 (?gfx=v2) : un personnage modélisé (kit Blender), aux mêmes
+    // centres que les capsules. Sinon, les capsules d'origine ci-dessous.
     const kit = gfxV2Active(q) ? getKit() : null;
-    const torsoGeo = sharedGeo(`torso:${detail}`, () => kit?.geometry("PlayerTorso") ?? new THREE.CapsuleGeometry(0.28, 0.55, torsoRadSeg, torsoCapSeg));
-    const torsoMat = mkMat(primary, accentDim, 0.5);
-    this.body = new THREE.Mesh(torsoGeo, torsoMat);
-    this.body.position.y = 0.95;
-    this.root.add(this.body);
-    this.disposables.push(torsoMat);
-
-    // Tête — sphère segments selon detail.
-    const headSeg = detail === "rich" ? 14 : detail === "low" ? 8 : 6;
-    const headRingSeg = Math.max(6, headSeg - 4);
-    const headGeo = sharedGeo(`head:${detail}`, () => kit?.geometry("PlayerHead") ?? new THREE.SphereGeometry(0.26, headSeg, headRingSeg));
-    this.sphereHeadGeo = headGeo;
-    const headMat = mkMat(primary, accentDim, 0.4);
-    this.head = new THREE.Mesh(headGeo, headMat);
-    this.head.position.y = 1.55;
-    this.root.add(this.head);
-    this.disposables.push(headMat);
-
-    // Membres — uniquement en rich/low. En minimal (ultra), on n'ajoute pas
-    // les bras/jambes : le corps + tête suffit.
-    if (detail !== "minimal") {
-      const armCapSeg = detail === "rich" ? 6 : 4;
-      const armRadSeg = detail === "rich" ? 3 : 2;
-      const armGeo = sharedGeo(`arm:${detail}`, () => kit?.geometry("PlayerArm") ?? new THREE.CapsuleGeometry(0.09, 0.45, armRadSeg, armCapSeg));
-      const armMat = mkMat(primary, accentDim, 0.45);
-      this.leftArm = new THREE.Mesh(armGeo, armMat);
-      this.rightArm = new THREE.Mesh(armGeo, armMat);
-      this.leftArm.position.set(-0.38, 1.05, 0);
-      this.rightArm.position.set(0.38, 1.05, 0);
-      this.root.add(this.leftArm);
-      this.root.add(this.rightArm);
-      this.disposables.push(armMat);
-
-      const legCapSeg = detail === "rich" ? 6 : 4;
-      const legRadSeg = detail === "rich" ? 3 : 2;
-      const legGeo = sharedGeo(`leg:${detail}`, () => kit?.geometry("PlayerLeg") ?? new THREE.CapsuleGeometry(0.12, 0.5, legRadSeg, legCapSeg));
-      const legMat = mkMat(primary, accentDim, 0.35);
-      this.leftLeg = new THREE.Mesh(legGeo, legMat);
-      this.rightLeg = new THREE.Mesh(legGeo, legMat);
-      this.leftLeg.position.set(-0.14, 0.35, 0);
-      this.rightLeg.position.set(0.14, 0.35, 0);
-      this.root.add(this.leftLeg);
-      this.root.add(this.rightLeg);
-      this.disposables.push(legMat);
-    }
-
-    if (kit) {
-      for (const part of [this.body, this.head, this.leftArm, this.rightArm, this.leftLeg, this.rightLeg]) {
-        if (part) part.castShadow = true;
-      }
-    }
+    if (kit) this.buildKitBody(kit, primary, accent, accentDim);
+    else this.buildCapsuleBody(mkMat, primary, accentDim);
 
     // Anneau néon au sol (cercle d'ancrage). Segments réduits en low/ultra.
     const ringSeg = detail === "rich" ? 32 : detail === "low" ? 20 : 16;
@@ -295,6 +304,131 @@ export class PlayerView {
     if (this.hasTrail) this.ensureRibbon();
   }
 
+  // Personnage modélisé : six pièces du kit et un seul matériau, dont les
+  // matières prennent les couleurs de la tenue (applyKitSkin). Le haut du
+  // corps est dans un groupe qui pivote aux hanches ; les membres gauches
+  // sont les droits, retournés.
+  private buildKitBody(kit: Kit, primary: number, accent: number, accentDim: number): void {
+    this.kit = kit;
+    const light = new THREE.Color(primary);
+    const dim = new THREE.Color(accentDim);
+    // Tenue de base aux couleurs du thème : armure claire (celle du joueur
+    // local et celle des autres diffèrent, comme leurs anneaux), renforts à
+    // la teinte de l'accent, dessous sombre.
+    this.baseKit = {
+      ...KIT_BASE,
+      a: light.getHex(),
+      b: light.clone().lerp(dim, 0.6).getHex(),
+      c: dim.clone().multiplyScalar(0.2).getHex(),
+      d: light.clone().multiplyScalar(0.8).getHex(),
+      glow: accent,
+    };
+    this.skin = {
+      uSkinCol: { value: [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()] },
+      uSkinGlow: { value: new THREE.Color() },
+      uSkinMetal: { value: new THREE.Vector4() },
+      uSkinRough: { value: new THREE.Vector4() },
+    };
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true });
+    this.addDissolve(mat, this.skin);
+    this.disposables.push(mat);
+    const upper = new THREE.Group();
+    upper.position.y = HIP_Y;
+    this.root.add(upper);
+    this.upper = upper;
+    const piece = (name: string, parent: THREE.Object3D, x: number, y: number, flip = false) => {
+      const mesh = new THREE.Mesh(kit.geometry(name), mat);
+      mesh.position.set(x, y, 0);
+      if (flip) mesh.scale.x = -1;
+      mesh.castShadow = true;
+      parent.add(mesh);
+      return mesh;
+    };
+    this.body = piece("SkTorsoBase", upper, 0, 0.95 - HIP_Y);
+    this.head = piece("SkHeadBase", upper, 0, 1.55 - HIP_Y);
+    this.rightArm = piece("SkArmArmor", upper, 0.38, 1.05 - HIP_Y);
+    this.leftArm = piece("SkArmArmor", upper, -0.38, 1.05 - HIP_Y, true);
+    this.rightLeg = piece("SkLegArmor", this.root, 0.14, 0.35);
+    this.leftLeg = piece("SkLegArmor", this.root, -0.14, 0.35, true);
+    this.applyKitSkin(this.baseKit);
+  }
+
+  private applyKitSkin(outfit: KitSkin): void {
+    const kit = this.kit;
+    const u = this.skin;
+    if (!kit || !u) return;
+    this.body.geometry = kit.geometry(`SkTorso${outfit.torso}`);
+    this.head.geometry = kit.geometry(`SkHead${outfit.head}`);
+    const arm = kit.geometry(`SkArm${outfit.arm}`);
+    const leg = kit.geometry(`SkLeg${outfit.leg}`);
+    if (this.leftArm && this.rightArm) this.leftArm.geometry = this.rightArm.geometry = arm;
+    if (this.leftLeg && this.rightLeg) this.leftLeg.geometry = this.rightLeg.geometry = leg;
+    u.uSkinCol.value[0].setHex(outfit.a);
+    u.uSkinCol.value[1].setHex(outfit.b);
+    u.uSkinCol.value[2].setHex(outfit.c);
+    u.uSkinCol.value[3].setHex(outfit.d);
+    u.uSkinGlow.value.setHex(outfit.glow).multiplyScalar(SKIN_GLOW_POWER);
+    u.uSkinMetal.value.set(outfit.metal[0], outfit.metal[1], outfit.metal[2], outfit.metal[3]);
+    u.uSkinRough.value.set(outfit.rough[0], outfit.rough[1], outfit.rough[2], outfit.rough[3]);
+  }
+
+  // Corps d'origine : capsules et sphère, un matériau par partie.
+  private buildCapsuleBody(
+    mkMat: (color: number, emissive: number, intensity: number) => THREE.Material,
+    primary: number,
+    accentDim: number,
+  ): void {
+    const detail = this.q.playerDetail;
+    // Tronc — segments capsule réduits selon detail.
+    const torsoCapSeg = detail === "rich" ? 6 : detail === "low" ? 4 : 4;
+    const torsoRadSeg = detail === "rich" ? 3 : 2;
+    const torsoGeo = sharedGeo(`torso:${detail}`, () => new THREE.CapsuleGeometry(0.28, 0.55, torsoRadSeg, torsoCapSeg));
+    const torsoMat = mkMat(primary, accentDim, 0.5);
+    this.body = new THREE.Mesh(torsoGeo, torsoMat);
+    this.body.position.y = 0.95;
+    this.root.add(this.body);
+    this.disposables.push(torsoMat);
+
+    // Tête — sphère segments selon detail.
+    const headSeg = detail === "rich" ? 14 : detail === "low" ? 8 : 6;
+    const headRingSeg = Math.max(6, headSeg - 4);
+    const headGeo = sharedGeo(`head:${detail}`, () => new THREE.SphereGeometry(0.26, headSeg, headRingSeg));
+    this.sphereHeadGeo = headGeo;
+    const headMat = mkMat(primary, accentDim, 0.4);
+    this.head = new THREE.Mesh(headGeo, headMat);
+    this.head.position.y = 1.55;
+    this.root.add(this.head);
+    this.disposables.push(headMat);
+
+    // Membres — uniquement en rich/low. En minimal (ultra), on n'ajoute pas
+    // les bras/jambes : le corps + tête suffit.
+    if (detail !== "minimal") {
+      const armCapSeg = detail === "rich" ? 6 : 4;
+      const armRadSeg = detail === "rich" ? 3 : 2;
+      const armGeo = sharedGeo(`arm:${detail}`, () => new THREE.CapsuleGeometry(0.09, 0.45, armRadSeg, armCapSeg));
+      const armMat = mkMat(primary, accentDim, 0.45);
+      this.leftArm = new THREE.Mesh(armGeo, armMat);
+      this.rightArm = new THREE.Mesh(armGeo, armMat);
+      this.leftArm.position.set(-0.38, 1.05, 0);
+      this.rightArm.position.set(0.38, 1.05, 0);
+      this.root.add(this.leftArm);
+      this.root.add(this.rightArm);
+      this.disposables.push(armMat);
+
+      const legCapSeg = detail === "rich" ? 6 : 4;
+      const legRadSeg = detail === "rich" ? 3 : 2;
+      const legGeo = sharedGeo(`leg:${detail}`, () => new THREE.CapsuleGeometry(0.12, 0.5, legRadSeg, legCapSeg));
+      const legMat = mkMat(primary, accentDim, 0.35);
+      this.leftLeg = new THREE.Mesh(legGeo, legMat);
+      this.rightLeg = new THREE.Mesh(legGeo, legMat);
+      this.leftLeg.position.set(-0.14, 0.35, 0);
+      this.rightLeg.position.set(0.14, 0.35, 0);
+      this.root.add(this.leftLeg);
+      this.root.add(this.rightLeg);
+      this.disposables.push(legMat);
+    }
+  }
+
   // Cosmétiques équipés (identifiants validés par le serveur, "" = base).
   applyCosmetics(skin: string, trail: string): void {
     if (skin !== this.skinId) {
@@ -308,6 +442,12 @@ export class PlayerView {
   }
 
   private applySkin(look: SkinLook | null): void {
+    // Personnage modélisé : la tenue entière du skin (pièces et matières),
+    // ou celle de base.
+    if (this.kit && this.baseKit) {
+      this.applyKitSkin(lookOf(KIT_SKINS, this.skinId) ?? this.baseKit);
+      return;
+    }
     const headMat = this.head.material;
     this.bodyMats.forEach((m, i) => {
       const base = this.baseColors[i];
@@ -499,9 +639,18 @@ export class PlayerView {
 
   // Dissolution injectée dans un matériau du corps (position monde du
   // fragment, seuil, liseré, teinte).
-  private addDissolve(mat: THREE.Material): void {
+  // skin : matières du personnage modélisé, dans le même programme.
+  private addDissolve(mat: THREE.Material, skin: SkinUniforms | null = null): void {
     const blocky = this.q.playerDetail === "minimal";
     mat.onBeforeCompile = (shader) => {
+      if (skin) {
+        Object.assign(shader.uniforms, skin);
+        shader.fragmentShader = shader.fragmentShader
+          .replace("#include <common>", `#include <common>\n${SKIN_PARS}`)
+          .replace("#include <color_fragment>", SKIN_COLOR)
+          .replace("#include <metalnessmap_fragment>", `#include <metalnessmap_fragment>\n${SKIN_SURFACE}`)
+          .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${SKIN_GLOW}`);
+      }
       shader.uniforms.uDissolve = this.uDissolve;
       shader.uniforms.uDissolveColor = this.uDissolveColor;
       shader.uniforms.uDissolveGlow = this.uDissolveGlow;
@@ -519,7 +668,7 @@ export class PlayerView {
     };
     // Même programme pour tous les joueurs (le texte de onBeforeCompile est
     // identique, pas ses valeurs capturées : la clé les distingue).
-    mat.customProgramCacheKey = () => `player-dissolve:${blocky ? "blocks" : "noise"}`;
+    mat.customProgramCacheKey = () => `player-${skin ? "skin" : "dissolve"}:${blocky ? "blocks" : "noise"}`;
   }
 
   // Début de la dissolution (élimination), à la couleur donnée ; glow : part
@@ -647,8 +796,26 @@ export class PlayerView {
       this.root.rotation.y = cur + delta * Math.min(1, dt * 12);
     }
 
-    // Animation de marche : seulement si on a les membres.
-    if (this.leftLeg && this.rightLeg && this.leftArm && this.rightArm) {
+    if (this.upper && this.leftLeg && this.rightLeg && this.leftArm && this.rightArm) {
+      // Personnage modélisé : jambes et bras se balancent autour des hanches
+      // et des épaules, le buste penche dans la course, et au repos les
+      // bras bougent à peine (une respiration). Allure lissée : on ne se
+      // fige pas d'un coup à l'arrêt.
+      this.walkPhase += dt * (moving ? Math.min(13, 4 + speed * 0.75) : 0);
+      this.idle += dt;
+      const ease = Math.min(1, dt * 10);
+      this.swing += ((moving ? Math.min(0.8, 0.2 + speed * 0.045) : 0) - this.swing) * ease;
+      this.lean += ((moving ? Math.min(0.2, speed * 0.014) : 0) - this.lean) * ease;
+      const s = Math.sin(this.walkPhase) * this.swing;
+      const rest = Math.sin(this.idle * 1.6) * 0.04 * Math.max(0, 1 - this.swing * 3);
+      swingLimb(this.rightLeg, LEG_PIVOT_Y, LEG_REACH, s);
+      swingLimb(this.leftLeg, LEG_PIVOT_Y, LEG_REACH, -s);
+      swingLimb(this.rightArm, ARM_PIVOT_Y - HIP_Y, ARM_REACH, -s * 0.85 + rest);
+      swingLimb(this.leftArm, ARM_PIVOT_Y - HIP_Y, ARM_REACH, s * 0.85 + rest);
+      this.upper.rotation.x = this.lean;
+      this.upper.position.y = HIP_Y + Math.abs(Math.sin(this.walkPhase)) * 0.06 * this.swing;
+    } else if (this.leftLeg && this.rightLeg && this.leftArm && this.rightArm) {
+      // Animation de marche des capsules : seulement si on a les membres.
       const walkRate = moving ? Math.min(12, 3 + speed * 0.8) : 0;
       this.walkPhase += dt * walkRate;
       const amp = moving ? Math.min(0.35, speed * 0.03) : 0;

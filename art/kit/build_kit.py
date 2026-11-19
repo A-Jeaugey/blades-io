@@ -29,7 +29,6 @@ ROLE_PREVIEW = {
     "body_mid": ((0.07, 0.075, 0.09), False),
     "paint": ((0.25, 0.25, 0.23), False),
     "soil": ((0.012, 0.01, 0.008), False),
-    "player": ((0.1, 0.25, 0.6), False),
     "blade": ((0.8, 0.82, 0.86), False),
     "powerup": ((1.0, 0.8, 0.1), True),
     "crate_body": ((0.05, 0.055, 0.07), False),
@@ -49,6 +48,9 @@ ROLE_PREVIEW = {
     "tint": ((0.3, 0.32, 0.36), False),
     "window": ((0.9, 0.75, 0.45), True),
     "plant": ((0.05, 0.4, 0.25), False),
+    # Personnages (player_pieces.py) : la matière de chaque face est dans la
+    # couleur par sommet, le client lui donne les couleurs du skin.
+    "skin": ((0.5, 0.5, 0.5), False),
 }
 MATS = {}
 
@@ -421,36 +423,6 @@ def reeds():
 
 reeds()
 
-# --- Joueur : quatre pièces, centrées comme les capsules d'origine -------
-# (PlayerView.ts pose le torse à y = 0,95, la tête à 1,55, les bras à
-# ±0,38 / 1,05, les jambes à ±0,14 / 0,35 et les anime autour de leur centre.)
-# Avant du personnage : -y de Blender (+z du jeu).
-N = 12
-p = Prop("PlayerTorso")
-p.loft([ring(0.1, -0.56, N, 0, 1.0, 0.8), ring(0.21, -0.5, N, 0, 1.0, 0.76), ring(0.23, -0.3, N, 0, 1.0, 0.72),
-        ring(0.33, 0.08, N, 0, 1.0, 0.68), ring(0.36, 0.3, N, 0, 1.0, 0.64), ring(0.27, 0.44, N, 0, 1.0, 0.66),
-        ring(0.13, 0.53, N, 0, 1.0, 0.9)], "player", smooth=True)
-# Plastron et réacteur dorsal : du relief qui accroche la lumière.
-p.box(0.44, 0.1, 0.3, "player", loc=(0, -0.2, 0.02), bevel=0.03)
-p.box(0.34, 0.16, 0.42, "player", loc=(0, 0.2, -0.08), bevel=0.04)
-p.finish()
-
-p = Prop("PlayerHead")
-p.loft([ring(0.1, -0.25, N), ring(0.22, -0.16, N), ring(0.27, 0.0, N), ring(0.25, 0.14, N), ring(0.15, 0.25, N), ring(0.04, 0.28, N)], "player", smooth=True)
-p.box(0.4, 0.12, 0.1, "player", loc=(0, -0.2, -0.04), bevel=0.025)
-p.box(0.07, 0.3, 0.1, "player", loc=(0, 0.02, 0.2), bevel=0.02)
-p.finish()
-
-p = Prop("PlayerArm")
-p.loft([ring(0.07, -0.34, 10), ring(0.115, -0.28, 10), ring(0.12, -0.08, 10), ring(0.085, -0.02, 10), ring(0.095, 0.18, 10)], "player", smooth=True)
-p.loft([ring(0.06, 0.1, 10), ring(0.17, 0.18, 10), ring(0.18, 0.28, 10), ring(0.08, 0.36, 10)], "player", smooth=True)
-p.finish()
-
-p = Prop("PlayerLeg")
-p.loft([ring(0.15, -0.35, 10, 0, 1.0, 1.35, 0, -0.04), ring(0.16, -0.2, 10, 0, 1.0, 1.25, 0, -0.03), ring(0.12, -0.08, 10),
-        ring(0.115, 0.05, 10), ring(0.145, 0.2, 10), ring(0.14, 0.37, 10)], "player", smooth=True)
-p.finish()
-
 # --- Formes relues du jeu (art/kit/dump_shapes.mjs) ----------------------
 SRC = os.path.join(ROOT, "art", "kit", "src")
 
@@ -520,6 +492,9 @@ p.finish()
 
 # --- Quartier : façades, toits, mobilier urbain (mode « district ») ------
 exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "district_pieces.py"), encoding="utf-8").read(), "district_pieces.py", "exec"))
+
+# --- Personnages : têtes, torses, bras et jambes des skins ----------------
+exec(compile(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "player_pieces.py"), encoding="utf-8").read(), "player_pieces.py", "exec"))
 
 # --- Export --------------------------------------------------------------
 os.makedirs(os.path.dirname(OUT_GLB), exist_ok=True)

@@ -308,10 +308,44 @@ jeu est inchangé) :
     de 25 et de 80 lames à l'ancien rendu : `art/shots/blades.js` (salon
     privé, triche `/blades`, serveur `server-cheats` de
     `.claude/launch.json`).
-  - **Joueurs** (`PlayerView.ts`) : les quatre géométries partagées
-    viennent du kit (`PlayerTorso`, `PlayerHead`, `PlayerArm`,
-    `PlayerLeg`, centrées comme les capsules) ; matériaux, skins,
-    dissolution et animation inchangés.
+  - **Joueurs** (`PlayerView.ts`, 2026-11-19) : des personnages
+    modélisés, un par skin. Pièces dans `art/kit/player_pieces.py`
+    (exécuté par `build_kit.py`) : une tête par skin (`SkHead<Nom>`), et
+    des torses, bras et jambes par famille de tenue (`SkTorso…`,
+    `SkArm…`, `SkLeg…` : armure, combinaison, veste, robe, bête, robot,
+    roche…), aux mêmes centres que les capsules d'origine.
+    - **Une pièce = un maillage, un matériau** (rôle `skin`). La couleur
+      par sommet ne dit que la MATIÈRE de chaque face : rouge et bleu
+      choisissent entre quatre matières (a principale, b secondaire, c
+      garniture, d peau ou détail clair), vert marque ce qui luit. La
+      tenue (`KIT_SKINS` dans `cosmetics/looks.ts`, une entrée par skin, le
+      compilateur l'exige) donne à chaque matière sa couleur, son métal et
+      son poli ; la tenue de base (`KIT_BASE`) prend les couleurs du thème.
+      Un seul matériau par joueur (`buildKitBody`, uniforms `uSkin*`),
+      donc autant d'appels de rendu qu'avec les capsules et **un seul
+      programme pour tous les joueurs** (`player-skin`, compilé au lobby
+      par les joueurs d'échantillon). Ne pas créer un matériau par
+      matière, ni changer `vertexColors` ou la forme de l'attribut de
+      couleur d'une pièce : ce serait un autre programme, compilé en
+      pleine partie.
+    - Pas d'accessoire à part : couvre-chef, visière, cornes… font partie
+      de la tête du skin. Rien ne descend autour des pieds ni ne s'étale
+      au-delà de 0,45 u de l'axe sous la taille (l'anneau au sol doit
+      rester visible) ; ni cape longue ni matériau double face.
+    - Animation propre au personnage modélisé (`animate`) : jambes et bras
+      tournent autour des hanches et des épaules (`swingLimb`), le haut du
+      corps (groupe `upper`) penche dans la course, repos qui respire. Bras
+      et jambe gauches : les droits, retournés (`scale.x = -1`).
+    - Ajouter un skin : son entrée du catalogue (cf. « Cosmétiques »), sa
+      tête dans `player_pieces.py` (et une famille de tenue si aucune ne
+      va), sa tenue dans `KIT_SKINS`, puis `build_kit.py`. Contrôle :
+      `art/kit/preview_players.py` (planche de tous les skins aux couleurs
+      de `KIT_SKINS`, de face et de dos), `art/shots/skins.js` (en jeu,
+      `__bladePerf.dress([...])` à `?debug=perf` habille les joueurs à
+      l'écran) et `art/shots/shop_skins.js` (aperçu de la boutique, qui a
+      son propre environnement en rendu v2).
+    - Hors du rendu v2 : capsules, couleurs et accessoires d'origine
+      (`buildCapsuleBody`, `SKIN_LOOKS`), inchangés.
   - **Lames, power-ups, caisse** (2026-11-19) : `kitFor(simpleMaterials)`
     (`scene/v2/kit.ts`) donne le kit aux modules qui n'ont pas la
     configuration de qualité. Lames (`Blade0` à `Blade9`, `BladeView.ts`)
@@ -406,7 +440,7 @@ jeu est inchangé) :
       quartier, ou de l'arène), puis les orbites de 25 et 80 lames
       (`art/shots/blades.js`), et « +0 en partie » à `?debug=perf` en
       qualité haute et moyenne.
-  - Pas encore refaits : personnages (figurines du kit), coffre-fort et
+  - Pas encore refaits : coffre-fort et
     puces, effets, mur, sol de l'arène (dalles et rails : un repère de
     jeu) ; pièces du Sanctuaire (`spirit`) ; ambiance sonore de la météo.
 - **`?cam=iso`** : caméra tournée de 45°, inclinée à 45°, champ de 14°
@@ -1203,6 +1237,10 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   sol (soi / les autres) ni le halo de protection ; un style de lame
   (attribut d'instance `aStyle`, `STYLE_GLSL` dans `BladeView.ts`) module
   la luminosité, jamais la teinte de rareté ni la forme du palier.
+  Un skin a deux apparences : `SKIN_LOOKS` (rendu d'origine : couleurs
+  et accessoire) et `KIT_SKINS` (rendu v2 : personnage modélisé, cf.
+  « Joueurs » de la section « Rendu v2 »), toutes deux exigées par le
+  compilateur.
   Ajouter un cosmétique (tâche 6.2) : son entrée dans `DEFS`
   (`shared/src/cosmetics.ts`) avec un niveau, ou un prix dans `SHOP_ITEMS`
   (jamais les deux, `server/test/cosmetics.test.ts` le vérifie) ; son

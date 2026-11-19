@@ -112,6 +112,141 @@ export const SKIN_LOOKS: Readonly<Record<CosmeticId<"skin">, SkinLook>> = {
   },
 };
 
+// Tenue modélisée d'un skin (rendu v2 : pièces du kit, art/kit/
+// player_pieces.py). Chaque pièce n'a qu'un maillage, dont chaque face dit
+// sa MATIÈRE ; la tenue donne à chacune sa couleur, son métal et son poli :
+//   a  principale (armure, étoffe)   b  secondaire (renforts, maillot)
+//   c  garniture (dessous, cuir)     d  peau, détail clair
+//   glow  ce qui luit : visière, yeux, liserés, emblème.
+// Mêmes garde-fous que le reste : ni l'anneau au sol ni le halo de
+// protection ne changent, et rien ne s'étale au sol autour du personnage.
+export interface KitSkin {
+  // Pièces : SkHead<head>, SkTorso<torso>, SkArm<arm>, SkLeg<leg>.
+  head: string;
+  torso: string;
+  arm: string;
+  leg: string;
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  glow: number;
+  // Métal et rugosité des matières a, b, c, d.
+  metal: readonly [number, number, number, number];
+  rough: readonly [number, number, number, number];
+}
+
+const CLOTH = [0, 0, 0.1, 0] as const;
+const CLOTH_ROUGH = [0.8, 0.75, 0.6, 0.65] as const;
+const PLATE = [0.75, 0.8, 0.2, 0] as const;
+const PLATE_ROUGH = [0.34, 0.3, 0.7, 0.6] as const;
+
+// Une tenue par skin du catalogue (le compilateur l'exige).
+export const KIT_SKINS: Readonly<Record<CosmeticId<"skin">, KitSkin>> = {
+  recrue: {
+    head: "Recrue", torso: "Base", arm: "Armor", leg: "Armor",
+    a: 0x8fa0b4, b: 0x55657a, c: 0x23272e, d: 0xd9a988, glow: 0xff7a3d,
+    metal: [0.45, 0.5, 0.2, 0], rough: [0.5, 0.5, 0.7, 0.6],
+  },
+  sentinelle: {
+    head: "Sentinelle", torso: "Armor", arm: "Armor", leg: "Armor",
+    a: 0x2f8c96, b: 0x1b4d55, c: 0x0f171a, d: 0x9fd8dc, glow: 0x5ef6ff,
+    metal: PLATE, rough: PLATE_ROUGH,
+  },
+  ninja: {
+    head: "Ninja", torso: "Gi", arm: "Sleeve", leg: "Pants",
+    a: 0x2a2e38, b: 0x3e4452, c: 0x14161c, d: 0xcfa98a, glow: 0xff2a3d,
+    metal: CLOTH, rough: CLOTH_ROUGH,
+  },
+  astronaute: {
+    head: "Astro", torso: "Suit", arm: "Suit", leg: "Suit",
+    a: 0xe6ebf2, b: 0xb9c2cf, c: 0x39414f, d: 0xd9a441, glow: 0xffa53a,
+    metal: [0, 0.1, 0.5, 1], rough: [0.75, 0.6, 0.45, 0.14],
+  },
+  spectre: {
+    head: "Spectre", torso: "Robe", arm: "Robe", leg: "Robe",
+    a: 0x8f7fd6, b: 0x5a4aa8, c: 0x16122e, d: 0xd9ccff, glow: 0xb39bff,
+    metal: CLOTH, rough: CLOTH_ROUGH,
+  },
+  robot: {
+    head: "Robot", torso: "Mech", arm: "Mech", leg: "Mech",
+    a: 0xb9c0cb, b: 0x6f7b8c, c: 0x2a2f38, d: 0x8892a0, glow: 0xff3b3b,
+    metal: [0.85, 0.8, 0.7, 0.5], rough: [0.34, 0.4, 0.45, 0.5],
+  },
+  renard: {
+    head: "Renard", torso: "Fox", arm: "Beast", leg: "Beast",
+    a: 0xd9772f, b: 0xb85e22, c: 0x2a1a12, d: 0xfff1e0, glow: 0xffb347,
+    metal: [0, 0, 0, 0], rough: [0.85, 0.85, 0.5, 0.85],
+  },
+  chevalier: {
+    head: "Chevalier", torso: "Armor", arm: "Armor", leg: "Armor",
+    a: 0xc4ccd8, b: 0xc9a24a, c: 0x2b3038, d: 0xc4ccd8, glow: 0xd8283c,
+    metal: [0.92, 0.9, 0.5, 0.9], rough: [0.28, 0.3, 0.6, 0.3],
+  },
+  demon: {
+    head: "Demon", torso: "Demon", arm: "Beast", leg: "Beast",
+    a: 0x9c1a2e, b: 0x5a0d1a, c: 0x24070c, d: 0xf0e2c0, glow: 0xffb020,
+    metal: [0, 0, 0.1, 0], rough: [0.6, 0.6, 0.55, 0.45],
+  },
+  skateur: {
+    head: "Skateur", torso: "Jacket", arm: "Sleeve", leg: "Pants",
+    a: 0xf2c230, b: 0x3d6bff, c: 0x2a2f3a, d: 0xe0b090, glow: 0x7df9ff,
+    metal: CLOTH, rough: CLOTH_ROUGH,
+  },
+  pousse: {
+    head: "Pousse", torso: "Sprout", arm: "Beast", leg: "Beast",
+    a: 0x4f9a52, b: 0x2f7a3a, c: 0x1a3320, d: 0xa8e08a, glow: 0xc6ff5a,
+    metal: [0, 0, 0, 0], rough: [0.7, 0.6, 0.5, 0.7],
+  },
+  martien: {
+    head: "Martien", torso: "Suit", arm: "Suit", leg: "Suit",
+    a: 0x7a5cc8, b: 0x4a3a8a, c: 0x15112a, d: 0x6fe8d6, glow: 0xff5ad1,
+    metal: [0.2, 0.3, 0.6, 0], rough: [0.5, 0.5, 0.3, 0.45],
+  },
+  pilote: {
+    head: "Pilote", torso: "Jacket", arm: "Sleeve", leg: "Pants",
+    a: 0x7a5534, b: 0xe8dcc0, c: 0x2e2218, d: 0xd9a988, glow: 0xffb347,
+    metal: CLOTH, rough: [0.55, 0.85, 0.6, 0.65],
+  },
+  dj: {
+    head: "Dj", torso: "Jacket", arm: "Sleeve", leg: "Pants",
+    a: 0x2c2546, b: 0xff3fa4, c: 0x14101f, d: 0x2c2546, glow: 0x5ef6ff,
+    metal: [0.1, 0.1, 0.4, 0.1], rough: [0.6, 0.5, 0.4, 0.6],
+  },
+  corbeau: {
+    head: "Corbeau", torso: "Robe", arm: "Robe", leg: "Robe",
+    a: 0x1c2638, b: 0x9a7a30, c: 0x0b0f17, d: 0x3a465e, glow: 0xffc23a,
+    metal: [0, 0.6, 0.1, 0], rough: [0.8, 0.4, 0.6, 0.7],
+  },
+  dandy: {
+    head: "Dandy", torso: "Coat", arm: "Sleeve", leg: "Pants",
+    a: 0x2b2f3c, b: 0xf2ece0, c: 0x13151c, d: 0xe9c9a8, glow: 0xd6a84a,
+    metal: CLOTH, rough: [0.7, 0.8, 0.35, 0.65],
+  },
+  samourai: {
+    head: "Samourai", torso: "Armor", arm: "Armor", leg: "Armor",
+    a: 0xb02a36, b: 0xd6a84a, c: 0x1c1418, d: 0xd9b090, glow: 0xffd34d,
+    metal: [0.35, 0.9, 0.1, 0], rough: [0.25, 0.3, 0.75, 0.6],
+  },
+  sorcier: {
+    head: "Sorcier", torso: "Robe", arm: "Robe", leg: "Robe",
+    a: 0x4a2a8a, b: 0xe6e0f0, c: 0x2a1650, d: 0xe0b898, glow: 0xffcf4a,
+    metal: CLOTH, rough: CLOTH_ROUGH,
+  },
+  golem: {
+    head: "Golem", torso: "Rock", arm: "Rock", leg: "Rock",
+    a: 0x5a606c, b: 0x5a606c, c: 0x30343c, d: 0x5a606c, glow: 0x3f9fc4,
+    metal: [0, 0, 0, 0], rough: [0.92, 0.92, 0.85, 0.9],
+  },
+};
+
+// Pièces et matières de la tenue de base (sans skin) : ses couleurs viennent
+// du thème (PlayerView.ts), une armure légère claire.
+export const KIT_BASE = {
+  head: "Base", torso: "Base", arm: "Armor", leg: "Armor",
+  metal: [0.5, 0.55, 0.25, 0.3], rough: [0.38, 0.4, 0.65, 0.5],
+} as const;
+
 // Motif des lames : indice lu par le shader des lames (STYLE_GLSL dans
 // BladeView.ts), 0 = aucun.
 export const BLADE_STYLES: Readonly<Record<CosmeticId<"bladeSkin">, number>> = {
