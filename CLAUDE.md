@@ -174,7 +174,12 @@ client/src/
   tant que les orbites ne peuvent pas se toucher (`isHiddenFrom`, aussi
   appliqué aux bots). Le client ne doit donc jamais supposer qu'il a tous
   les joueurs : classement, rang et minimap viennent du message `summary`
-  (2 Hz). Un évènement positionnel passe par `emit(type, payload, scope)`
+  (2 Hz). La minimap se redessine à chaque image (60 fois par seconde au
+  plus, `updateMinimap` dans `main.ts`) : qui y figure vient du résumé, sa
+  position est celle dessinée à l'écran s'il est dans la zone d'intérêt,
+  sinon celle du résumé lissée jusqu'au suivant (elle sautait deux fois
+  par seconde, et à la troisième personne la carte entière avançait par
+  à-coups). Un évènement positionnel passe par `emit(type, payload, scope)`
   pour n'aller qu'aux clients concernés : sans portée, il est diffusé à
   tous et peut trahir un joueur caché. Un champ de `Player` qui ne sert
   qu'au client du joueur lui-même (direction, recul, dernier input
@@ -412,10 +417,17 @@ jeu est inchangé) :
   d'en faire le cadrage de tous : c'est une règle de jeu (`CAMERA_*`).
 - **`?cam=tps`** (essai, 2026-11-19) : vue à la troisième personne.
   Caméra basse derrière le joueur (`TPS_*` dans `gfx.ts`), dont le lacet
-  suit sa direction de course (`CameraRig.followBehind`, lissé :
-  `TPS_TURN_TAU`) ; `setViewYaw` tient `screenToGround` (clavier,
+  suit la direction qu'il DEMANDE (`CameraRig.setSteer`, son input, depuis
+  `sendInput` ; `followBehind`, lissé : `TPS_TURN_TAU`, borné :
+  `TPS_TURN_MAX`) ; `setViewYaw` tient `screenToGround` (clavier,
   joystick) et la minimap à jour. On le dirige au clavier (haut = droit
-  devant) ou à la souris (le curseur tire le joueur, la caméra suit).
+  devant, bas = reculer sans que la vue tourne, côtés = tourner) ou à la
+  souris (le curseur tire le joueur, la caméra suit). **Jamais d'après son
+  déplacement réel** (retours du 2026-11-19) : la caméra pivotait toute
+  seule à chaque recul de choc et chaque glissade contre un mur ou un
+  joueur, et faisait demi-tour dès qu'on reculait (« arrière » devenait
+  « avant » : on tournait en rond). Contrôle : `art/shots/controls.js`
+  (lacet et position en avançant, reculant, tournant, contre un mur).
   Côté client seulement : on voit jusqu'à l'horizon mais le serveur
   n'envoie que la zone d'intérêt, les joueurs lointains apparaissent en
   approchant. Rien n'est encore pensé pour cette vue (carte plate, pas de

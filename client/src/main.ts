@@ -166,6 +166,12 @@ const WALL_ZAP_MARGIN = WALL_KILL_THICKNESS + 0.5;
 // Après la mort (tâche 3.5) : durée de la caméra sur le tueur avant la
 // carte récapitulative, pause plus courte pour une mort à la bordure, et
 // constante de temps du glissement de la caméra vers le tueur (s).
+// Minimap : écart de position (u) au-delà duquel un joueur lointain saute au
+// lieu de glisser (réapparition à l'autre bout de la carte).
+const MINIMAP_SNAP_DIST = 30;
+// Intervalle minimal entre deux dessins de la minimap (un peu sous 1/60 s,
+// pour ne pas sauter une image sur deux d'un écran à 60 Hz).
+const MINIMAP_FRAME_MS = 15;
 const KILLCAM_MS = 2500;
 const WALL_DEATH_MS = 1200;
 const KILLCAM_PAN_TAU = 0.25;
@@ -433,6 +439,18 @@ export class Game {
   private lastBladeCountShown = 0;
   private dead = false;
   private lastHudUpdate = 0;
+  // Minimap : dernier résumé pris en compte, son heure et l'écart avec le
+  // précédent ; par joueur, position affichée (x, y) et lissage en cours
+  // (de fx, fy vers tx, ty) ; objets réutilisés à chaque image.
+  private minimapSummary: RoomSummary | null = null;
+  private minimapSummaryAt = 0;
+  private minimapGap = 500;
+  private minimapDrawnAt = 0;
+  private minimapDots = new Map<string, { x: number; y: number; fx: number; fy: number; tx: number; ty: number }>();
+  private minimapSeen = new Set<string>();
+  private minimapPool: MinimapPlayer[] = [];
+  private minimapOthers: MinimapPlayer[] = [];
+  private minimapMe: MinimapPlayer = { id: "", x: 0, y: 0, isMe: true };
   private quality: QualityConfig;
   // Prédiction du joueur local avec rejeu des inputs non acquittés (tâche
   // 1.2), même pas de mouvement que le serveur.
@@ -2229,6 +2247,7 @@ export class Game {
     }
     this.room = null;
     this.myId = "";
+    this.camera.setSteer(0, 0);
     this.applyMap(null);
     this.resetPrediction();
     this.clearPlayerViews();
@@ -2262,8 +2281,14 @@ export class Game {
   }
 
   private sendInput(): void {
-    if (!this.room || this.matchOver()) return;
+    if (!this.room || this.matchOver()) {
+      this.camera.setSteer(0, 0);
+      return;
+    }
     const { dx, dy, boost, throwPressed, aimX, aimY } = this.input.getInput();
+    // Troisième personne : la caméra tourne d'après ce que le joueur
+    // demande. Mort, il ne dirige plus rien.
+    this.camera.setSteer(this.dead ? 0 : dx, this.dead ? 0 : dy);
     if (throwPressed) this.throwLatched = true;
     this.inputSeq = (this.inputSeq + 1) >>> 0;
     const payload: InputMessage = { dx, dy, boost, seq: this.inputSeq };
@@ -2643,6 +2668,8 @@ export class Game {
     updateFx("hud.fxGolden", this.theme.palette.rarityColor[BladeRarity.Legendary], inGolden ? ev.endsAt : 0);
 
     const now = performance.now();
+    // À chaque image : elle défile et tourne avec le joueur.
+    this.updateMinimap(me, now);
     if (now - this.lastHudUpdate < 100) return;
     this.lastHudUpdate = now;
     const entries = this.boardEntries();
@@ -2656,28 +2683,90 @@ export class Game {
     // Rank badge live
     const myRankIdx = sorted.findIndex((e) => e.id === this.myId);
     this.hud.setRank(myRankIdx >= 0 ? myRankIdx + 1 : entries.length);
-    // Minimap : joueurs et légendaires du résumé de la room (le serveur
-    // n'envoie plus les entités lointaines ; les joueurs cachés dans un
-    // buisson n'y figurent pas).
-    const others: MinimapPlayer[] = [];
-    const legendaries: Array<{ x: number; y: number; legendary: boolean }> = [];
+  }
+
+  // Minimap, redessinée à chaque image (retour du 2026-11-19 : elle l'était
+  // dix fois par seconde avec le reste du HUD, et à la troisième personne,
+  // où elle défile et tourne avec le joueur, elle avançait par à-coups ;
+  // les autres joueurs, eux, sautaient deux fois par seconde, au rythme du
+  // résumé de la room).
+  // Qui y figure vient toujours du résumé (le serveur n'envoie pas les
+  // entités lointaines ; un joueur caché dans un buisson n'y est pas). Où :
+  // la position dessinée à l'écran pour un joueur de la zone d'intérêt,
+  // sinon celle du résumé, lissée d'un résumé au suivant.
+  private updateMinimap(me: { x: number; y: number }, now: number): void {
+    // Soixante fois par seconde au plus : au-delà (écran rapide, rendu
+    // débridé), ce serait du dessin 2D pour rien.
+    if (now - this.minimapDrawnAt < MINIMAP_FRAME_MS) return;
+    this.minimapDrawnAt = now;
     const summary = this.summary;
+    const dots = this.minimapDots;
+    if (summary !== this.minimapSummary) {
+      this.minimapGap = Math.min(1000, Math.max(100, now - this.minimapSummaryAt));
+      this.minimapSummary = summary;
+      this.minimapSummaryAt = now;
+      this.minimapSeen.clear();
+      if (summary) {
+        for (const [i, x, y] of summary.map) {
+          const id = summary.board[i]?.[0];
+          if (!id) continue;
+          this.minimapSeen.add(id);
+          const d = dots.get(id);
+          // Un saut (réapparition) ne se lisse pas : le point traverserait
+          // la carte.
+          if (d && Math.hypot(x - d.x, y - d.y) < MINIMAP_SNAP_DIST) {
+            d.fx = d.x;
+            d.fy = d.y;
+            d.tx = x;
+            d.ty = y;
+          } else {
+            dots.set(id, { x, y, fx: x, fy: y, tx: x, ty: y });
+          }
+        }
+      }
+      for (const id of dots.keys()) if (!this.minimapSeen.has(id)) dots.delete(id);
+    }
+    const k = Math.min(1, (now - this.minimapSummaryAt) / this.minimapGap);
+    const local = this.players.get(this.myId);
+    const meX = local && !this.dead ? local.renderX : me.x;
+    const meY = local && !this.dead ? local.renderY : me.y;
+    const others = this.minimapOthers;
+    others.length = 0;
+    const legendaries: Array<{ x: number; y: number; legendary: boolean }> = [];
     const mine = this.myTeam();
     if (summary) {
-      for (const [i, x, y] of summary.map) {
+      let used = 0;
+      for (const [i] of summary.map) {
         const row = summary.board[i];
         const id = row?.[0];
-        if (!id || id === this.myId) continue;
-        const side = mine === TEAM_NONE ? undefined : sameTeam(mine, row[5] ?? TEAM_NONE) ? "ally" : "foe";
-        others.push({ id, x, y, isMe: false, side });
+        const d = id ? dots.get(id) : undefined;
+        if (!id || !d || id === this.myId) continue;
+        const view = this.players.get(id);
+        if (view) {
+          d.x = view.renderX;
+          d.y = view.renderY;
+        } else {
+          d.x = d.fx + (d.tx - d.fx) * k;
+          d.y = d.fy + (d.ty - d.fy) * k;
+        }
+        // Objets réutilisés d'une image à l'autre.
+        let dot = this.minimapPool[used];
+        if (!dot) this.minimapPool[used] = dot = { id: "", x: 0, y: 0, isMe: false };
+        used++;
+        dot.id = id;
+        dot.x = d.x;
+        dot.y = d.y;
+        dot.side = mine === TEAM_NONE ? undefined : sameTeam(mine, row[5] ?? TEAM_NONE) ? "ally" : "foe";
+        others.push(dot);
       }
       for (const [x, y] of summary.legendaries) legendaries.push({ x, y, legendary: true });
     }
     others.sort((a, b) => {
-      const da = (a.x - me.x) ** 2 + (a.y - me.y) ** 2;
-      const db = (b.x - me.x) ** 2 + (b.y - me.y) ** 2;
+      const da = (a.x - meX) ** 2 + (a.y - meY) ** 2;
+      const db = (b.x - meX) ** 2 + (b.y - meY) ** 2;
       return da - db;
     });
+    if (others.length > 10) others.length = 10;
     const flags: MinimapFlag[] = [];
     if (mine !== TEAM_NONE) {
       for (const f of this.flagStates) {
@@ -2699,7 +2788,10 @@ export class Game {
       events.push({ kind: mev.kind, x: mev.x, y: mev.y, radius: mev.radius, active: this.serverNow() >= mev.startsAt });
     }
     this.minimap.followView();
-    this.minimap.draw({ id: this.myId, x: me.x, y: me.y, isMe: true }, others.slice(0, 10), legendaries, this.arenaRadius(), flags, events, this.shownArenaTarget);
+    this.minimapMe.id = this.myId;
+    this.minimapMe.x = meX;
+    this.minimapMe.y = meY;
+    this.minimap.draw(this.minimapMe, others, legendaries, this.arenaRadius(), flags, events, this.shownArenaTarget);
   }
 
   // Pilote la résolution dynamique et le downgrade auto de preset. Le rendu

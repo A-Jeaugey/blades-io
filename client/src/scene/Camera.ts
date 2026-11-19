@@ -17,6 +17,7 @@ import {
   TPS_FOV_DEG,
   TPS_LOOK_AHEAD,
   TPS_PITCH_DEG,
+  TPS_TURN_MAX,
   TPS_TURN_TAU,
   setThirdPersonView,
   setViewYaw,
@@ -62,9 +63,6 @@ function framing(tps: boolean): Framing {
   };
 }
 
-// Vitesse (u/s) sous laquelle la caméra ne cherche plus le dos du joueur :
-// à l'arrêt ou presque, sa direction ne veut rien dire.
-const TPS_FOLLOW_SPEED = 2.5;
 // Caméra tirée devant un mur (troisième personne) : distance minimale au
 // joueur, marge devant le mur, et temps de retour une fois la vue dégagée
 // (elle avance tout de suite, recule doucement).
@@ -89,15 +87,15 @@ export class CameraRig {
   // onDistance (en cadrage isométrique, le brouillard part de loin).
   private distance = 0;
   // Troisième personne : lacet courant (0 : caméra au sud, regard au nord)
-  // et dernière cible, pour en tirer la direction de course du joueur.
+  // et direction demandée par le joueur (son input, au sol ; nulle sans
+  // input), qui le fait tourner.
   private frame: Framing = framing(CAM_TPS);
   private yaw = this.frame.yaw;
+  private steerX = 0;
+  private steerZ = 0;
   private occluder: ViewOccluder | null = null;
   // Part de la distance gardée devant un mur (1 : rien ne gêne).
   private pull = 1;
-  private lastX = 0;
-  private lastZ = 0;
-  private hasLast = false;
   private readonly look = new THREE.Vector3();
   public shake = new ScreenShake();
   // Même pose que la caméra, sans le tremblement : sert à projeter le
@@ -121,7 +119,8 @@ export class CameraRig {
     if (tps === this.frame.tps) return;
     this.frame = framing(tps);
     this.yaw = this.frame.yaw;
-    this.hasLast = false;
+    this.steerX = 0;
+    this.steerZ = 0;
     this.pull = 1;
     this.distance = 0;
     setThirdPersonView(tps);
@@ -148,6 +147,14 @@ export class CameraRig {
 
   setTarget(x: number, y: number): void {
     this.target.set(x, 0, y);
+  }
+
+  // Direction que le joueur local demande (son input, au sol) ; (0, 0) sans
+  // input, mort ou hors partie. À la troisième personne, c'est elle qui
+  // fait tourner la caméra.
+  setSteer(dx: number, dy: number): void {
+    this.steerX = dx;
+    this.steerZ = dy;
   }
 
   // Rayon de l'orbite extérieure du joueur suivi (0 hors partie).
@@ -221,26 +228,29 @@ export class CameraRig {
     this.cam.lookAt(this.look);
   }
 
-  // Troisième personne : la caméra tourne vers le dos du joueur, d'après le
-  // déplacement de sa cible. Un saut (apparition, caméra de mort) ne compte
-  // pas pour une course.
+  // Troisième personne : la caméra tourne du côté où le joueur demande
+  // d'aller, d'autant plus vite que sa direction s'écarte du regard.
+  // D'après son INPUT, pas d'après son déplacement (retours du 2026-11-19) :
+  // elle suivait le déplacement réel, donc pivotait toute seule à chaque
+  // recul de choc, chaque glissade le long d'un mur ou d'un joueur.
+  // Reculer ne la retourne pas : elle faisait demi-tour pour se remettre
+  // dans le dos du joueur, « arrière » devenait alors « avant » et on
+  // tournait en rond sans jamais reculer. Une direction vers l'arrière ne
+  // compte que pour sa part de côté (arrière pur : rien, arrière droite :
+  // comme avant droite).
   private followBehind(dt: number): void {
-    const dx = this.target.x - this.lastX;
-    const dz = this.target.z - this.lastZ;
-    this.lastX = this.target.x;
-    this.lastZ = this.target.z;
-    if (!this.hasLast) {
-      this.hasLast = true;
-      return;
-    }
-    const step = Math.hypot(dx, dz);
-    if (dt <= 0 || step > 4 || step / dt < TPS_FOLLOW_SPEED) return;
-    // Regard de la caméra = (-sin lacet, -cos lacet) : derrière un joueur
-    // qui court vers (dx, dz).
-    let delta = Math.atan2(-dx, -dz) - this.yaw;
-    while (delta > Math.PI) delta -= Math.PI * 2;
-    while (delta < -Math.PI) delta += Math.PI * 2;
-    this.yaw += delta * (1 - Math.exp(-dt / TPS_TURN_TAU));
+    if (dt <= 0 || (this.steerX === 0 && this.steerZ === 0)) return;
+    // Repère de la caméra au sol : regard (-sin lacet, -cos lacet), droite
+    // (cos lacet, -sin lacet).
+    const sin = Math.sin(this.yaw);
+    const cos = Math.cos(this.yaw);
+    const forward = -(this.steerX * sin + this.steerZ * cos);
+    const right = this.steerX * cos - this.steerZ * sin;
+    let angle = Math.atan2(right, forward);
+    if (Math.abs(angle) > Math.PI / 2) angle = Math.sign(angle) * (Math.PI - Math.abs(angle));
+    // Tourner à droite, c'est un lacet qui décroît. Vitesse bornée.
+    const max = TPS_TURN_MAX * dt;
+    this.yaw -= Math.max(-max, Math.min(max, angle * (1 - Math.exp(-dt / TPS_TURN_TAU))));
     setViewYaw(this.yaw);
   }
 

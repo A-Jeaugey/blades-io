@@ -24,7 +24,9 @@ export const CAM_TPS = params.get("cam") === "tps";
 // Vue à la troisième personne (essai) : caméra derrière le joueur, à
 // TPS_DISTANCE, inclinée de TPS_PITCH_DEG, qui vise TPS_LOOK_AHEAD devant
 // lui (il est dans le tiers bas de l'écran, la vue porte loin devant). Elle
-// se replace dans son dos en TPS_TURN_TAU secondes quand il change de
+// tourne du côté où il demande d'aller (son input : ni les chocs ni les
+// murs ne la font pivoter, et reculer ne la retourne pas), à raison de
+// TPS_TURN_TAU secondes pour rattraper un changement de
 // direction : assez lentement pour qu'on puisse le diriger à la souris sans
 // que la vue ne s'emballe. On y voit jusqu'à l'horizon : le serveur, lui,
 // n'envoie toujours que la zone d'intérêt (viewRadiusLimit), les joueurs
@@ -34,6 +36,10 @@ export const TPS_PITCH_DEG = 27;
 export const TPS_DISTANCE = 12.5;
 export const TPS_LOOK_AHEAD = 5;
 export const TPS_TURN_TAU = 0.55;
+// Vitesse de rotation maximale (rad/s) : une touche de côté tenue fait
+// tourner la vue d'un quart de tour par seconde environ, pas d'un demi-tour
+// (à 164°/s, on perdait le fil de la rue).
+export const TPS_TURN_MAX = 1.6;
 
 // Cadrage isométrique. Mêmes 50 u de sol en largeur au niveau du joueur que
 // la caméra d'origine (CAMERA_* de shared/) : on ne voit pas plus loin sur
