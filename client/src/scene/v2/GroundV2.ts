@@ -26,6 +26,7 @@ import { GROUND_LIGHTS, WorldFx } from "./WorldFx";
 
 // Demi-côté du plan du sol, et de la zone couverte par la texture des lueurs.
 const EXTENT = MAP_RADIUS * 1.1;
+export const POOLS_EXTENT = EXTENT;
 const POOL_TEXTURE_SIZE = 1024;
 // Même fondu que les sols d'origine au-delà du mur (cf. Ground.ts).
 const GROUND_FADE = 60;
@@ -149,9 +150,13 @@ const GROUND_EMISSIVE = /* glsl */ `
 // coupé sur l'eau, atténué sur la dalle sèche (un sol sombre et calme, cf.
 // readability.ts). Les flaques ne renvoient que le ciel, les lueurs du
 // décor et le reflet du monde.
+// Même règle pour la carte d'environnement (ciel et enseignes, Sky.ts) :
+// les flaques ont déjà leur ciel et le reflet du monde, la dalle sèche n'en
+// garde qu'un voile.
 const GROUND_SPECULAR = /* glsl */ `
   float gDry = 1.0 - gWet;
   reflectedLight.directSpecular *= 0.3 * gDry * gDry;
+  reflectedLight.indirectSpecular *= 0.35 * gDry;
 `;
 
 // Sortie : fondu au-delà du mur, puis plafond de luminance.
@@ -164,7 +169,7 @@ const GROUND_OUTPUT = /* glsl */ `
 // Une tache par source, en addition : dégradé radial de la couleur de la
 // pièce vers le noir. La texture est lue telle que peinte (flipY coupé) :
 // u suit x, v suit z.
-function paintPools(pools: LightPool[]): THREE.CanvasTexture {
+export function paintPools(pools: LightPool[]): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = POOL_TEXTURE_SIZE;
   const ctx = canvas.getContext("2d");
@@ -198,10 +203,11 @@ function paintPools(pools: LightPool[]): THREE.CanvasTexture {
   return tex;
 }
 
-// world : lumières de la partie ; reflection : reflet des flaques (null hors
-// qualité haute) ; rain : le thème a de la pluie (ronds dans les flaques).
+// pools : lueurs du décor, peintes (paintPools) ; world : lumières de la
+// partie ; reflection : reflet des flaques (null hors qualité haute) ; rain :
+// le thème a de la pluie (ronds dans les flaques).
 export function createGroundV2(
-  pools: LightPool[],
+  pools: THREE.Texture,
   world: WorldFx,
   reflection: GroundReflection | null,
   rain: boolean,
@@ -223,7 +229,7 @@ export function createGroundV2(
     uGBase: { value: new THREE.Color(theme.ground.colors.base) },
     uGRail: { value: new THREE.Color(decor.groundPad) },
     uGSky: { value: new THREE.Color(theme.palette.fogColor) },
-    uGPools: { value: paintPools(pools) },
+    uGPools: { value: pools },
     uGExtent: { value: EXTENT },
     uGRadius: { value: MAP_RADIUS },
     uGMaxLuma: { value: READABILITY.groundMaxLuma },

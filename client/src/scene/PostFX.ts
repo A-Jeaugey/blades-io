@@ -73,10 +73,22 @@ const FINAL_FRAG = /* glsl */ `
   uniform float uTime;
   uniform vec2 uUvScale;
   uniform vec2 uUvMax;
+  uniform sampler2D tAo;
+  uniform float uAo;
+  uniform float uFilmic;
+  uniform float uExposure;
+  uniform float uAoDebug;
   varying vec2 vUv;
 
   vec3 sceneAt(vec2 uv) {
     vec3 c = texture2D(tScene, min(uv * uUvScale, uUvMax)).rgb;
+    if (uAo > 0.0) {
+      // Occlusion ambiante : sur ce qui est éclairé, pas sur ce qui éclaire
+      // (néons, lames, effets additifs : plus le pixel est clair, moins
+      // elle l'assombrit).
+      float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c *= mix(1.0, texture2D(tAo, uv).r, uAo * (1.0 - clamp(lum * 1.6, 0.0, 1.0)));
+    }
     if (uBloom > 0.0) {
       vec4 b = texture2D(tBloom, uv);
       c += b.rgb * b.a;
@@ -91,6 +103,17 @@ const FINAL_FRAG = /* glsl */ `
       color = vec3(sceneAt(vUv + d * uChroma).r, sceneAt(vUv).g, sceneAt(vUv - d * uChroma).b);
     } else {
       color = sceneAt(vUv);
+    }
+    // ?debug=ao : l'occlusion seule, pour la régler.
+    if (uAoDebug > 0.0) color = vec3(texture2D(tAo, vUv).r) * 0.6;
+    if (uFilmic > 0.0) {
+      // Courbe filmique (ajustement ACES de Narkowicz) : pied qui creuse
+      // les ombres, épaule qui amène les hautes lumières au blanc sans les
+      // écrêter d'un coup. Entrée bornée à zéro (une valeur négative
+      // sortirait de la courbe).
+      vec3 x = max(color * uExposure, 0.0);
+      vec3 mapped = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+      color = mix(color, mapped, uFilmic);
     }
     vec2 v = (vUv - 0.5) * uVignetteOffset;
     color *= 1.0 - dot(v, v) * uVignette;
@@ -115,6 +138,200 @@ const CHROMA_AMOUNT = 0.0008;
 // Grain réduit (0.08 → 0.035) : à pleine intensité, il se lisait comme une
 // compression VHS sur les écrans modernes plutôt qu'un grain de cinéma.
 const GRAIN_INTENSITY = 0.035;
+
+// --- Occlusion ambiante (rendu v2, qualité haute) ---------------------------
+// Tirée de la seule profondeur de la scène, à demi-résolution : pour chaque
+// pixel, la position et la normale sont reconstruites, puis quelques points
+// voisins disent combien de géométrie surplombe la surface (estimateur de
+// « Scalable Ambient Obscurance », McGuire et al.). Deux passes de flou qui
+// respectent les bords (écart de profondeur) effacent le bruit du tirage.
+// C'est ce qui assoit les objets : creux des façades, pied des murs, dessous
+// des auvents, contact des caisses et des joueurs avec le sol.
+const AO_SAMPLES = 10;
+const AO_RADIUS = 1.3;
+const AO_INTENSITY = 1.5;
+const AO_STRENGTH = 0.85;
+
+const AO_FRAG = /* glsl */ `
+  uniform sampler2D tDepth;
+  uniform vec2 uUvScale;
+  uniform vec2 uUvMax;
+  uniform vec2 uTexel;
+  uniform vec2 uInvProj;
+  uniform vec2 uProj;
+  uniform vec2 uNearFar;
+  varying vec2 vUv;
+
+  // Distance à la caméra, depuis la profondeur du tampon.
+  float depthAt(vec2 uv) {
+    // textureLod : pas de dérivées à calculer dans la boucle du tirage.
+    float z = textureLod(tDepth, min(max(uv, 0.0) * uUvScale, uUvMax), 0.0).x;
+    return (2.0 * uNearFar.x * uNearFar.y) / (uNearFar.y + uNearFar.x - (2.0 * z - 1.0) * (uNearFar.y - uNearFar.x));
+  }
+  vec3 posAt(vec2 uv, float d) {
+    return vec3((uv * 2.0 - 1.0) * uInvProj * d, -d);
+  }
+
+  void main() {
+    float d = depthAt(vUv);
+    float key = clamp(d / uNearFar.y, 0.0, 1.0);
+    vec2 dkey = vec2(floor(key * 255.0) / 255.0, fract(key * 255.0));
+    // Ciel, et lointain déjà pris dans le brouillard : rien.
+    if (d > uNearFar.y * 0.8) {
+      gl_FragColor = vec4(1.0, dkey, 1.0);
+      return;
+    }
+    vec3 p = posAt(vUv, d);
+    // Normale : de chaque côté, le voisin le plus proche en profondeur (pas
+    // celui d'un autre objet, au bord d'une silhouette).
+    vec2 dx = vec2(uTexel.x, 0.0);
+    vec2 dy = vec2(0.0, uTexel.y);
+    float dl = depthAt(vUv - dx);
+    float dr = depthAt(vUv + dx);
+    float db = depthAt(vUv - dy);
+    float dt = depthAt(vUv + dy);
+    vec3 px = abs(dr - d) < abs(d - dl) ? posAt(vUv + dx, dr) - p : p - posAt(vUv - dx, dl);
+    vec3 py = abs(dt - d) < abs(d - db) ? posAt(vUv + dy, dt) - p : p - posAt(vUv - dy, db);
+    vec3 n = cross(px, py);
+    float nl = length(n);
+    n = nl > 1e-12 ? n / nl : vec3(0.0, 0.0, 1.0);
+
+    // Tirage en spirale, tourné d'un pixel à l'autre (bruit en dégradé
+    // entrelacé). Rayon à l'écran borné : un objet contre la caméra ne lit
+    // pas la moitié de l'image.
+    float turn = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) * 6.2831853;
+    vec2 radius = min(${AO_RADIUS.toFixed(2)} * uProj / d, vec2(0.12));
+    const float R2 = ${(AO_RADIUS * AO_RADIUS).toFixed(4)};
+    float sum = 0.0;
+    for (int i = 0; i < ${AO_SAMPLES}; i++) {
+      float t = (float(i) + 0.5) / ${AO_SAMPLES.toFixed(1)};
+      float a = turn + t * 15.08;
+      vec2 suv = vUv + vec2(cos(a), sin(a)) * t * radius;
+      vec3 v = posAt(suv, depthAt(suv)) - p;
+      float vv = dot(v, v);
+      float f = max(R2 - vv, 0.0);
+      // Biais qui grandit avec la distance : la profondeur y est moins
+      // précise, une surface plane ne doit pas s'occulter elle-même.
+      sum += f * f * f * max((dot(v, n) - 0.02 - 0.0015 * d) / (vv + 0.01), 0.0);
+    }
+    float ao = max(0.0, 1.0 - sum * ${(AO_INTENSITY * 5 / (AO_RADIUS ** 6 * AO_SAMPLES)).toFixed(5)});
+    ao = mix(ao, 1.0, smoothstep(uNearFar.y * 0.5, uNearFar.y * 0.8, d));
+    gl_FragColor = vec4(ao, dkey, 1.0);
+  }
+`;
+
+// Flou séparable, pondéré par l'écart de profondeur : il ne passe pas d'un
+// objet à celui de derrière.
+const AO_BLUR_FRAG = /* glsl */ `
+  uniform sampler2D tAo;
+  uniform vec2 uStep;
+  varying vec2 vUv;
+  float keyOf(vec4 t) {
+    return t.g + t.b / 255.0;
+  }
+  void main() {
+    vec4 c = texture2D(tAo, vUv);
+    float k0 = keyOf(c);
+    float sum = c.r * 0.2;
+    float wsum = 0.2;
+    for (int i = 1; i <= 4; i++) {
+      float g = 0.2 - 0.04 * float(i);
+      for (int s = -1; s <= 1; s += 2) {
+        vec4 t = textureLod(tAo, vUv + uStep * float(i * s), 0.0);
+        float w = g * max(0.0, 1.0 - abs(keyOf(t) - k0) / (0.02 * k0 + 0.0004));
+        sum += t.r * w;
+        wsum += w;
+      }
+    }
+    gl_FragColor = vec4(sum / wsum, c.g, c.b, 1.0);
+  }
+`;
+
+class AoChain {
+  private readonly aoMat: THREE.ShaderMaterial;
+  private readonly blurMat: THREE.ShaderMaterial;
+  private readonly quad: FullScreenQuad;
+  private readonly a: THREE.WebGLRenderTarget;
+  private readonly b: THREE.WebGLRenderTarget;
+  private readonly step = new THREE.Vector2();
+
+  constructor(uvScale: THREE.Vector2, uvMax: THREE.Vector2) {
+    const target = () => {
+      const t = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+      t.texture.generateMipmaps = false;
+      return t;
+    };
+    this.a = target();
+    this.b = target();
+    this.aoMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDepth: { value: null },
+        uUvScale: { value: uvScale },
+        uUvMax: { value: uvMax },
+        uTexel: { value: new THREE.Vector2() },
+        uInvProj: { value: new THREE.Vector2() },
+        uProj: { value: new THREE.Vector2() },
+        uNearFar: { value: new THREE.Vector2() },
+      },
+      vertexShader: QUAD_VERT,
+      fragmentShader: AO_FRAG,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.blurMat = new THREE.ShaderMaterial({
+      uniforms: { tAo: { value: null }, uStep: { value: this.step } },
+      vertexShader: QUAD_VERT,
+      fragmentShader: AO_BLUR_FRAG,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.quad = new FullScreenQuad(this.aoMat);
+  }
+
+  // Demi-résolution du canvas.
+  setSize(w: number, h: number): void {
+    const hw = Math.max(1, Math.round(w / 2));
+    const hh = Math.max(1, Math.round(h / 2));
+    this.a.setSize(hw, hh);
+    this.b.setSize(hw, hh);
+  }
+
+  // drawnW, drawnH : pixels de la cible où la scène est dessinée.
+  renderFrom(renderer: THREE.WebGLRenderer, depth: THREE.Texture, camera: THREE.PerspectiveCamera, drawnW: number, drawnH: number): THREE.Texture {
+    const u = this.aoMat.uniforms;
+    const e = camera.projectionMatrix.elements;
+    u.tDepth.value = depth;
+    u.uTexel.value.set(1 / drawnW, 1 / drawnH);
+    u.uInvProj.value.set(1 / e[0], 1 / e[5]);
+    u.uProj.value.set(e[0] * 0.5, e[5] * 0.5);
+    u.uNearFar.value.set(camera.near, camera.far);
+    this.quad.material = this.aoMat;
+    renderer.setRenderTarget(this.a);
+    this.quad.render(renderer);
+    this.quad.material = this.blurMat;
+    this.blurMat.uniforms.tAo.value = this.a.texture;
+    this.step.set(1 / this.a.width, 0);
+    renderer.setRenderTarget(this.b);
+    this.quad.render(renderer);
+    this.blurMat.uniforms.tAo.value = this.b.texture;
+    this.step.set(0, 1 / this.a.height);
+    renderer.setRenderTarget(this.a);
+    this.quad.render(renderer);
+    return this.a.texture;
+  }
+}
+
+// Réglages du rendu v2 (rien de tout ça hors de lui : l'image d'origine ne
+// change pas d'un pixel).
+export interface PostFxLook {
+  // Courbe filmique et exposition de la passe finale.
+  filmic: boolean;
+  // Occlusion ambiante en espace écran.
+  ao: boolean;
+}
+// Exposition avant la courbe : elle relève les tons moyens de la nuit sans
+// toucher au noir.
+const FILMIC_EXPOSURE = 1.25;
 
 const BLUR_X = new THREE.Vector2(1, 0);
 const BLUR_Y = new THREE.Vector2(0, 1);
@@ -205,6 +422,7 @@ export class PostFX {
   private readonly chroma: number;
   private readonly vignette: number;
   private readonly grain: number;
+  private ao: AoChain | null = null;
   private lite = false;
   // Résolution dynamique : part de la cible où la scène est rendue.
   private scale = 1;
@@ -217,6 +435,7 @@ export class PostFX {
   constructor(
     private readonly renderer: THREE.WebGLRenderer,
     q: QualityConfig,
+    look: PostFxLook = { filmic: false, ao: false },
   ) {
     // Sans post-FX (basse qualité, potato) : rendu direct à l'écran, rien
     // n'est créé.
@@ -228,6 +447,8 @@ export class PostFX {
     if (!this.enabled) return;
 
     renderer.getDrawingBufferSize(this.size);
+    // Avant la cible : elle porte alors une texture de profondeur.
+    if (look.ao) this.ao = new AoChain(this.uvScale, this.uvMax);
     this.target = this.createTarget(this.samples);
     if (q.bloomEnabled) this.bloom = new BloomChain(q.bloomStrength, q.bloomRadius, q.bloomThreshold, this.uvScale, this.uvMax);
     this.finalMat = new THREE.ShaderMaterial({
@@ -242,6 +463,11 @@ export class PostFX {
         uTime: { value: 0 },
         uUvScale: { value: this.uvScale },
         uUvMax: { value: this.uvMax },
+        tAo: { value: null },
+        uAo: { value: 0 },
+        uFilmic: { value: look.filmic ? 1 : 0 },
+        uExposure: { value: FILMIC_EXPOSURE },
+        uAoDebug: { value: this.ao && new URLSearchParams(location.search).get("debug") === "ao" ? 1 : 0 },
       },
       vertexShader: QUAD_VERT,
       fragmentShader: FINAL_FRAG,
@@ -298,7 +524,7 @@ export class PostFX {
     u.uGrain.value = on ? 0 : this.grain;
   }
 
-  render(scene: THREE.Scene, camera: THREE.Camera): void {
+  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
     const renderer = this.renderer;
     if (!this.target || !this.final || !this.finalMat) {
       renderer.render(scene, camera);
@@ -325,6 +551,9 @@ export class PostFX {
     renderer.render(scene, camera);
 
     const u = this.finalMat.uniforms;
+    const aoOn = this.ao !== null && !this.lite && t.depthTexture !== null;
+    u.uAo.value = aoOn ? AO_STRENGTH : 0;
+    if (aoOn) u.tAo.value = this.ao!.renderFrom(renderer, t.depthTexture!, camera, sw, sh);
     const bloomOn = this.bloom !== null && !this.lite;
     u.uBloom.value = bloomOn ? 1 : 0;
     if (bloomOn) u.tBloom.value = this.bloom!.renderFrom(renderer, this.target.texture);
@@ -338,11 +567,17 @@ export class PostFX {
   }
 
   private createTarget(samples: number): THREE.WebGLRenderTarget {
-    return new THREE.WebGLRenderTarget(Math.max(1, this.size.x), Math.max(1, this.size.y), {
+    const w = Math.max(1, this.size.x);
+    const h = Math.max(1, this.size.y);
+    return new THREE.WebGLRenderTarget(w, h, {
       samples,
       // Demi-flottants : pas de bandes dans les dégradés du bloom, et les
       // valeurs au-dessus de 1 restent pour son seuil.
       type: THREE.HalfFloatType,
+      // Profondeur lisible par l'occlusion ambiante (24 bits : le format
+      // que three.js donne aussi au tampon multiéchantillonné, pour que la
+      // résolution vers la texture soit permise).
+      depthTexture: this.ao ? new THREE.DepthTexture(w, h, THREE.UnsignedIntType) : undefined,
     });
   }
 
@@ -353,5 +588,6 @@ export class PostFX {
     const h = Math.max(1, this.size.y);
     this.target?.setSize(w, h);
     this.bloom?.setSize(w, h);
+    this.ao?.setSize(w, h);
   }
 }

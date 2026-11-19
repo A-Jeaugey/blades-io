@@ -4,6 +4,7 @@ import { CAM_ISO, CAM_TPS, ISO_FOV_DEG, TPS_FOV_DEG } from "../gfx";
 import { QualityConfig } from "../quality";
 import { getActiveTheme } from "../themes";
 import { gfxV2Active } from "./v2/kit";
+import { SkyHandle, buildEnvironment, createSky } from "./v2/Sky";
 
 // Lune du rendu v2 : direction vers laquelle on la voit depuis le sol,
 // demi-côté de la zone d'ombres autour du point suivi et distance de la
@@ -21,6 +22,13 @@ const MOON_DIR = new THREE.Vector3(-0.6, 0.7, 0.4).normalize();
 // Plus forte que la lumière principale d'origine (0,4 à 0,45), pour que les
 // ombres se lisent, sans doubler ce que reçoivent les lames et les joueurs.
 const MOON_INTENSITY = 0.85;
+// Avec la carte d'environnement du ciel (Sky.ts), la lumière ambiante vient
+// surtout d'elle : elle dépend de l'orientation des faces (le dessus reçoit
+// le ciel, les côtés la lueur de la ville) au lieu d'aplatir les volumes.
+// L'aplat du thème ne garde qu'une part, pour les matériaux que
+// l'environnement n'éclaire pas (lames, power-ups : Phong).
+const V2_AMBIENT_SHARE = 0.32;
+const ENVIRONMENT_INTENSITY = 1;
 const SHADOW_HALF = 48;
 const SHADOW_DISTANCE = 90;
 
@@ -42,6 +50,7 @@ export class SceneStack {
   private shadowRight = new THREE.Vector3();
   private shadowUp = new THREE.Vector3();
   private shadowTexel = 1;
+  private sky: SkyHandle | null = null;
 
   constructor(canvas: HTMLCanvasElement, q: QualityConfig) {
     this.basePixelRatio = q.pixelRatio;
@@ -91,9 +100,19 @@ export class SceneStack {
     this.camera.position.set(0, Math.sin(pitch) * CAMERA_DISTANCE, Math.cos(pitch) * CAMERA_DISTANCE);
     this.camera.lookAt(0, 0, 0);
 
-    const ambient = new THREE.AmbientLight(theme.lighting.ambient.color, theme.lighting.ambient.intensity);
+    const v2 = gfxV2Active(q);
+    const ambient = new THREE.AmbientLight(theme.lighting.ambient.color, theme.lighting.ambient.intensity * (v2 ? V2_AMBIENT_SHARE : 1));
     this.scene.add(ambient);
-    if (gfxV2Active(q)) {
+    if (v2) {
+      // Ciel et environnement : à poser avant la première compilation (la
+      // présence d'un environnement change les programmes des matériaux
+      // éclairés). Le brouillard prend la couleur de l'horizon : le lointain
+      // se fond dans le ciel.
+      this.sky = createSky(MOON_DIR);
+      this.scene.add(this.sky.mesh);
+      this.scene.environment = buildEnvironment(this.renderer, MOON_DIR);
+      this.scene.environmentIntensity = ENVIRONMENT_INTENSITY;
+      (this.scene.fog as THREE.Fog).color.copy(this.sky.horizon);
       // Rendu v2 : la lumière principale devient une lune qui porte des
       // ombres (couleur du thème, plus forte : c'est elle qui donne le
       // volume). La carte d'ombres suit le joueur (followShadows). À régler
@@ -132,6 +151,11 @@ export class SceneStack {
     }
 
     window.addEventListener("resize", () => this.onResize());
+  }
+
+  // Ciel : dérive des nuages, scintillement.
+  update(t: number): void {
+    this.sky?.update(t);
   }
 
   // La caméra recule (orbite, écran étroit) : brouillard et plan lointain

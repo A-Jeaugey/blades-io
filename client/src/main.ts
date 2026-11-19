@@ -84,10 +84,11 @@ import { DecorHandle, createDecor } from "./scene/Decor";
 import { getKit, gfxV2Active, loadKit } from "./scene/v2/kit";
 import { createDecorV2, decorLightPools } from "./scene/v2/DecorV2";
 import { DistrictHandle, createDistrictView } from "./scene/v2/DistrictView";
-import { createGroundV2 } from "./scene/v2/GroundV2";
+import { POOLS_EXTENT, createGroundV2, paintPools } from "./scene/v2/GroundV2";
 import { GroundReflection } from "./scene/v2/Reflection";
 import { WeatherHandle, createWeather } from "./scene/v2/Weather";
 import { WorldFx } from "./scene/v2/WorldFx";
+import type { SurfaceEnv } from "./scene/v2/surface";
 import { GFX_V2_REQUESTED } from "./gfx";
 import { PulseView } from "./entities/PulseView";
 import { ObeliskArmedEvent, ObeliskPulseEvent } from "@bladeio/shared";
@@ -331,6 +332,8 @@ export class Game {
   private worldFx: WorldFx | null = null;
   private weather: WeatherHandle | null = null;
   private reflection: GroundReflection | null = null;
+  // Matière des pièces fixes de l'arène (lueurs des alentours, pluie).
+  private surfaceEnv: SurfaceEnv | null = null;
   private readonly lightLocal = new THREE.Color();
   private readonly lightRemote = new THREE.Color();
   // Moniteur FPS adaptatif : si fps reste sous le seuil pendant une fenêtre,
@@ -540,7 +543,9 @@ export class Game {
     this.quality = getPresetConfig(detectPreset());
     console.log(`[blade.io] quality preset: ${this.quality.preset}`);
     this.sceneStack = new SceneStack(this.canvas, this.quality);
-    this.postFx = new PostFX(this.sceneStack.renderer, this.quality);
+    // Rendu v2 : courbe filmique, et occlusion ambiante en qualité haute.
+    const v2Look = gfxV2Active(this.quality);
+    this.postFx = new PostFX(this.sceneStack.renderer, this.quality, { filmic: v2Look, ao: v2Look && this.quality.preset === "high" });
     this.camera = new CameraRig(this.sceneStack.camera, (d) => this.sceneStack.setViewDistance(d));
     this.blades = new BladeRenderer(this.quality.simpleMaterials);
     this.crates = new CrateRenderer(this.quality);
@@ -576,7 +581,9 @@ export class Game {
         this.weather = createWeather(this.quality, weather);
         this.sceneStack.scene.add(this.weather.object);
       }
-      this.ground = createGroundV2(decorLightPools(), this.worldFx, this.reflection, weather?.kind === "rain");
+      const pools = paintPools(decorLightPools());
+      this.surfaceEnv = { light: { map: { value: pools }, su: 1 / (2 * POOLS_EXTENT), sv: 1 / (2 * POOLS_EXTENT) }, wet: weather?.kind === "rain" ? 1 : 0 };
+      this.ground = createGroundV2(pools, this.worldFx, this.reflection, weather?.kind === "rain");
       if (this.reflection) {
         this.reflection.hidden.push(this.ground.mesh);
         if (this.weather) this.reflection.hidden.push(this.weather.object);
@@ -591,12 +598,19 @@ export class Game {
     this.sceneStack.scene.add(this.ground.mesh);
     this.wall = createBoundaryWall(this.quality);
     this.sceneStack.scene.add(this.wall.object);
-    this.decor = kit && this.worldFx ? createDecorV2(this.quality, kit, this.worldFx) : createDecor(this.quality);
+    this.decor = kit && this.worldFx && this.surfaceEnv ? createDecorV2(this.quality, kit, this.worldFx, this.surfaceEnv) : createDecor(this.quality);
     this.sceneStack.scene.add(this.decor.group);
     // Dans la scène dès le lobby, caché : ses shaders passent au
     // préchauffage, sa géométrie attend la première partie du mode.
-    this.district = createDistrictView(this.quality, kit, DISTRICT_MAP, this.sceneStack.renderer.capabilities.getMaxAnisotropy());
+    this.district = createDistrictView(this.quality, kit, DISTRICT_MAP, this.sceneStack.renderer.capabilities.getMaxAnisotropy(), {
+      world: this.worldFx,
+      reflection: this.reflection,
+      wet: this.surfaceEnv?.wet ?? 0,
+    });
     this.sceneStack.scene.add(this.district.group);
+    // Le sol du quartier lit le reflet pendant qu'on le dessine : hors du
+    // second rendu, comme celui de l'arène.
+    if (this.reflection) this.reflection.hidden.push(...this.district.unreflected);
     this.sceneStack.scene.add(this.blades.root);
     this.sceneStack.scene.add(this.crates.root);
     this.sceneStack.scene.add(this.powerups.root);
@@ -2961,6 +2975,8 @@ export class Game {
       this.worldFx?.endFrame(dt, this.camera.focusX, this.camera.focusZ);
       this.weather?.update(this.elapsed * 0.001, this.camera.focusX, this.camera.focusZ);
       this.ground.update(this.elapsed * 0.001);
+      this.sceneStack.update(this.elapsed * 0.001);
+      this.district.update(this.elapsed * 0.001);
       this.wall.update(this.elapsed * 0.001);
       this.wall.setRadius(this.arenaRadius());
       this.ground.setRadius(this.arenaRadius());
@@ -3009,7 +3025,7 @@ export class Game {
         this.shaderWarmup.step(4);
         if (this.shaderWarmup.done) this.shaderWarmup = null;
       }
-      this.reflection?.render(this.sceneStack.scene, this.sceneStack.camera, !this.postFx.isLite && !this.map);
+      this.reflection?.render(this.sceneStack.scene, this.sceneStack.camera, !this.postFx.isLite);
       this.postFx.render(this.sceneStack.scene, this.sceneStack.camera);
       this.perfOverlay?.frame(now, { preset: this.quality.preset, scale: this.getRenderScale(), lite: this.postFx.isLite });
 

@@ -41,8 +41,9 @@ export class GroundReflection {
 
   constructor(private readonly renderer: THREE.WebGLRenderer, private readonly strength: number) {
     this.target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true });
-    this.target.texture.generateMipmaps = false;
-    this.target.texture.minFilter = THREE.LinearFilter;
+    // Niveaux réduits : un sol rugueux lit le reflet flou (DistrictView.ts).
+    this.target.texture.generateMipmaps = true;
+    this.target.texture.minFilter = THREE.LinearMipmapLinearFilter;
     this.target.texture.magFilter = THREE.LinearFilter;
     this.uniforms = {
       uGRefl: { value: this.target.texture },

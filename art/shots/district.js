@@ -3,7 +3,7 @@
 // Serveur et client lancés (.claude/launch.json). Outil de travail.
 async (page) => {
   // query : "gfx=v2" pour le quartier modélisé, "x=1" pour les blocs.
-  const cfg = { query: "gfx=v2", tag: "district", theme: "neon", quality: "high" };
+  const cfg = { query: "gfx=v2", tag: "real", theme: "neon", quality: "high" };
   const dir = "C:/dev/blades-io/art/shots/";
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`http://localhost:5173/?${cfg.query}&debug=perf`);

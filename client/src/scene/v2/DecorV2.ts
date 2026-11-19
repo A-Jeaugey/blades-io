@@ -13,6 +13,7 @@ import { QualityConfig } from "../../quality";
 import { DecorVariant, getActiveTheme } from "../../themes";
 import type { DecorHandle } from "../Decor";
 import { Kit } from "./kit";
+import { SURFACE, SurfaceEnv, addSurface } from "./surface";
 import { REED_PUSHERS, WorldFx } from "./WorldFx";
 
 // Décor du rendu v2 (?gfx=v2) : les mêmes obstacles aux mêmes endroits
@@ -105,20 +106,24 @@ export function decorLightPools(): LightPool[] {
 }
 
 // --- Matériaux : un par rôle du kit, aux couleurs du thème ---------------
-export function roleMaterials(v: Cyber): Record<string, THREE.Material> {
+// surface : matière des pièces qui ne bougent pas (grain, relief, salissures,
+// lueur des alentours : surface.ts). Sans elle (pièces en vol), des aplats.
+export function roleMaterials(v: Cyber, surface?: SurfaceEnv): Record<string, THREE.Material> {
   const dark = new THREE.Color(v.baseDark);
   const white = new THREE.Color(1, 1, 1);
-  // Sans carte d'environnement, un métal pur ne reflète rien et reste noir :
-  // métal partiel, la lumière de la scène suffit à lui donner du volume.
-  const solid = (lighten: number, roughness: number, metalness: number) =>
-    new THREE.MeshStandardMaterial({ color: dark.clone().lerp(white, lighten), roughness, metalness });
+  // Métal partiel : il garde une couleur propre sous la lumière directe, et
+  // renvoie le ciel et les enseignes de la carte d'environnement.
+  const solid = (lighten: number, roughness: number, metalness: number, look = SURFACE.metal) => {
+    const mat = new THREE.MeshStandardMaterial({ color: dark.clone().lerp(white, lighten), roughness, metalness });
+    return surface ? addSurface(mat, look, surface) : mat;
+  };
   const glow = (color: number, intensity: number) =>
     new THREE.MeshStandardMaterial({ color: dark, emissive: color, emissiveIntensity: intensity, roughness: 0.4, metalness: 0.2 });
   return {
     body: solid(0.1, 0.42, 0.45),
     body_mid: solid(0.24, 0.5, 0.4),
-    paint: solid(0.5, 0.9, 0),
-    soil: solid(0.02, 1, 0),
+    paint: solid(0.5, 0.9, 0, SURFACE.paint),
+    soil: solid(0.02, 1, 0, SURFACE.concrete),
     // Au-dessus de 1 : la cible de la scène est en HDR, c'est ce qui fait
     // mordre le bloom sur les filets lumineux.
     e_obelisk: glow(v.obeliskInner, 2.6),
@@ -207,10 +212,13 @@ function reedsMaterial(v: Cyber, time: THREE.IUniform, fade: THREE.IUniform, pus
   return mat;
 }
 
-export function createDecorV2(q: QualityConfig, kit: Kit, world: WorldFx): DecorHandle {
+export function createDecorV2(q: QualityConfig, kit: Kit, world: WorldFx, surface: SurfaceEnv): DecorHandle {
   const v = getActiveTheme().decor as Cyber;
   const group = new THREE.Group();
-  const mats = roleMaterials(v);
+  const mats = roleMaterials(v, surface);
+  // Pièces en vol (drones, cristaux, cubes) : pas de matière plaquée depuis
+  // le monde, elle glisserait sur une pièce qui bouge.
+  const plainMats = roleMaterials(v);
   const time: THREE.IUniform = { value: 0 };
   const animate = q.decorDetail === "rich";
 
@@ -220,12 +228,12 @@ export function createDecorV2(q: QualityConfig, kit: Kit, world: WorldFx): Decor
   const instance = (
     piece: string,
     matrices: THREE.Matrix4[],
-    opts: { swap?: Record<string, string>; dynamic?: boolean; shadow?: boolean } = {},
+    opts: { swap?: Record<string, string>; dynamic?: boolean; shadow?: boolean; floating?: boolean } = {},
   ): THREE.InstancedMesh[] => {
     const out: THREE.InstancedMesh[] = [];
     if (matrices.length === 0) return out;
     for (const part of kit.parts(piece)) {
-      let mat = mats[opts.swap?.[part.role] ?? part.role];
+      let mat = (opts.floating ? plainMats : mats)[opts.swap?.[part.role] ?? part.role];
       if (!mat) throw new Error(`kit : rôle « ${part.role} » sans matériau`);
       if (part.emissiveMap && mat instanceof THREE.MeshStandardMaterial) {
         mat = mat.clone();
@@ -286,9 +294,9 @@ export function createDecorV2(q: QualityConfig, kit: Kit, world: WorldFx): Decor
   // Pièces en vol : drones, cristaux, cubes.
   const drones = byKind("dronePad").map((st) => ({ x: st.x, z: st.y, phase: (st.x * 0.37 + st.y * 0.11) % (Math.PI * 2) }));
   const shards = byKind("shard").map((st) => ({ x: st.x, z: st.y, phase: (st.x * 0.29 - st.y * 0.17) % (Math.PI * 2) }));
-  const droneMeshes = instance("Drone", drones.map((d) => matrixAt(d.x, DRONE_HEIGHT, d.z)), { dynamic: animate });
-  const shardMeshes = instance("Shard", shards.map((s) => matrixAt(s.x, SHARD_HEIGHT, s.z)), { dynamic: animate });
-  const cubeMeshes = instance("Cube", FLOATING_CUBES.map((c) => matrixAt(c.x, c.baseY, c.y)), { dynamic: animate });
+  const droneMeshes = instance("Drone", drones.map((d) => matrixAt(d.x, DRONE_HEIGHT, d.z)), { dynamic: animate, floating: true });
+  const shardMeshes = instance("Shard", shards.map((s) => matrixAt(s.x, SHARD_HEIGHT, s.z)), { dynamic: animate, floating: true });
+  const cubeMeshes = instance("Cube", FLOATING_CUBES.map((c) => matrixAt(c.x, c.baseY, c.y)), { dynamic: animate, floating: true });
 
   // Buissons : socle instancié, roseaux en maillages séparés (celui du
   // joueur local devient translucide, et chacun n'est dessiné que s'il est

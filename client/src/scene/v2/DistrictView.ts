@@ -9,8 +9,13 @@ import {
 } from "@bladeio/shared";
 import type { QualityConfig } from "../../quality";
 import { getActiveTheme } from "../../themes";
+import { READABILITY } from "../../themes/readability";
 import type { Kit, KitPart } from "./kit";
 import { roleMaterials, type Cyber } from "./DecorV2";
+import type { GroundReflection } from "./Reflection";
+import { SURFACE, SurfaceEnv, addSurface, blackTexture, detailTexture, withWorldPosition } from "./surface";
+import { muted } from "./Sky";
+import { GROUND_LIGHTS, WorldFx } from "./WorldFx";
 
 // Le quartier (mode « district », shared/src/maps.ts) : une carte à murs,
 // vue à la troisième personne. Les immeubles naissent de leurs colliders :
@@ -33,7 +38,18 @@ export interface DistrictHandle {
   group: THREE.Group;
   // Sol du quartier en service (kit) : le sol de l'arène se cache alors.
   readonly ownsGround: boolean;
+  // Ce que le reflet des flaques ne doit pas redessiner (le sol, qui le lit).
+  readonly unreflected: THREE.Object3D[];
   setActive(on: boolean): void;
+  update(t: number): void;
+}
+
+// Ce que le quartier partage avec le reste du rendu v2 : lumières de la
+// partie au sol, reflet du monde dans les flaques (qualité haute), pluie.
+export interface DistrictWorld {
+  world: WorldFx | null;
+  reflection: GroundReflection | null;
+  wet: number;
 }
 
 const CHUNK = 58;
@@ -215,21 +231,28 @@ function palette(v: Cyber): Palette {
   return {
     // Murs : le sombre du thème, plus ou moins éclairci selon l'immeuble,
     // à peine teinté d'un accent.
+    // Du béton, de la brique peinte, de la tôle : presque gris.
     wall(b, i) {
-      const lift = [0.2, 0.14, 0.1][b.style] + hash(i, 7) * 0.12;
-      return dark.clone().lerp(WHITE, lift).lerp(accents[Math.floor(hash(i, 11) * accents.length)], 0.07);
+      const lift = [0.24, 0.17, 0.12][b.style] + hash(i, 7) * 0.14;
+      return muted(dark.clone().lerp(WHITE, lift).lerp(accents[Math.floor(hash(i, 11) * accents.length)], 0.06), 0.6);
     },
     // Vitres allumées : au-dessus de 1 pour quelques-unes, la scène est en
     // HDR, c'est ce qui les fait rayonner.
+    // Un intérieur éclairé : presque blanc pour la plupart, teinté par le
+    // thème pour quelques-unes (un écran, une lampe de couleur), jamais un
+    // panneau de néon (les enseignes s'en chargent).
     windowLit(r) {
-      return lights[Math.floor(r * lights.length)].clone().lerp(WHITE, 0.3).multiplyScalar(0.4 + r * 0.5);
+      const tinted = (r * 7.3) % 1 < 0.28;
+      return lights[Math.floor(r * lights.length)].clone().lerp(WHITE, tinted ? 0.45 : 0.84).multiplyScalar(0.16 + r * 0.34);
     },
     windowDark: dark.clone().lerp(accents[1], 0.1).multiplyScalar(0.4),
     paint(kind, i) {
       const accent = accents[Math.floor(hash(i, 23) * accents.length)];
-      if (kind === "car") return dark.clone().lerp(WHITE, 0.16).lerp(accent, 0.35);
-      if (kind === "container" || kind === "containerTop") return dark.clone().lerp(accent, 0.42).lerp(WHITE, 0.06);
-      return dark.clone().lerp(WHITE, 0.22).lerp(accent, 0.12);
+      // Peintures passées : la teinte d'un accent du thème, éteinte. Ce
+      // sont les lumières qui portent les couleurs vives, pas les tôles.
+      if (kind === "car") return muted(dark.clone().lerp(WHITE, 0.16).lerp(accent, 0.35), 0.5);
+      if (kind === "container" || kind === "containerTop") return muted(dark.clone().lerp(accent, 0.42).lerp(WHITE, 0.08), 0.55);
+      return muted(dark.clone().lerp(WHITE, 0.22).lerp(accent, 0.12), 0.5);
     },
   };
 }
@@ -499,6 +522,29 @@ function paintGround(map: GameMap, size: number, glows: Glow[]): { color: HTMLCa
     c.stroke();
   }
 
+  // Ombres de contact : le pied des immeubles et le dessous du mobilier
+  // sont à l'abri du ciel. Une ombre floue autour de chaque emprise (l'aplat
+  // lui-même reste sous l'objet), peinte une fois : l'ancrage au sol ne
+  // dépend pas de l'occlusion en espace écran (qualité haute seulement).
+  const black = new THREE.Color(0, 0, 0);
+  c.save();
+  c.fillStyle = css(black);
+  c.shadowColor = css(black, 0.7);
+  c.shadowBlur = 2 * k;
+  for (const b of map.buildings) c.fillRect(X(b.x0), X(b.y0), (b.x1 - b.x0) * k, (b.y1 - b.y0) * k);
+  c.shadowColor = css(black, 0.8);
+  c.shadowBlur = 0.8 * k;
+  for (let i = map.buildings.length; i < map.boxes.length; i++) {
+    const b = map.boxes[i];
+    c.fillRect(X(b.x - b.hw), X(b.y - b.hh), b.hw * 2 * k, b.hh * 2 * k);
+  }
+  for (const p of map.circles) {
+    c.beginPath();
+    c.arc(X(p.x), X(p.y), p.radius * k, 0, Math.PI * 2);
+    c.fill();
+  }
+  c.restore();
+
   const light = document.createElement("canvas");
   light.width = light.height = size;
   const l = light.getContext("2d")!;
@@ -530,6 +576,262 @@ function blankTexture(): THREE.DataTexture {
 
 const GROUND_ALBEDO_BOOST = 1.9;
 
+// --- Sol mouillé ----------------------------------------------------------
+// La peinture (chaussées, trottoirs, marquages) donne la couleur ; le shader
+// y ajoute la matière d'une rue sous la pluie : grain du bitume, pellicule
+// d'eau partout, flaques lisses par plaques. Le monde s'y reflète (second
+// rendu de Reflection.ts, qualité haute) : net dans les flaques, brouillé
+// par le grain ailleurs, d'autant plus fort que le regard est rasant. Les
+// lumières de la partie (lueur des joueurs, éclairs des chocs : WorldFx)
+// s'y posent comme sur le sol de l'arène. Sortie plafonnée (contrat de
+// lisibilité) : un reflet d'enseigne ne doit pas noyer une lame au sol.
+const WET_PARS = /* glsl */ `
+  uniform sampler2D uSDetail;
+  uniform sampler2D uGRefl;
+  uniform mat4 uGReflMat;
+  uniform float uGReflK;
+  uniform float uGMaxLuma;
+  uniform float uGTime;
+  uniform float uGRain;
+  uniform vec4 uGDynPos[${GROUND_LIGHTS}];
+  uniform vec3 uGDynCol[${GROUND_LIGHTS}];
+  float dHash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float dNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(dHash(i), dHash(i + vec2(1.0, 0.0)), f.x),
+               mix(dHash(i + vec2(0.0, 1.0)), dHash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+  float dFbm(vec2 p) {
+    float a = 0.5;
+    float s = 0.0;
+    for (int k = 0; k < 3; k++) {
+      s += a * dNoise(p);
+      p = p * 2.03 + 17.0;
+      a *= 0.5;
+    }
+    return s;
+  }
+  // Rond de pluie : cf. gRainRing, GroundV2.ts.
+  float dRainRing(vec2 p, float seed) {
+    vec2 ci = floor(p);
+    float h = dHash(ci + seed);
+    float drop = fract(uGTime * (0.5 + 0.4 * h) + h * 7.0);
+    vec2 off = (vec2(dHash(ci + seed + 3.1), dHash(ci + seed + 7.7)) - 0.5) * 0.3;
+    float ring = abs(length(fract(p) - 0.5 - off) - drop * 0.33);
+    return (1.0 - smoothstep(0.0, 0.03, ring)) * (1.0 - drop) * step(0.5, dHash(ci + seed + 11.3));
+  }
+`;
+
+const WET_SURFACE = /* glsl */ `
+  vec2 dUv = vSurfPos.xz;
+  vec4 dFine = texture2D(uSDetail, dUv * 0.47);
+  vec4 dMid = texture2D(uSDetail, dUv * 0.083 + 0.11);
+  // Flaques : bruit calculé, pas lu dans la texture de détail (huit bits :
+  // seuillé de près, son bord se découpait en marches).
+  float dPuddle = smoothstep(0.5, 0.54, dFbm(dUv * 0.12)) * uGRain;
+  diffuseColor.rgb *= (0.82 + 0.36 * dFine.g) * (0.9 + 0.2 * dMid.g) * mix(1.0, 0.55, dPuddle);
+  // Flaque : un miroir quand le monde s'y reflète vraiment ; sinon (qualité
+  // moyenne, mode allégé) juste lisse, pour que la carte d'environnement
+  // n'y dessine pas ses enseignes une à une.
+  roughnessFactor = mix(0.62 - 0.22 * dMid.g * uGRain + 0.16 * (dFine.r - 0.5), mix(0.24, 0.04, step(0.001, uGReflK)), dPuddle);
+  vec2 dBump = (dFine.ba * 2.0 - 1.0) * (0.24 * (1.0 - dPuddle));
+  normal = normalize(normal + (viewMatrix * vec4(dBump.x, 0.0, dBump.y, 0.0)).xyz);
+`;
+
+const WET_EMISSIVE = /* glsl */ `
+  totalEmissiveRadiance *= 0.7 + 0.8 * dPuddle;
+  vec3 dLight = vec3(0.0);
+  for (int i = 0; i < ${GROUND_LIGHTS}; i++) {
+    vec2 dd = dUv - uGDynPos[i].xy;
+    float da = max(0.0, 1.0 - dot(dd, dd) / uGDynPos[i].z);
+    dLight += uGDynCol[i] * (da * da);
+  }
+  totalEmissiveRadiance += dLight * (0.3 + 0.5 * dPuddle);
+  float dRipple = min(1.0, dRainRing(dUv / 1.3, 0.0) + dRainRing(dUv / 2.1 + 5.3, 40.0)) * dPuddle;
+  // Reflet : force de Fresnel (regard rasant : miroir), image troublée par
+  // le grain hors des flaques. vViewPosition n'est jamais nul (la caméra
+  // n'est pas dans le sol).
+  float dFacing = 1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0);
+  float dFresnel = mix(0.1, 1.0, dFacing * dFacing * dFacing);
+  vec4 dRc = uGReflMat * vec4(vSurfPos, 1.0);
+  // Flaque : image nette. Bitume mouillé : image floue (niveaux réduits de
+  // la texture du reflet) et ondulée par ses bosses, pas un miroir.
+  vec2 dRuv = dRc.xy / max(dRc.w, 1e-4) + (dMid.ba - 0.5) * mix(0.03, 0.003, dPuddle) + dRipple * 0.012;
+  vec3 dRefl = textureLod(uGRefl, clamp(dRuv, 0.0, 1.0), mix(2.8, 0.0, dPuddle)).rgb;
+  // Rue sèche (thème sans pluie) : un voile de reflet, pas une rue mouillée.
+  totalEmissiveRadiance += dRefl * (dFresnel * mix(mix(0.12, 0.5, uGRain), 1.0, dPuddle) * uGReflK * 1.7);
+  totalEmissiveRadiance += dLight * 0.5 * dRipple;
+`;
+
+// Avec le reflet du monde, la carte d'environnement ferait double emploi
+// (et elle ne sait pas qu'une rue étroite cache le ciel) : il n'en reste
+// qu'un voile. Sans lui (qualité moyenne), c'est elle qui fait luire la rue.
+const WET_SPECULAR = /* glsl */ `
+  reflectedLight.indirectSpecular *= mix(1.0, 0.2, step(0.001, uGReflK));
+  reflectedLight.directSpecular *= 0.5;
+`;
+
+const WET_OUTPUT = /* glsl */ `
+  float dLuma = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722));
+  outgoingLight *= min(1.0, uGMaxLuma / max(dLuma, 1e-5));
+`;
+
+function wetGround(mat: THREE.MeshStandardMaterial, time: THREE.IUniform<number>, shared: DistrictWorld): void {
+  const none = blackTexture();
+  const uniforms = {
+    uSDetail: { value: detailTexture() },
+    uGRefl: shared.reflection ? shared.reflection.uniforms.uGRefl : { value: none },
+    uGReflMat: shared.reflection ? shared.reflection.uniforms.uGReflMat : { value: new THREE.Matrix4() },
+    uGReflK: shared.reflection ? shared.reflection.uniforms.uGReflK : { value: 0 },
+    uGMaxLuma: { value: READABILITY.groundMaxLuma },
+    uGTime: time,
+    uGRain: { value: shared.wet },
+    uGDynPos: shared.world ? shared.world.uniforms.uGDynPos : { value: Array.from({ length: GROUND_LIGHTS }, () => new THREE.Vector4(0, 0, 1, 0)) },
+    uGDynCol: shared.world ? shared.world.uniforms.uGDynCol : { value: Array.from({ length: GROUND_LIGHTS }, () => new THREE.Color(0, 0, 0)) },
+  };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    withWorldPosition(shader);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>\n${WET_PARS}`)
+      .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>\n${WET_SURFACE}`)
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>\n${WET_EMISSIVE}`)
+      .replace("#include <lights_fragment_end>", `#include <lights_fragment_end>\n${WET_SPECULAR}`)
+      .replace("#include <opaque_fragment>", `${WET_OUTPUT}\n#include <opaque_fragment>`);
+  };
+  mat.customProgramCacheKey = () => "v2-district-ground";
+}
+
+// --- Vitres ------------------------------------------------------------------
+// Du verre : sombre et lisse, il renvoie le ciel et les enseignes d'autant
+// plus que le regard est rasant. La couleur par sommet dit allumée ou
+// éteinte : c'est la lumière de la pièce derrière, plus forte sous le
+// plafond, inégale d'une fenêtre à l'autre (meubles, rideaux), pas un aplat.
+function windowMaterial(v: Cyber): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(v.baseDark).multiplyScalar(0.45),
+    vertexColors: true,
+    roughness: 0.07,
+    metalness: 0,
+  });
+  const uniforms = { uSDetail: { value: detailTexture() } };
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    withWorldPosition(shader);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform sampler2D uSDetail;")
+      // La couleur par sommet n'est pas celle du verre.
+      .replace("#include <color_fragment>", "")
+      .replace(
+        "#include <emissivemap_fragment>",
+        `#include <emissivemap_fragment>
+        float wRoom = texture2D(uSDetail, vec2(vSurfPos.x + vSurfPos.z, vSurfPos.y) * 0.041).r;
+        float wCeil = fract(vSurfPos.y / ${FLOOR_HEIGHT.toFixed(1)});
+        // Stores : de fines lames, effacées quand elles passent sous le
+        // pixel (elles moireraient de loin).
+        float wSlat = 0.5 + 0.5 * sin(vSurfPos.y * 31.0);
+        wSlat = mix(1.0, 0.72 + 0.28 * wSlat, clamp(0.1 / max(fwidth(vSurfPos.y), 1e-4), 0.0, 1.0) * step(0.55, wRoom));
+        float wDeep = 0.3 + 0.7 * smoothstep(0.08, 0.6, wCeil);
+        float wStuff = 0.75 + 0.5 * texture2D(uSDetail, vec2(vSurfPos.x + vSurfPos.z, vSurfPos.y) * 0.17).g;
+        totalEmissiveRadiance += vColor.rgb * (0.45 + 0.9 * wRoom) * (0.5 + 0.9 * wCeil) * wSlat * wDeep * wStuff;`,
+      );
+  };
+  mat.customProgramCacheKey = () => "v2-window";
+  return mat;
+}
+
+// --- Lumière des lampadaires dans l'air --------------------------------------
+// Un cône de brume éclairée sous chaque lampadaire : additif, plus dense au
+// cœur (les deux faces s'ajoutent) et vu de profil, éteint vers le sol. Un
+// seul maillage pour toute la carte.
+const LAMP_HEAD = 8.7;
+const CONE_RADIUS = 4.4;
+const CONE_SEGMENTS = 14;
+
+function lampCones(map: GameMap, color: THREE.Color): THREE.Mesh {
+  const lamps = map.props.filter((p) => p.kind === "lamp");
+  const perLamp = (CONE_SEGMENTS + 1) * 2;
+  const pos = new Float32Array(lamps.length * perLamp * 3);
+  const nor = new Float32Array(lamps.length * perLamp * 3);
+  const fade = new Float32Array(lamps.length * perLamp);
+  const idx: number[] = [];
+  // Pente du cône : la normale penche vers le haut d'autant.
+  const slope = (CONE_RADIUS - 0.5) / LAMP_HEAD;
+  const nl = Math.hypot(1, slope);
+  lamps.forEach((lamp, li) => {
+    const base = li * perLamp;
+    for (let s = 0; s <= CONE_SEGMENTS; s++) {
+      const a = (s / CONE_SEGMENTS) * Math.PI * 2;
+      const cx = Math.cos(a);
+      const cz = Math.sin(a);
+      for (let top = 0; top < 2; top++) {
+        const i = base + s * 2 + top;
+        const r = top ? 0.5 : CONE_RADIUS;
+        pos[i * 3] = lamp.x + cx * r;
+        pos[i * 3 + 1] = top ? LAMP_HEAD : 0.05;
+        pos[i * 3 + 2] = lamp.y + cz * r;
+        nor[i * 3] = cx / nl;
+        nor[i * 3 + 1] = slope / nl;
+        nor[i * 3 + 2] = cz / nl;
+        fade[i] = top ? 1 : 0;
+      }
+      if (s < CONE_SEGMENTS) {
+        const a0 = base + s * 2;
+        idx.push(a0, a0 + 1, a0 + 2, a0 + 1, a0 + 3, a0 + 2);
+      }
+    }
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute("aFade", new THREE.BufferAttribute(fade, 1));
+  geo.setIndex(idx);
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: color } },
+    vertexShader: /* glsl */ `
+      attribute float aFade;
+      varying float vFade;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vV = -mv.xyz;
+        vN = normalMatrix * normal;
+        vFade = aFade;
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      varying float vFade;
+      varying vec3 vN;
+      varying vec3 vV;
+      void main() {
+        // Longueurs testées : pas de normalize() d'un vecteur nul.
+        float nl = length(vN);
+        float vl = length(vV);
+        float facing = nl > 1e-6 && vl > 1e-6 ? abs(dot(vN, vV)) / (nl * vl) : 0.0;
+        float a = facing * facing * vFade * vFade * 0.14;
+        gl_FragColor = vec4(uColor * a, 1.0);
+        #include <colorspace_fragment>
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.matrixAutoUpdate = false;
+  return mesh;
+}
+
 // Dans l'arène, les filets lumineux du kit sont minces et rares : très
 // au-dessus de 1, pour que le bloom y morde. Ici ce sont des enseignes, des
 // écrans et des vitrines par centaines : à la même intensité, la rue
@@ -558,16 +860,22 @@ function seed(mat: THREE.Material): THREE.Mesh {
   return m;
 }
 
-function createKitDistrict(q: QualityConfig, kit: Kit, map: GameMap, maxAnisotropy: number): DistrictHandle {
+function createKitDistrict(q: QualityConfig, kit: Kit, map: GameMap, maxAnisotropy: number, shared: DistrictWorld): DistrictHandle {
   const v = getActiveTheme().decor as Cyber;
   const group = new THREE.Group();
   group.visible = false;
   const dark = new THREE.Color(v.baseDark);
+  const extent = map.half + 12;
+  // Lueurs des enseignes, vitrines et lampadaires sur les murs et le
+  // mobilier : la texture peinte pour le sol (posée à la construction), lue
+  // par toutes les surfaces. Texture de canvas : v retourné.
+  const lightMap: THREE.IUniform<THREE.Texture> = { value: blackTexture() };
+  const surface: SurfaceEnv = { light: { map: lightMap, su: 1 / (2 * extent), sv: -1 / (2 * extent) }, wet: shared.wet };
+  const time: THREE.IUniform<number> = { value: 0 };
   const mats: Record<string, THREE.Material> = {
-    ...dimmed(roleMaterials(v)),
-    tint: new THREE.MeshStandardMaterial({ color: WHITE, vertexColors: true, roughness: 0.72, metalness: 0.15 }),
-    // Vitres : sans éclairage, leur couleur par sommet dit allumée ou éteinte.
-    window: new THREE.MeshBasicMaterial({ color: WHITE, vertexColors: true }),
+    ...dimmed(roleMaterials(v, surface)),
+    tint: addSurface(new THREE.MeshStandardMaterial({ color: WHITE, vertexColors: true, roughness: 0.78, metalness: 0.05 }), SURFACE.concrete, surface),
+    window: windowMaterial(v),
     plant: new THREE.MeshStandardMaterial({ color: new THREE.Color(v.bushFoliage).lerp(dark, 0.35), emissive: v.bushAccent, emissiveIntensity: 0.25, roughness: 0.8 }),
   };
   const groundMat = new THREE.MeshStandardMaterial({
@@ -582,14 +890,21 @@ function createKitDistrict(q: QualityConfig, kit: Kit, map: GameMap, maxAnisotro
   // La peinture du sol est sombre (contrat de lisibilité) : éclairée par la
   // seule lune, elle serait noire. Même correction que le sol de l'arène.
   groundMat.color.setScalar(GROUND_ALBEDO_BOOST);
+  wetGround(groundMat, time, shared);
+  // Le sol et son triangle témoin : à part, hors du rendu du reflet.
+  const groundHolder = new THREE.Group();
+  group.add(groundHolder);
+  group.add(lampCones(map, muted(new THREE.Color(v.shrineHalo), 0.55)));
   const seeds = new THREE.Group();
   const seen = new Set<THREE.Material>();
-  for (const m of [...Object.values(mats), groundMat]) {
+  for (const m of Object.values(mats)) {
     if (seen.has(m)) continue;
     seen.add(m);
     seeds.add(seed(m));
   }
   group.add(seeds);
+  const groundSeed = seed(groundMat);
+  groundHolder.add(groundSeed);
 
   let built = false;
   const build = () => {
@@ -598,7 +913,6 @@ function createKitDistrict(q: QualityConfig, kit: Kit, map: GameMap, maxAnisotro
     const glows: Glow[] = [];
     populate(map, kit, palette(v), v, merger, glows);
     merger.build(group, mats);
-    const extent = map.half + 12;
     const { color, light } = paintGround(map, q.preset === "high" ? 4096 : 2048, glows);
     const mapTex = new THREE.CanvasTexture(color);
     mapTex.colorSpace = THREE.SRGBColorSpace;
@@ -608,21 +922,27 @@ function createKitDistrict(q: QualityConfig, kit: Kit, map: GameMap, maxAnisotro
     lightTex.anisotropy = maxAnisotropy;
     groundMat.map = mapTex;
     groundMat.emissiveMap = lightTex;
+    lightMap.value = lightTex;
     const plane = new THREE.PlaneGeometry(extent * 2, extent * 2);
     plane.rotateX(-Math.PI / 2);
     const ground = new THREE.Mesh(plane, groundMat);
     ground.receiveShadow = true;
     ground.matrixAutoUpdate = false;
-    group.add(ground);
+    groundHolder.add(ground);
     seeds.visible = false;
+    groundSeed.visible = false;
   };
 
   return {
     group,
     ownsGround: true,
+    unreflected: [groundHolder],
     setActive(on) {
       if (on && !built) build();
       group.visible = on;
+    },
+    update(t) {
+      time.value = t;
     },
   };
 }
@@ -674,12 +994,14 @@ function createBlockDistrict(q: QualityConfig, map: GameMap): DistrictHandle {
   return {
     group,
     ownsGround: false,
+    unreflected: [],
     setActive(on) {
       group.visible = on;
     },
+    update() {},
   };
 }
 
-export function createDistrictView(q: QualityConfig, kit: Kit | null, map: GameMap, maxAnisotropy: number): DistrictHandle {
-  return kit ? createKitDistrict(q, kit, map, maxAnisotropy) : createBlockDistrict(q, map);
+export function createDistrictView(q: QualityConfig, kit: Kit | null, map: GameMap, maxAnisotropy: number, shared: DistrictWorld): DistrictHandle {
+  return kit ? createKitDistrict(q, kit, map, maxAnisotropy, shared) : createBlockDistrict(q, map);
 }
