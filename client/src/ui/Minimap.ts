@@ -21,6 +21,9 @@ export interface MinimapPlayer {
   // Modes équipe (tâche 7.2) : allié (losange) ou adversaire ; absent hors
   // équipe.
   side?: "ally" | "foe";
+  // Caché aux autres (buisson, Nuée, Éclipse) mais révélé à ce joueur par
+  // un Sonar ou un piège (agents) : cerclé.
+  spotted?: boolean;
 }
 
 // Évènement de carte (tâche 4.4) : zone (pluie, zone dorée), coffre-fort ou
@@ -220,6 +223,13 @@ export class Minimap {
         ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2);
       }
       ctx.fill();
+      if (p.spotted) {
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 5.5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
     // Drapeaux et bases : toujours sur la carte, ramenés au bord quand ils
     // sont hors de portée de la minimap (direction à suivre).

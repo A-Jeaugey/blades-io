@@ -64,6 +64,20 @@ test("triche : refusée en partie publique, sans CHEATS=1, ou une fois mort", ()
   assert.deepEqual(cheat(priv, "b", { blades: 50 }), [{ ok: false, reason: "dead" }]);
 });
 
+// /ult (agents) : un ultime à essayer tout de suite, même garde que /blades.
+test("triche : /ult charge l'ultime et rend la capacité prête", () => {
+  const r = new TestRoom(clock, { code: "TESTS" });
+  const p = r.join("a", {}, { agent: "vigie" });
+  p.abilityReadyAt = Date.now() + 10000;
+  assert.deepEqual(cheat(r, "a", { ult: true }), [{ ok: true, ult: true }]);
+  assert.equal(p.ultCharge, 100);
+  assert.equal(p.abilityReadyAt, 0);
+  const pub = new TestRoom(clock);
+  const q = pub.join("b", {}, { agent: "vigie" });
+  assert.deepEqual(cheat(pub, "b", { ult: true }), [{ ok: false, reason: "public" }]);
+  assert.equal(q.ultCharge, 0);
+});
+
 // /event (évènements de carte) : essais au navigateur sans attendre la
 // minuterie ; l'évènement en cours s'arrête, son coffre est retiré.
 test("triche : /event lance l'évènement voulu tout de suite, en salon privé et dans un mode qui en a", () => {

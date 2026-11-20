@@ -302,6 +302,9 @@ export class ChatPanel {
       const event = EVENT_NAMES.get(name.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase());
       if (!event) return this.system(t("chat.usageEvent"));
       try { this.cheat({ event }); } catch { /* noop */ }
+    } else if (cmd === "ult" || cmd === "ulti") {
+      // Triche de test : ultime chargé et capacité prête (agents).
+      try { this.cheat({ ult: true }); } catch { /* noop */ }
     } else {
       this.system(t("chat.unknownCommand", { cmd: head }));
     }
@@ -338,6 +341,7 @@ export class ChatPanel {
 
   onCheat(result: CheatResult): void {
     if (result.ok && result.event) return this.system(t("chat.cheatEvent", { name: result.event }));
+    if (result.ok && result.ult) return this.system(t("chat.cheatUlt"));
     if (result.ok) return this.system(t("chat.cheatOk", { n: result.blades ?? 0 }));
     const key: Record<NonNullable<CheatResult["reason"]>, I18nKey> = {
       disabled: "chat.cheatDisabled",
@@ -346,6 +350,7 @@ export class ChatPanel {
       full: "chat.cheatFull",
       noEvents: "chat.cheatNoEvents",
       noSpot: "chat.cheatNoSpot",
+      noAgent: "chat.cheatNoAgent",
     };
     this.system(t(key[result.reason ?? "disabled"]));
   }

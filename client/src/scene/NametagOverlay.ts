@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { isAgentId } from "@bladeio/shared";
+import { agentName, agentRgb, emblemSvg } from "../agents/info";
 import { PlayerView } from "../entities/PlayerView";
 import { onLangChange, t } from "../i18n";
 
@@ -23,6 +25,9 @@ import { onLangChange, t } from "../i18n";
 
 interface TagEntry {
   el: HTMLDivElement;
+  // Emblème de l'agent (docs/AGENTS.md) : on sait ce qu'on affronte.
+  agentEl: HTMLSpanElement;
+  lastAgent: string;
   levelEl: HTMLSpanElement;
   nameEl: HTMLSpanElement;
   bladesEl: HTMLSpanElement;
@@ -101,6 +106,8 @@ export class NametagOverlay {
     levelOf: (id: string) => number,
     // Allié du joueur local (modes équipe).
     isAlly: (id: string) => boolean,
+    // Agent ("" : aucun).
+    agentOf: (id: string) => string,
     camera: THREE.PerspectiveCamera,
     width: number,
     height: number,
@@ -162,6 +169,18 @@ export class NametagOverlay {
         tag.nameEl.textContent = name;
         tag.lastName = name;
       }
+      const agent = agentOf(id);
+      if (agent !== tag.lastAgent) {
+        tag.lastAgent = agent;
+        if (isAgentId(agent)) {
+          tag.agentEl.innerHTML = emblemSvg(agent, "nametag-agent-svg");
+          tag.agentEl.style.setProperty("--agent-rgb", agentRgb(agent));
+          tag.agentEl.title = agentName(agent);
+          tag.agentEl.classList.remove("hidden");
+        } else {
+          tag.agentEl.classList.add("hidden");
+        }
+      }
       const level = levelOf(id);
       if (level !== tag.lastLevel) {
         tag.levelEl.textContent = level > 0 ? t("level.short", { n: level }) : "";
@@ -212,18 +231,20 @@ export class NametagOverlay {
     if (!tag) {
       const el = document.createElement("div");
       el.className = "nametag threat-even";
+      const agentEl = document.createElement("span");
+      agentEl.className = "nametag-agent hidden";
       const levelEl = document.createElement("span");
       levelEl.className = "nametag-level hidden";
       const nameEl = document.createElement("span");
       nameEl.className = "nametag-name";
       const bladesEl = document.createElement("span");
       bladesEl.className = "nametag-blades";
-      el.append(levelEl, nameEl, bladesEl);
+      el.append(agentEl, levelEl, nameEl, bladesEl);
       this.container.appendChild(el);
       // Créé caché : le premier affichage écrit tout son style.
       el.style.display = "none";
       tag = {
-        el, levelEl, nameEl, bladesEl, lastLevel: -1, lastName: "", lastBlades: -1, lastThreat: "even",
+        el, agentEl, lastAgent: "", levelEl, nameEl, bladesEl, lastLevel: -1, lastName: "", lastBlades: -1, lastThreat: "even",
         shown: false, lastX: -1e9, lastY: -1e9, lastOpacity: -1,
       };
       this.tags.set(id, tag);

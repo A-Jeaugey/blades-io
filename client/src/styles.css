@@ -4404,3 +4404,274 @@ body:has(#flag-status:not(.hidden)) .challenge-toast { top: calc(var(--safe-t, 0
   letter-spacing: 0.5px;
 }
 .settings-note.hidden { display: none; }
+
+/* =====================================================================
+   Agents (docs/AGENTS.md) : choix au lobby et à la mort, boutons de la
+   capacité et de l'ultime, emblème des nametags, bandeau « repéré ».
+   Chaque élément reçoit la couleur de son agent en --agent-rgb
+   (agents/info.ts) ; aucune n'est une couleur de rareté.
+   ===================================================================== */
+.agent-picker { --agent-rgb: 255, 255, 255; }
+.agent-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+.agent-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 7px 2px 5px;
+  min-height: 44px;
+  background: rgba(0, 0, 0, .5);
+  border: 1px solid rgba(var(--agent-rgb), .22);
+  border-radius: 2px;
+  color: rgba(var(--agent-rgb), .75);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, box-shadow .25s, transform .2s cubic-bezier(.2,.7,.2,1);
+}
+.agent-chip:hover { border-color: rgba(var(--agent-rgb), .55); transform: translateY(-2px); }
+.agent-chip:focus-visible { outline: 1px solid rgb(var(--agent-rgb)); outline-offset: 2px; }
+.agent-chip.on {
+  border-color: rgb(var(--agent-rgb));
+  background: rgba(var(--agent-rgb), .12);
+  box-shadow: inset 0 0 12px rgba(var(--agent-rgb), .18), 0 0 12px rgba(var(--agent-rgb), .2);
+  color: rgb(var(--agent-rgb));
+}
+.agent-emblem { width: 22px; height: 22px; display: block; }
+.agent-chip-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.agent-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, .45);
+  border-left: 2px solid rgb(var(--agent-rgb));
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-bright);
+  text-align: left;
+}
+.agent-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.agent-emblem-big { width: 30px; height: 30px; flex: none; color: rgb(var(--agent-rgb)); }
+.agent-card-name { font-weight: 700; font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; color: rgb(var(--agent-rgb)); }
+.agent-card-role { margin-left: 4px; font-size: 10px; letter-spacing: 1.5px; color: var(--fg-muted); }
+.agent-card-tag { color: var(--fg-muted); font-size: 12px; }
+.agent-ability { display: flex; align-items: flex-start; gap: 8px; margin-top: 5px; }
+.agent-ability b { letter-spacing: .5px; }
+.agent-key {
+  flex: none;
+  min-width: 20px;
+  padding: 1px 5px;
+  border: 1px solid rgba(var(--agent-rgb), .7);
+  border-radius: 3px;
+  color: rgb(var(--agent-rgb));
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+.agent-key-ult { background: rgba(var(--agent-rgb), .18); }
+.agent-ability-desc { color: var(--fg-muted); }
+/* Carte de fin de vie : la rangée seule. */
+.death-agent { margin: 4px 0 12px; }
+.death-agent-label { font-size: 10px; letter-spacing: 2.5px; color: var(--fg-muted); margin-bottom: 6px; }
+.agent-picker-compact .agent-chip { padding: 5px 2px 4px; }
+
+/* Boutons : en bas au centre au bureau (le chat est à gauche, les
+   indications au-dessus), au-dessus de LANCER et BOOST au toucher. */
+#ability-hud {
+  --agent-rgb: 255, 255, 255;
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  column-gap: 16px;
+  row-gap: 4px;
+  justify-items: center;
+  pointer-events: none;
+}
+#ability-hud .ab-names { display: contents; }
+.ab-name-ability,
+.ab-name-ult {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+}
+.ab-slot {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(5, 6, 12, .72);
+  border: 2px solid rgba(var(--agent-rgb), .85);
+  box-shadow: 0 0 14px rgba(var(--agent-rgb), .28);
+  color: rgb(var(--agent-rgb));
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  transition: transform .12s, background .2s, border-color .2s, box-shadow .2s;
+}
+.ab-slot:active { transform: scale(.94); }
+.ab-slot .ab-emblem { width: 28px; height: 28px; transition: opacity .2s; }
+.ab-cd {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fg-bright);
+  text-shadow: 0 0 6px rgba(0, 0, 0, .95);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.ab-key {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 17px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgb(var(--agent-rgb));
+  color: var(--dark);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+/* Capacité en recharge : terne, le décompte par-dessus. */
+.ab-slot.cooldown {
+  border-color: rgba(var(--agent-rgb), .3);
+  box-shadow: none;
+}
+.ab-slot.cooldown .ab-emblem { opacity: .25; }
+/* Ultime : rond, sa charge en anneau ; le pourcentage, PRÊT ou la durée de
+   l'effet sous l'emblème. */
+.ab-ult { border-radius: 50%; border-color: transparent; box-shadow: none; }
+.ab-ring {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+.ab-ring-bg { fill: none; stroke: rgba(var(--agent-rgb), .2); stroke-width: 3; }
+.ab-ring-fill {
+  fill: none;
+  stroke: rgb(var(--agent-rgb));
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dashoffset .3s;
+}
+.ab-ult .ab-emblem { opacity: .45; }
+.ab-ult .ab-cd {
+  inset: auto 0 5px;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.ab-ult.ready {
+  background: rgba(var(--agent-rgb), .16);
+  box-shadow: 0 0 18px rgba(var(--agent-rgb), .55);
+}
+.ab-ult.ready .ab-emblem,
+.ab-ult.active .ab-emblem { opacity: 1; }
+.ab-ult.active { background: rgba(var(--agent-rgb), .28); }
+/* Glisser de visée en cours depuis un bouton (tactile). */
+.ab-slot.aiming { transform: scale(1.1); background: rgba(var(--agent-rgb), .3); }
+#hud.spectating #ability-hud { display: none; }
+
+#ability-hud.touch {
+  left: auto;
+  right: 30px;
+  bottom: 152px;
+  transform: none;
+  grid-template-columns: repeat(2, 64px);
+  column-gap: 26px;
+}
+#ability-hud.touch .ab-names,
+#ability-hud.touch .ab-key { display: none; }
+#ability-hud.touch .ab-slot { width: 64px; height: 64px; }
+#ability-hud.touch .ab-emblem { width: 32px; height: 32px; }
+
+/* Repéré (Sonar, piège) ou ralenti : sous la minuterie, au centre. */
+.spotted-banner {
+  position: absolute;
+  top: calc(var(--safe-t, 0px) + 58px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 14px;
+  background: rgba(var(--danger-rgb), .16);
+  border: 1px solid rgba(var(--danger-rgb), .7);
+  border-radius: 3px;
+  color: var(--fg-bright);
+  font-size: 13px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.spotted-banner b { color: rgb(var(--danger-rgb)); letter-spacing: 2px; }
+.spotted-banner b::before { content: "◉ "; }
+
+/* Emblème de l'agent devant le niveau, dans les nametags. */
+.nametag-agent {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: -2px;
+  color: rgb(var(--agent-rgb, 255, 255, 255));
+}
+.nametag-agent-svg { width: 12px; height: 12px; display: block; }
+
+@media (max-width: 600px) {
+  .agent-row { gap: 4px; }
+  .agent-chip-name { font-size: 9px; letter-spacing: .5px; }
+  .agent-card { font-size: 11px; }
+  /* Portrait : en colonne, à gauche de LANCER et BOOST empilés. */
+  #ability-hud.touch {
+    right: 124px;
+    bottom: 20px;
+    grid-template-columns: 58px;
+    row-gap: 14px;
+  }
+  #ability-hud.touch .ab-slot { width: 58px; height: 58px; }
+  .spotted-banner { top: calc(var(--safe-t, 0px) + 112px); font-size: 12px; }
+}
+@media (max-height: 500px) {
+  /* Paysage : la fiche se lit dans « How to play », la rangée suffit. */
+  #agent-field .agent-card { display: none; }
+  .agent-chip { padding: 4px 2px 3px; }
+  .agent-emblem { width: 18px; height: 18px; }
+  /* Au-dessus de LANCER : au-dessus de BOOST, le fil des éliminations, sous
+     la minimap, les recouvrait. */
+  #ability-hud.touch {
+    right: 140px;
+    bottom: 146px;
+    grid-template-columns: repeat(2, 50px);
+    column-gap: 14px;
+  }
+  #ability-hud.touch .ab-slot { width: 50px; height: 50px; }
+  #ability-hud.touch .ab-emblem { width: 26px; height: 26px; }
+  .spotted-banner { top: calc(var(--safe-t, 0px) + 86px); }
+}

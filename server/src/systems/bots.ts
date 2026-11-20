@@ -1,4 +1,5 @@
 import {
+  AgentEffect,
   BOT_CHAMPIONS_MAX,
   BOT_MAX_TOTAL,
   BOT_MIN_PLAYERS,
@@ -34,6 +35,12 @@ import { Player } from "../state/Player";
 import { reachOf } from "./interest";
 import { zoneInner } from "./spawnPoint";
 import { navToward, type NavMemory } from "./nav";
+import { Concealment } from "./agentEffects";
+import { planBotCast } from "./botAbilities";
+
+// Chance qu'un bot saisisse une occasion de capacité à une décision (toutes
+// les ~0,5 s), selon son niveau : les faciles en ratent beaucoup.
+const CAST_EAGERNESS: Record<number, number> = { 0: 0.3, 1: 0.6, 2: 0.85 };
 
 // Rayon de sécurité : marge confortable pour que ni le corps, ni les lames
 // orbitantes ne touchent la zone de mort. Il suit le rayon de l'arène, qui
@@ -329,9 +336,17 @@ export class BotController {
   // Objectifs du mode de jeu (cf. BotGoal), null hors des modes qui en
   // donnent.
   private goalFor: ((bot: Player) => BotGoal | null) | null = null;
+  // Ce qui cache un joueur (buissons, nuages, Éclipse) et ce qui le révèle
+  // (Sonar, Piège), tenu par les capacités de la room ; sans lui (tests),
+  // les buissons seuls.
+  private conceal: Concealment | null = null;
 
   setGoals(fn: ((bot: Player) => BotGoal | null) | null): void {
     this.goalFor = fn;
+  }
+
+  setConcealment(c: Concealment | null): void {
+    this.conceal = c;
   }
 
   // Prochain champion possible (ms epoch) : CHAMPION_RESPAWN_MS après la
@@ -487,6 +502,7 @@ export class BotController {
           0.30; // Camper
         st.nextThinkAt = now + BOT_THINK_INTERVAL + Math.random() * reactionByPers;
         this.decide(p, arena, st);
+        if (p.agent) this.planCast(p, arena, st, nowMs);
         if (st.actionType === "chase" && st.currentTargetId && !this.chasers.has(st.currentTargetId)) {
           this.chasers.set(st.currentTargetId, p.id);
         }
@@ -578,16 +594,48 @@ export class BotController {
   // Avant, les buissons ne cachaient rien aux bots. Un porteur de drapeau
   // ne se cache pas.
   private hiddenFrom(bot: Player, other: Player): boolean {
-    // Carte à murs : pas de buissons, mais un immeuble cache ce qui est
-    // derrière lui, sauf de tout près (on s'entend au coin d'une rue).
+    if (other.revealed) return false;
+    const conceal = this.conceal;
+    // Révélé à ce bot ou à son équipe (Sonar, Piège) : vu à travers tout.
+    if (conceal?.revealedTo(other, bot.id, bot.team)) return false;
+    // Buisson, nuage de Brume, Éclipse : la règle des buissons.
+    if (conceal) {
+      if (conceal.hiddenFrom(other, reachOf(other), bot, reachOf(bot))) return true;
+    } else if (!this.map && isHiddenFrom(bot.x, bot.y, reachOf(bot), other.x, other.y, reachOf(other))) {
+      return true;
+    }
+    // Carte à murs : un immeuble cache ce qui est derrière lui, sauf de
+    // tout près (on s'entend au coin d'une rue).
     if (this.map) {
-      if (other.revealed) return false;
       const dx = other.x - bot.x;
       const dy = other.y - bot.y;
       if (dx * dx + dy * dy < LOS_NEAR * LOS_NEAR) return false;
       return mapSegmentHit(this.map, bot.x, bot.y, other.x, other.y, VIEW_BLOCK_HEIGHT, 0) < 1;
     }
-    return !other.revealed && isHiddenFrom(bot.x, bot.y, reachOf(bot), other.x, other.y, reachOf(other));
+    return false;
+  }
+
+  // Capacité d'agent à lancer à cette décision (systems/botAbilities.ts) :
+  // appliquée au prochain pas du bot, comme celle d'un humain.
+  private planCast(bot: Player, arena: ArenaState, st: BotState, nowMs: number): void {
+    const chased = st.currentTargetId ? arena.players.get(st.currentTargetId) ?? null : null;
+    // Un nouveau venu poursuivi : aucune capacité contre lui, la poursuite
+    // reste ce qu'elle était avant les agents (banc de survie du débutant).
+    const spared = !!chased && !chased.isBot && this.isNewcomer(chased, nowMs);
+    const target = spared ? null : chased;
+    const cast = planBotCast(bot, {
+      now: nowMs,
+      arena,
+      action: spared ? "spare" : st.actionType,
+      target,
+      threatLevel: st.threatLevel,
+      eagerness: st.champion ? CAST_EAGERNESS[BotSkill.Hard] : CAST_EAGERNESS[st.skill],
+      safeRadius: botSafeRadius(arena),
+      sees: (other) => !this.hiddenFrom(bot, other),
+      spares: (other) => !other.isBot && this.isNewcomer(other, nowMs),
+      leadAim: (t) => this.leadAim(bot, t, nowMs, 0, THROW_PROJECTILE_MAX_RANGE, profileAgainst(st, t).aimReaction),
+    });
+    if (cast) bot.botCast = cast;
   }
 
   // Ce bot poursuit-il ce joueur (dernière décision) ? Un clash entre eux
@@ -1145,6 +1193,9 @@ export class BotController {
     else if (st.personality === BotPersonality.Farmer) minBlades = 9;
     else if (st.personality === BotPersonality.Camper) minBlades = 7;
     if (st.urgent) minBlades = 2;
+    // Rafale (Sagaie) : les lancers ne coûtent rien, il tire tant qu'elle dure.
+    const barrage = bot.agentEffect === AgentEffect.Barrage && bot.agentEffectUntil > now;
+    if (barrage) minBlades = 0;
     if (bot.bladeCount < minBlades) return;
 
     // Plage de portée utile : trop près (<12) le projectile clash sur ses

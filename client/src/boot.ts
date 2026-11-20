@@ -10,6 +10,7 @@ import { bindBoutiqueButton } from "./boutique/entry";
 import { bindQuestsButton, refreshQuestsBadge } from "./ui/questsEntry";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken } from "./auth/guestToken";
+import { AgentPicker } from "./agents/AgentPicker";
 import type { Game, LobbyParts } from "./main";
 
 // Point d'entrée de la page (tâche 2.7). Le lobby se monte tout de suite :
@@ -48,6 +49,10 @@ if (!auth.getAccessToken()) void ensureGuestToken();
 let game: Game | null = null;
 let waiting = false;
 const login = new LoginScreen((res) => void enter(res));
+// Agent de la partie (docs/AGENTS.md), choisi au lobby et retenu sur
+// l'appareil.
+const agentHost = document.getElementById("agent-picker");
+if (agentHost) new AgentPicker(agentHost);
 const parts: LobbyParts = { login, settings, profile, onboarding, sound, touch };
 const engine = engineModule.then(async (m) => {
   await m.preloadGraphics();

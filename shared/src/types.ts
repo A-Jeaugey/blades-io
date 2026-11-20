@@ -15,6 +15,14 @@ export interface InputMessage {
   // de déplacement.
   aimX?: number;
   aimY?: number;
+  // Capacité d'agent demandée avec ce pas (agents.ts, CastSlot : 1 capacité,
+  // 2 ultime), et sa visée : vecteur depuis le joueur, en u (direction d'un
+  // Éclair ou d'une Salve, point d'une Nuée ou d'une Singularité, bornée à
+  // la portée par le serveur). Absente : sens de marche, ou à ses pieds.
+  // Le serveur l'applique au pas de cet input, comme la prédiction.
+  cast?: number;
+  castX?: number;
+  castY?: number;
 }
 
 export interface SetNameMessage {
@@ -23,6 +31,9 @@ export interface SetNameMessage {
 
 export interface RespawnMessage {
   name?: string;
+  // Agent de la vie qui commence (choisi sur l'écran de mort) ; absent :
+  // celui de la vie précédente.
+  agent?: string;
 }
 
 // Tick serveur de l'évènement de jeu. Le client joue l'évènement quand son
@@ -205,6 +216,8 @@ export interface CheatMessage {
   // /event : évènement de carte lancé tout de suite, à la place de celui en
   // cours (au lieu de lames).
   event?: CheatEventName;
+  // /ult : ultime chargé et capacité prête (agents), au lieu de lames.
+  ult?: boolean;
 }
 
 // Évènements de carte que /event sait lancer.
@@ -217,7 +230,8 @@ export interface CheatResult {
   ok: boolean;
   blades?: number;
   event?: CheatEventName;
-  reason?: "disabled" | "public" | "dead" | "full" | "noEvents" | "noSpot";
+  ult?: boolean;
+  reason?: "disabled" | "public" | "dead" | "full" | "noEvents" | "noSpot" | "noAgent";
 }
 
 

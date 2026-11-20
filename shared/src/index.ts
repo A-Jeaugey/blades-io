@@ -24,3 +24,4 @@ export * from "./interactive";
 export * from "./arena";
 export * from "./powerups";
 export * from "./ranked";
+export * from "./agents";

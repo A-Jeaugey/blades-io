@@ -29,6 +29,7 @@ import { Crate } from "../state/Crate";
 import { Player } from "../state/Player";
 import { damageCrate } from "./crateDamage";
 import { OrbitPositionCache } from "./orbitPositions";
+import { bladesProtected, immovable } from "./agentEffects";
 
 export interface ClashInfo {
   a: Blade;
@@ -168,6 +169,10 @@ interface OwnerBucket {
   shielded: boolean;
   // Power-up Spin : ses lames frappent plus fort (SPIN_DAMAGE).
   spinning: boolean;
+  // Égide ou Bastion (agents) : ses lames ne subissent aucun dégât.
+  aegis: boolean;
+  // Bastion : ni recul ni gel du clash.
+  bastion: boolean;
   // Équipe (modes équipe) : deux alliés ne se touchent pas.
   team: number;
   blades: OrbitingEntry[];
@@ -181,6 +186,18 @@ interface OwnerBucket {
 // lui coûtent toujours des lames ; le mur et les humains, la vie.
 export function sparedByBots(p: Player, nowMs: number): boolean {
   return p.newcomer && !p.isBot && p.graceUntil > nowMs;
+}
+
+// Jusqu'à quand les capacités des bots (piège, puits, Onde, Sonar)
+// épargnent ce joueur (Player.botSpareUntil) : toujours pour un débutant
+// (première partie sur l'appareil), sinon jusqu'à la fin de sa rampe de
+// grâce (les 50 s qui suivent son apparition, moins s'il attaque). Le même
+// « nouveau venu » que celui vers qui un bot ne lance rien (bots.ts,
+// isNewcomer) : les bots le poursuivent comme avant les agents, sans plus
+// (docs/AGENTS.md, principe 5).
+export function botSpareUntilOf(p: Player): number {
+  if (p.isBot) return 0;
+  return p.newcomer ? Number.MAX_SAFE_INTEGER : p.graceRampUntil;
 }
 
 // lastHitAt : cooldown par paire (lame|lame ou lame|caisse), en secondes.
@@ -222,6 +239,8 @@ export function resolveCollisions(
       spawnProtected: p.spawnProtectionUntil > nowMs,
       shielded: p.shieldUntil > nowMs,
       spinning: p.spinUntil > nowMs,
+      aegis: bladesProtected(p, nowMs),
+      bastion: immovable(p, nowMs),
       team: p.team,
       blades: [],
     };
@@ -529,8 +548,9 @@ function narrowPhaseClash(
 
       const a = ea.blade;
       const b = eb.blade;
-      a.hp = Math.max(0, a.hp - Math.max(1, Math.floor(eb.damage * reducA)));
-      b.hp = Math.max(0, b.hp - Math.max(1, Math.floor(ea.damage * reducB)));
+      // Égide (agents) : aucun dégât, pas même le minimum d'un point.
+      if (!A.aegis) a.hp = Math.max(0, a.hp - Math.max(1, Math.floor(eb.damage * reducA)));
+      if (!B.aegis) b.hp = Math.max(0, b.hp - Math.max(1, Math.floor(ea.damage * reducB)));
       const aDead = a.hp <= 0;
       const bDead = b.hp <= 0;
       let killCount = 0;
@@ -552,8 +572,8 @@ function narrowPhaseClash(
       // Hitlag : durée tier-aware. Plus le tier est gros, plus l'impact est
       // "lourd" (jusqu'à 100 ms pour Tier 2).
       const lagEnd = nowMs + tierHitlagMs(clashTier);
-      startHitlag(ownerA, nowMs, lagEnd);
-      startHitlag(ownerB, nowMs, lagEnd);
+      if (!A.bastion) startHitlag(ownerA, nowMs, lagEnd);
+      if (!B.bastion) startHitlag(ownerB, nowMs, lagEnd);
 
       // Knockback : direction = vecteur reliant les deux centres joueurs
       // (et non les deux lames : on veut repousser les bonshommes, pas
@@ -568,8 +588,8 @@ function narrowPhaseClash(
         const fB = tierKnockback(A.tier);
         // L'addition (et non l'écrasement) permet aux clashs successifs de
         // s'empiler avant la décroissance exponentielle ; plafonnée.
-        addKnockback(ownerA, nx * fA, ny * fA);
-        addKnockback(ownerB, -nx * fB, -ny * fB);
+        if (!A.bastion) addKnockback(ownerA, nx * fA, ny * fA);
+        if (!B.bastion) addKnockback(ownerB, -nx * fB, -ny * fB);
       }
 
       // Notif : milieu des deux lames pour positionner la VFX au point

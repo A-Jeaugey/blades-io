@@ -1,5 +1,6 @@
-import type { GameMap } from "@bladeio/shared";
+import type { GameMap, WellField } from "@bladeio/shared";
 import {
+  AgentEffect,
   BOOST_DRAIN_INTERVAL,
   INPUT_BACKLOG_KEEP,
   INPUT_BACKLOG_WINDOW_TICKS,
@@ -10,6 +11,7 @@ import {
   SERVER_DT,
   VELOCITY_SYNC_SCALE,
   MoveInput,
+  moveContextAt,
   outerOrbitRadius,
   stepMovement,
 } from "@bladeio/shared";
@@ -88,17 +90,40 @@ function pushOutPlayers(state: ArenaState): void {
   }
 }
 
+// Capacités d'agent (systems/abilities.ts) : une demande s'applique au pas
+// de l'input qui la porte, avant lui ; un Éclair accepté renvoie
+// l'impulsion à poser sur ce pas. Puits : ceux que le pas doit subir.
+export interface MovementHooks {
+  cast?: (p: Player, slot: number, castX: number, castY: number, moveX: number, moveY: number) => { impulseX: number; impulseY: number } | null;
+  wells?: readonly WellField[];
+}
+
+const NO_WELLS: readonly WellField[] = [];
+
 export function updateMovement(
   dt: number,
   state: ArenaState,
   removePlayerBlades: (player: Player, count: number) => void,
+  hooks: MovementHooks = {},
 ): void {
   const now = Date.now();
+  const wells = hooks.wells ?? NO_WELLS;
   state.players.forEach((p) => {
     if (!p.alive) return;
-    // Bots : un pas par tick avec leur input courant.
+    // Bots : un pas par tick avec leur input courant, et la capacité que
+    // leur décision a demandée.
     if (p.isBot) {
-      applyStep(p, { dx: p.inputDx, dy: p.inputDy, boost: p.inputBoost }, now, dt, removePlayerBlades, state.map);
+      const input: MoveInput = { dx: p.inputDx, dy: p.inputDy, boost: p.inputBoost };
+      const cast = p.botCast;
+      if (cast) {
+        p.botCast = null;
+        const imp = hooks.cast?.(p, cast.slot, cast.x, cast.y, input.dx, input.dy) ?? null;
+        if (imp) {
+          input.impulseX = imp.impulseX;
+          input.impulseY = imp.impulseY;
+        }
+      }
+      applyStep(p, input, now, dt, removePlayerBlades, state.map, wells);
       return;
     }
     // Humains : un pas de SERVER_DT par input reçu, dans l'ordre, comme le
@@ -114,7 +139,15 @@ export function updateMovement(
       p.inputDx = input.dx;
       p.inputDy = input.dy;
       p.inputBoost = input.boost;
-      applyStep(p, input, now, SERVER_DT, removePlayerBlades, state.map);
+      const step: MoveInput = { dx: input.dx, dy: input.dy, boost: input.boost };
+      if (input.cast) {
+        const imp = hooks.cast?.(p, input.cast, input.castX ?? 0, input.castY ?? 0, input.dx, input.dy) ?? null;
+        if (imp) {
+          step.impulseX = imp.impulseX;
+          step.impulseY = imp.impulseY;
+        }
+      }
+      applyStep(p, step, now, SERVER_DT, removePlayerBlades, state.map, wells);
       p.lastSeq = input.seq;
     }
     trimInputBacklog(p);
@@ -167,22 +200,21 @@ function applyStep(
   dt: number,
   removePlayerBlades: (player: Player, count: number) => void,
   map: GameMap | null,
+  wells: readonly WellField[],
 ): void {
   const x0 = p.x;
   const y0 = p.y;
-  const r = stepMovement(p, input, {
-    speed: p.speedUntil > now,
-    // Hitlag : déplacement figé, recul conservé pour la sortie du gel.
-    frozen: p.hitlagUntil > now,
-    canBoost: p.bladeCount > 0,
-    map,
-  }, dt);
+  // Même contexte que la prédiction du client : Speed, hitlag (déplacement
+  // figé, recul conservé pour la sortie du gel), ralentissement, Bastion,
+  // Surtension (boost sans lame), puits.
+  const r = stepMovement(p, input, moveContextAt(p, p.id, p.team, now, map, wells), dt);
   p.boost = r.boosting;
   // Déplacement réel du pas : le long d'un mur, il glisse ; contre un
   // pilier ou figé par le hitlag, il ne va nulle part.
   setMoveVelocity(p, (p.x - x0) / dt, (p.y - y0) / dt);
   p.movedAt = now;
-  if (r.boosting) {
+  // Surtension (Volt) : le boost ne coûte pas de lame.
+  if (r.boosting && !(p.agentEffect === AgentEffect.Surge && p.agentEffectUntil > now)) {
     p.lifeBoostMs += dt * 1000;
     p.boostAccum += dt;
     while (p.boostAccum >= BOOST_DRAIN_INTERVAL && p.bladeCount > 0) {
@@ -190,6 +222,7 @@ function applyStep(
       removePlayerBlades(p, 1);
     }
   } else {
+    if (r.boosting) p.lifeBoostMs += dt * 1000;
     p.boostAccum = 0;
   }
   if (r.moving) {

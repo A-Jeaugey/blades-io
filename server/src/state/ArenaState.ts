@@ -6,6 +6,7 @@ import { Crate } from "./Crate";
 import { PowerUp } from "./PowerUp";
 import { Flag } from "./Flag";
 import { MapEvent } from "./MapEvent";
+import { Zone } from "./Zone";
 
 export class ArenaState extends Schema {
   // Filtrés par client (zone d'intérêt, cf. systems/interest.ts) : chacun ne
@@ -13,6 +14,9 @@ export class ArenaState extends Schema {
   // power-ups, peu nombreux et sans rien à cacher, vont à tout le monde.
   @view() @type({ map: Player }) players = new MapSchema<Player>();
   @view() @type({ map: Blade }) blades = new MapSchema<Blade>();
+  // Zones des capacités d'agent (nuages, pièges, puits, préavis) : filtrées
+  // aussi, un piège n'est montré qu'à son poseur et à ses alliés.
+  @view() @type({ map: Zone }) zones = new MapSchema<Zone>();
   @type({ map: Crate }) crates = new MapSchema<Crate>();
   @type({ map: PowerUp }) powerups = new MapSchema<PowerUp>();
   // Rayon de l'arène : celui de la carte, ou selon la population (4.5),

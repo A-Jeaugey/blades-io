@@ -3,6 +3,7 @@ import { ArenaState } from "../src/state/ArenaState";
 import { Player } from "../src/state/Player";
 import { ArenaRoom } from "../src/rooms/ArenaRoom";
 import { DT, FakeClock } from "./helpers";
+import { botSpareUntilOf } from "../src/systems/collisions";
 
 export interface BroadcastEvent {
   type: string;
@@ -58,9 +59,9 @@ export class TestRoom {
   join(
     sessionId: string,
     auth: { userId?: string | null; guestId?: string | null; xp?: number } = {},
-    opts: { protected?: boolean; newcomer?: boolean } = {},
+    opts: { protected?: boolean; newcomer?: boolean; agent?: string } = {},
   ): Player {
-    this.room.onJoin({ sessionId }, { newcomer: opts.newcomer }, {
+    this.room.onJoin({ sessionId }, { newcomer: opts.newcomer, agent: opts.agent }, {
       userId: auth.userId ?? null,
       username: null,
       guestId: auth.guestId ?? null,
@@ -74,6 +75,7 @@ export class TestRoom {
       p.spawnProtectionUntil = 0;
       p.graceUntil = 0;
       p.graceRampUntil = 0;
+      p.botSpareUntil = botSpareUntilOf(p);
     }
     return p;
   }

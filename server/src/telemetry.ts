@@ -44,6 +44,8 @@ export interface LifeRecord {
   leaderMs: number;
   bounty: number;
   underdog: boolean;
+  // Agent de la vie ("" : mode sans agents), colonne de la migration 0015.
+  agent: string;
 }
 
 // L'écriture part en arrière-plan, suivie pour être attendue à l'arrêt du
@@ -52,11 +54,31 @@ export function recordLife(rec: LifeRecord): void {
   trackWrite(insertLife(rec));
 }
 
+// Colonne agent (migration 0015) : tant que la base ne l'a pas, l'insertion
+// échoue en la citant ; la ligne est alors réécrite sans elle, et la colonne
+// n'est plus envoyée jusqu'au redémarrage du serveur. La télémétrie d'avant
+// les agents continue ainsi de s'écrire sans la migration.
+let agentColumn = true;
+
 async function insertLife(rec: LifeRecord): Promise<void> {
   const admin = getAdminClient();
   if (!admin) return;
   try {
-    const { error } = await admin.from("life_stats").insert({
+    const row = lifeRow(rec);
+    let { error } = await admin.from("life_stats").insert(agentColumn && rec.agent ? { ...row, agent: rec.agent } : row);
+    if (error && agentColumn && rec.agent && /agent/i.test(error.message)) {
+      agentColumn = false;
+      ({ error } = await admin.from("life_stats").insert(row));
+    }
+    if (error) warn(error.message);
+  } catch (e) {
+    warn((e as Error).message);
+  }
+}
+
+function lifeRow(rec: LifeRecord): Record<string, unknown> {
+  {
+    return {
       room_private: rec.roomPrivate,
       // Colonne de la migration 0011, 'ffa' par défaut : écrite pour les
       // autres modes seulement, l'arène s'enregistre aussi sans la migration.
@@ -84,10 +106,7 @@ async function insertLife(rec: LifeRecord): Promise<void> {
       leader_ms: Math.max(0, Math.round(rec.leaderMs)),
       bounty: small(rec.bounty),
       underdog: rec.underdog,
-    });
-    if (error) warn(error.message);
-  } catch (e) {
-    warn((e as Error).message);
+    };
   }
 }
 

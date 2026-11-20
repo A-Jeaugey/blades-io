@@ -43,6 +43,11 @@ function snapshot(r: TestRoom, p: Player): AckState {
     speedUntil: p.speedUntil,
     hitlagUntil: p.hitlagUntil,
     bladeCount: p.bladeCount,
+    slowUntil: p.slowUntil,
+    agentEffect: p.agentEffect,
+    agentEffectUntil: p.agentEffectUntil,
+    spawnProtectionUntil: p.spawnProtectionUntil,
+    botSpareUntil: p.botSpareUntil,
   };
 }
 

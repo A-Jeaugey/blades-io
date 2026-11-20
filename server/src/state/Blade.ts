@@ -48,4 +48,8 @@ export class Blade extends Schema {
   // Équipe du lanceur au moment du lancer (modes équipe) : le projectile
   // traverse ses alliés, même si le lanceur a quitté la partie.
   thrownTeam: number = 0;
+  // Éclat de la Rafale de Sagaie (agents) : un projectile sans lame
+  // d'orbite derrière lui. Il disparaît en retombant (aucune lame créée) et
+  // ne compte ni comme perte ni comme butin.
+  phantom: boolean = false;
 }

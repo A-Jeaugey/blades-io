@@ -247,6 +247,26 @@ export class InputManager {
     return g ? unit(g.x - me.x, g.y - me.y) : null;
   }
 
+  // Visée d'une capacité d'agent : le point du sol sous le curseur, depuis
+  // le joueur (u). null sans visée souris (tout clavier, tactile) : la
+  // capacité part alors dans le sens de marche, ou à ses pieds.
+  castAim(): { x: number; y: number } | null {
+    if (this.isTouch) return null;
+    if (this.desktopMode === "keyboard" && !this.mouseAims) return null;
+    const pr = this.projector;
+    const me = pr?.player();
+    if (!pr || !me || !this.mouse.used) return null;
+    const g = pr.groundAt(this.mouse.x, this.mouse.y);
+    if (g) return { x: g.x - me.x, y: g.y - me.y };
+    const d = this.cursorDir();
+    return d ? { x: d.x * 30, y: d.y * 30 } : null;
+  }
+
+  // Direction au sol d'un glisser depuis un bouton de capacité (tactile).
+  dragToGround(dragX: number, dragY: number): { x: number; y: number } | null {
+    return this.dragDir(dragX, dragY);
+  }
+
   setSensitivity(v: number): void {
     this.touch.sensitivity = v;
   }

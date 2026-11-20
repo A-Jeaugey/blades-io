@@ -93,6 +93,25 @@ export class Player extends Schema {
   @type("string") killFx: string = "";
   // Équipe (modes équipe, tâche 7.2) : 0 hors équipe, 1 ou 2.
   @type("uint8") team: number = 0;
+  // Agent (shared/src/agents.ts), choisi au lobby, validé au join ; "" dans
+  // un mode sans agents. Public : son emblème s'affiche devant le nom.
+  @type("string") agent: string = "";
+  // Capacité prête à cette heure du serveur, jauge de l'ultime (0 à 100,
+  // arrondie), effet d'agent en cours (AgentEffect) et sa fin, fin du
+  // ralentissement d'un piège : HUD et prédiction du joueur lui-même.
+  @view(OWNER_VIEW_TAG) @type("float64") abilityReadyAt: number = 0;
+  @view(OWNER_VIEW_TAG) @type("uint8") ultCharge: number = 0;
+  @view(OWNER_VIEW_TAG) @type("uint8") agentEffect: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") agentEffectUntil: number = 0;
+  @view(OWNER_VIEW_TAG) @type("float64") slowUntil: number = 0;
+  // Épargné par les capacités des bots jusqu'à cette heure (botSpareUntilOf :
+  // débutant, ou rampe de grâce) : ni piège, ni puits, ni Onde, ni Sonar de
+  // bot. Envoyé au joueur : sa prédiction sait qu'un puits de bot ne l'attire
+  // pas. Suit la grâce (startGrace, endGrace, prise d'un drapeau).
+  @view(OWNER_VIEW_TAG) @type("float64") botSpareUntil: number = 0;
+  // Effets d'agent vus de tous (agentFxBit, AGENT_FX_SNARED) : auras,
+  // bouclier, ralenti. Change au début et à la fin d'un effet.
+  @type("uint8") agentFx: number = 0;
 
   // Champs non synchronisés (gestion serveur)
   // ID Supabase auth.users du joueur authentifié ; null pour les invités et
@@ -115,7 +134,8 @@ export class Player extends Schema {
   inputDy: number = 0;
   inputBoost: boolean = false;
   // Inputs reçus, pas encore appliqués (un pas chacun, dans l'ordre).
-  inputQueue: Array<{ dx: number; dy: number; boost: boolean; seq: number }> = [];
+  // cast : capacité d'agent demandée avec ce pas (InputMessage.cast).
+  inputQueue: Array<{ dx: number; dy: number; boost: boolean; seq: number; cast?: number; castX?: number; castY?: number }> = [];
   // Dernier seq mis en file (les doublons et les inputs en retard sont
   // ignorés) et crédit de pas (cf. MAX_STEP_CREDIT).
   lastQueuedSeq: number = 0;
@@ -137,6 +157,15 @@ export class Player extends Schema {
   // Bot champion (tâche 4.12) : apparu avec une grosse orbite, il ne s'en
   // prend qu'à des proies à sa mesure.
   champion: boolean = false;
+  // Jauge de l'ultime, non arrondie (ultCharge en est l'affichage).
+  ultPoints: number = 0;
+  // Capacité demandée par un bot (BotController), appliquée à son prochain
+  // pas comme celle d'un humain l'est au pas de son input.
+  botCast: { slot: number; x: number; y: number } | null = null;
+  // Révélations en cours (Sonar, Piège) : par qui, pour quelle équipe (0 :
+  // lui seul), jusqu'à quand. Un joueur caché (buisson, Nuée, Éclipse)
+  // reste visible de qui l'a révélé.
+  reveals: Array<{ by: string; team: number; until: number }> = [];
   // Edge-trigger consommé chaque tick par processThrows. Le client envoie
   // true ponctuellement à chaque appui, le serveur le remet à false après
   // traitement (ou après le tick si cooldown actif).

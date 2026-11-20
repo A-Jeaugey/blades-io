@@ -562,6 +562,75 @@ export class SoundManager {
     this.hitSynth.triggerAttackRelease(620, 0.05, this.nextTime(this.hitSynth), gain);
   }
 
+  // Capacités d'agent (docs/AGENTS.md) : un motif par capacité, avec les
+  // voix existantes (pas de synthé de plus à charger). L'ultime sonne plus
+  // grave et plus long.
+  ability(agent: string, ult: boolean, gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    switch (agent) {
+      case "volt":
+        if (ult) this.sequence(this.powerSynth, [64, 71, 76, 83], 0.05, 0.08, gain);
+        else this.hitSynth.triggerAttackRelease(900, 0.05, this.nextTime(this.hitSynth), 0.7 * gain);
+        break;
+      case "sagaie":
+        if (ult) this.sequence(this.alarmSynth, [79, 79, 79], 0.07, 0.04, 0.8 * gain);
+        else this.shatterSynth.triggerAttackRelease(0.06, this.nextTime(this.shatterSynth), 0.7 * gain);
+        break;
+      case "brume": {
+        const t0 = this.nextTime(this.glitchSynth);
+        this.glitchFilter.frequency.setValueAtTime(ult ? 900 : 1300, t0);
+        this.glitchSynth.triggerAttackRelease(ult ? 0.25 : 0.12, t0, 0.8 * gain);
+        break;
+      }
+      case "vortex":
+        if (ult) {
+          this.killSynth.triggerAttackRelease("D1", 0.5, this.nextTime(this.killSynth), gain);
+          this.sequence(this.magnetSynth, [55, 50, 43], 0.08, 0.12, 0.7 * gain);
+        } else {
+          this.hitSynth.triggerAttackRelease(220, 0.06, this.nextTime(this.hitSynth), 0.5 * gain);
+        }
+        break;
+      case "vigie":
+        if (ult) this.sequence(this.chimeSynth, [60, 67, 72], 0.1, 0.15, gain);
+        else this.chimeSynth.triggerAttackRelease("E6", 0.18, this.nextTime(this.chimeSynth), 0.8 * gain);
+        break;
+      case "rempart":
+        if (ult) {
+          this.killSynth.triggerAttackRelease("C2", 0.4, this.nextTime(this.killSynth), gain);
+          this.sequence(this.chimeSynth, [48, 55, 60], 0.06, 0.3, 0.7 * gain);
+        } else {
+          this.sequence(this.chimeSynth, [67, 74], 0.04, 0.2, 0.7 * gain);
+        }
+        break;
+    }
+  }
+
+  // Onde de Vigie : la déflagration.
+  shockwave(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.crateSynth.triggerAttackRelease(0.35, this.nextTime(this.crateSynth), gain);
+    this.killSynth.triggerAttackRelease("A1", 0.35, this.nextTime(this.killSynth), gain);
+  }
+
+  // Piège refermé (sur soi ou sur un adversaire).
+  trapSprung(gain = 1): void {
+    if (!this.started || gain <= 0) return;
+    this.hitSynth.triggerAttackRelease(330, 0.12, this.nextTime(this.hitSynth), gain);
+    this.lowSynth.triggerAttackRelease("C3", 0.15, this.nextTime(this.lowSynth), 0.7 * gain);
+  }
+
+  // Repéré par un Sonar ou un piège : deux bips graves.
+  spotted(): void {
+    if (!this.started) return;
+    this.sequence(this.alarmSynth, [62, 58], 0.09, 0.05, 0.7);
+  }
+
+  // Ultime chargé.
+  ultReady(): void {
+    if (!this.started) return;
+    this.sequence(this.chimeSynth, [72, 79, 84], 0.06, 0.12, 0.6);
+  }
+
   setBoost(on: boolean): void {
     if (!this.started) return;
     if (on) this.boostEnv.triggerAttack();

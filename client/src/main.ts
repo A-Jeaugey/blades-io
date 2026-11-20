@@ -74,6 +74,28 @@ import {
   tierClashShake,
 } from "@bladeio/shared";
 import { RANKED_LEAVE_PR, RANKED_MIN_PRESENCE_MS, RankedResultEvent, isRankedMode } from "@bladeio/shared";
+import {
+  AbilityCastEvent,
+  AgentEffect,
+  BARRAGE_THROW_COOLDOWN_MS,
+  CAST_VECTOR_MAX,
+  CastSlot,
+  DASH_IMPULSE,
+  RevealedEvent,
+  SMOKE_RANGE,
+  SONAR_RADIUS,
+  ShockwaveEvent,
+  TrapSprungEvent,
+  WELL_RANGE,
+  ZoneKind,
+  abilityCooldownMs,
+  castDirection,
+  castIsPlaced,
+  isAgentId,
+  modeAllowsAgents,
+  type AgentId,
+  type WellField,
+} from "@bladeio/shared";
 import { Callbacks } from "@colyseus/sdk";
 import { Connection, JoinOptions, resolveServerEndpoint, RoomNotFoundError } from "./net/Connection";
 import { ServerClock } from "./net/ServerClock";
@@ -146,6 +168,11 @@ import { isBoutiqueOpen } from "./boutique/entry";
 import { auth } from "./auth/supabase";
 import { ensureGuestToken, fetchGuestWallet, getGuestToken } from "./auth/guestToken";
 import { wallet } from "./auth/wallet";
+import { AbilityHud, CastRequest } from "./agents/AbilityHud";
+import { AbilityView, AuraSource, ZoneLike } from "./agents/AbilityView";
+import { AgentPicker } from "./agents/AgentPicker";
+import { getAgent } from "./agents/agentStore";
+import { AGENT_COLOR, AGENT_FX } from "./agents/looks";
 
 // Joueurs et orbites sont dessinés à l'instant du joueur local, en avance
 // sur tout ce que le serveur a envoyé (RemoteMotion) : les évènements
@@ -179,6 +206,12 @@ const KILLCAM_PAN_TAU = 0.25;
 // de vitesse des autres joueurs. Rayon de l'aimant renforcé, dessiné au sol.
 const SPEED_BIT = powerUpBit(PowerUpType.Speed);
 const MAGNET_RING_RADIUS = PICKUP_MAGNET_RADIUS * POWERUP_MAGNET_MULT;
+// Agents : glisser depuis le bouton d'une capacité placée (Nuée,
+// Singularité), en px, qui la pose à sa portée maximale ; en deçà, au
+// prorata. Une capacité refusée par le serveur (recharge, plus de lame) :
+// sa recharge prédite est abandonnée après un aller-retour et cette marge.
+const CAST_DRAG_FULL_PX = 140;
+const CAST_PREDICT_GRACE_MS = 400;
 
 type OrbitInfo = { ownerId: string; ring: number; slot: number; inRing: number };
 interface ClashCheck {
@@ -210,6 +243,7 @@ interface SyncedState {
   blades: Map<string, any>;
   crates: Map<string, any>;
   powerups: Map<string, any>;
+  zones: Map<string, any>;
 }
 
 // Première partie sur cet appareil : envoyé au serveur pour la télémétrie
@@ -332,6 +366,31 @@ export class Game {
   private wisps!: AmbientWisps;
   // Décor interactif : cercles des ondes d'obélisque en préavis.
   private pulses!: PulseView;
+  // Agents (docs/AGENTS.md) : boutons de la capacité et de l'ultime, zones
+  // (Nuée, Singularité, pièges) et auras des joueurs, choix de l'agent de
+  // la vie suivante sur la carte de fin de vie.
+  private abilityHud!: AbilityHud;
+  private abilityView!: AbilityView;
+  private deathAgent: AgentPicker | null = null;
+  // Recharge de la capacité prédite à l'envoi (comme celle des lancers) :
+  // le bouton passe en recharge sans attendre le serveur. Heure de l'envoi
+  // (performance.now()) : sans confirmation du serveur, la prédiction tombe.
+  private predictedAbilityReadyAt = 0;
+  private predictedAbilityAt = 0;
+  // Dernière direction de marche envoyée : celle que le serveur retient
+  // (Player.dirX/dirY) quand une capacité part sans visée ni marche.
+  private lastMoveX = 0;
+  private lastMoveY = 0;
+  private lastMoveSet = false;
+  private readonly zoneList: ZoneLike[] = [];
+  private readonly auraPool: AuraSource[] = [];
+  private readonly auraList: AuraSource[] = [];
+  private readonly wellPool: WellField[] = [];
+  private readonly wellList: WellField[] = [];
+  // Repéré (Sonar, piège) jusqu'à cette heure du serveur ; bandeau affiché.
+  private spottedUntil = 0;
+  private spottedShown = "";
+  private readonly spottedEl = document.getElementById("spotted-banner");
   // Rendu v2 (null sinon) : lumières et roseaux qui réagissent à la partie,
   // météo du thème, reflet des flaques (qualité haute), et la couleur des
   // joueurs en lumière.
@@ -450,6 +509,7 @@ export class Game {
   private minimapSeen = new Set<string>();
   private minimapPool: MinimapPlayer[] = [];
   private minimapOthers: MinimapPlayer[] = [];
+  private readonly minimapListed = new Set<string>();
   private minimapMe: MinimapPlayer = { id: "", x: 0, y: 0, isMe: true };
   private quality: QualityConfig;
   // Prédiction du joueur local avec rejeu des inputs non acquittés (tâche
@@ -583,6 +643,11 @@ export class Game {
     this.wisps = new AmbientWisps(this.quality);
     this.pulses = new PulseView();
     this.sceneStack.scene.add(this.pulses.root);
+    // Dans la scène dès le lobby, cachés : leurs shaders passent au
+    // préchauffage, pas à la première Nuée.
+    this.abilityView = new AbilityView(this.quality);
+    this.sceneStack.scene.add(this.abilityView.root);
+    this.predictor.wells = this.wellList;
     // Rendu v2 (?gfx=v2, scene/v2/) : sol éclairé et décor du kit, aux
     // mêmes interfaces que ceux d'origine.
     const kit = gfxV2Active(this.quality) ? getKit() : null;
@@ -609,6 +674,8 @@ export class Game {
         // seconde orbite, décalée, sous la vraie. Rien ne doit ressembler à
         // une lame qui n'en est pas une.
         this.reflection.hidden.push(this.blades.root);
+        // Fumée, puits et auras : de l'air et de la lumière, rien à refléter.
+        this.reflection.hidden.push(this.abilityView.root);
       }
     } else {
       this.ground = createGround(this.quality);
@@ -637,6 +704,8 @@ export class Game {
     this.sceneStack.scene.add(this.wisps.object3d);
     this.sceneStack.scene.add(this.aimIndicator.object);
     this.hud = new Hud();
+    this.abilityHud = new AbilityHud();
+    this.abilityHud.onUltReady = () => this.sound.ultReady();
     this.leaderboard = new Leaderboard();
     this.minimap = new Minimap();
     this.borderWarning = new BorderWarning();
@@ -658,6 +727,21 @@ export class Game {
           const drops: Array<{ x: number; y: number; at: number; state: number }> = [];
           ev.drops?.forEach((d: any) => drops.push({ x: d.x, y: d.y, at: d.at, state: d.state }));
           return { kind: ev.kind, x: ev.x, y: ev.y, hp: crate?.hp ?? 0, drops, serverNow: this.serverNow() };
+        },
+        // Agents (captures, art/shots/agents.js) : l'agent du joueur
+        // local, sa recharge, sa charge, son effet, et les zones reçues.
+        agent: () => {
+          const p = this.room?.state?.players?.get(this.myId);
+          if (!p) return null;
+          const now = this.serverNow();
+          return {
+            agent: p.agent,
+            ult: p.ultCharge,
+            readyIn: Math.max(0, p.abilityReadyAt - now),
+            effect: p.agentEffect,
+            effectFor: Math.max(0, p.agentEffectUntil - now),
+            zones: this.room?.state?.zones?.size ?? 0,
+          };
         },
         // Essayage (captures) : habille les joueurs à l'écran des skins
         // donnés, à tour de rôle. Affichage de ce client seulement ; la
@@ -757,6 +841,9 @@ export class Game {
       () => void this.leaveByChoice(),
       () => void this.shareScore(),
     );
+    // Agent de la vie suivante, choisi sur la carte de fin de vie.
+    const deathAgentEl = document.getElementById("death-agent");
+    if (deathAgentEl) this.deathAgent = new AgentPicker(deathAgentEl, true);
     document.getElementById("spectate-menu")?.addEventListener("click", () => void this.leaveByChoice());
     // Caméra sur le tueur : un clic sur le jeu ou Espace, Entrée, Échap
     // passent directement à la carte (Échap la ferme ensuite, cf.
@@ -797,6 +884,7 @@ export class Game {
         document.getElementById(id)?.classList.toggle("hidden", !touch);
       }
       this.chat.setTouchMode(touch);
+      this.abilityHud.setTouch(touch);
     });
     this.settings.onChange((s) => {
       this.sound.setVolumes(s.master, s.music, s.sfx);
@@ -815,6 +903,7 @@ export class Game {
       this.borderWarning.setFlashIntensity(s.flashes);
       this.wall.setFlashIntensity(s.flashes);
       this.decor.setFlashIntensity(s.flashes);
+      this.abilityView.setFlashIntensity(s.flashes);
     });
     this.settings.onQuit(() => {
       void this.leaveByChoice();
@@ -870,6 +959,7 @@ export class Game {
     this.myName = res.name;
     this.login.hide();
     this.hud.show();
+    this.abilityHud.enabled = true;
     this.chat.show();
     this.settings.setInGame(true);
     try { await this.sound.init(); } catch (e) { console.warn("audio init failed", e); }
@@ -880,6 +970,8 @@ export class Game {
       // Cosmétiques choisis sur cet appareil ; le serveur garde ce qui
       // appartient au joueur (tâche 6.1).
       joinOpts.loadout = getLoadout();
+      // Agent choisi au lobby (docs/AGENTS.md) ; le serveur le valide.
+      joinOpts.agent = getAgent();
       if (res.mode === "create") {
         joinOpts.code = res.code;
         joinOpts.bots = res.bots;
@@ -995,6 +1087,8 @@ export class Game {
     this.serverClock.reset();
     this.inputTicks.reset();
     this.predictedThrowReadyAt = 0;
+    this.predictedAbilityReadyAt = 0;
+    this.spottedUntil = 0;
     this.orbitSegments.clear();
     this.timeline.length = 0;
     this.combatFeedback.clear();
@@ -1173,6 +1267,20 @@ export class Game {
     callbacks.onRemove(state, "powerups", (_pu, key) => {
       this.powerups.remove(key);
     });
+    // Onde de Vigie : son préavis est une zone (reçue même si Vigie est
+    // caché), dessinée comme celui d'un obélisque. Retirée (onde partie, ou
+    // annulée par la mort de Vigie) : le cercle s'efface à son tick.
+    callbacks.onAdd(state, "zones", (z: any) => {
+      if (z.kind !== ZoneKind.Shockwave) return;
+      const spared = z.ownerId === this.myId || sameTeam(this.myTeam(), z.team ?? TEAM_NONE);
+      this.pulses.arm(z.x, z.y, z.radius, Math.max(50, z.startsAt - this.serverNow()), spared);
+    }, true);
+    callbacks.onRemove(state, "zones", (z: any) => {
+      if (z.kind !== ZoneKind.Shockwave) return;
+      const x = z.x;
+      const y = z.y;
+      this.atTick(state.tick, () => this.pulses.release(x, y), false);
+    });
 
     room.onMessage("bladeDestroyed", (msg: BladeDestroyedEvent) => this.atTick(msg.tick, () => {
       // Lame désintégrée par le mur : position au-delà du bord de l'arène
@@ -1262,6 +1370,29 @@ export class Game {
         this.nearShake(msg.x, msg.y, 0.3, msg.radius + 14);
       }
     }));
+    // Agents : capacité lancée (effet et son, à son tick), Onde de Vigie,
+    // piège refermé, joueur local repéré.
+    room.onMessage("abilityCast", (msg: AbilityCastEvent) => this.atTick(msg.tick, () => this.abilityCastFx(msg)));
+    room.onMessage("shockwave", (msg: ShockwaveEvent) => this.atTick(msg.tick, () => {
+      this.pulses.release(msg.x, msg.y);
+      const color = AGENT_COLOR.vigie;
+      this.combatFx.obeliskPulse(msg.x, msg.y, msg.radius, color);
+      this.particles.spawnExplosion(msg.x, 1.2, msg.y, color, 26);
+      this.sound.shockwave(msg.playerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y));
+      if (msg.hit.includes(this.myId)) this.camera.shake.add(0.6);
+      else this.nearShake(msg.x, msg.y, 0.3, msg.radius + 10);
+    }));
+    room.onMessage("trapSprung", (msg: TrapSprungEvent) => this.atTick(msg.tick, () => {
+      this.particles.spawnSparks(msg.x, 0.4, msg.y, AGENT_FX.trap, 18, 6);
+      this.combatFx.obeliskPulse(msg.x, msg.y, 3, AGENT_FX.trap);
+      this.sound.trapSprung(msg.victimId === this.myId || msg.ownerId === this.myId ? 1 : this.audibleGain(msg.x, msg.y));
+      if (msg.victimId === this.myId) this.camera.shake.add(0.25);
+    }));
+    room.onMessage("revealed", (msg: RevealedEvent) => {
+      if (msg.until <= this.spottedUntil) return;
+      this.spottedUntil = msg.until;
+      this.sound.spotted();
+    });
     // Chute de processeurs : la puce touche le sol, à son tick (la puce qui
     // tombe est réglée sur la même heure, cf. ProcessorFallView).
     room.onMessage("processorImpact", (msg: ProcessorImpactEvent) => this.atTick(msg.tick, () => {
@@ -1485,6 +1616,7 @@ export class Game {
     this.blades.clear();
     this.crates.clear();
     this.pulses.clear();
+    this.abilityView.clear();
     this.powerups.clear();
     this.flagsView.clear();
     this.resetPrediction();
@@ -1816,6 +1948,11 @@ export class Game {
     // Sans réapparition (dernière équipe en vie) : REGARDER au lieu de
     // REJOUER.
     this.death.setSpectate(!modeRespawns(this.room?.state?.mode ?? "ffa"));
+    // Changer d'agent ne vaut qu'à la réapparition demandée : pas en
+    // dernière équipe en vie, où la manche suivante remet tout le monde en
+    // jeu avec son agent.
+    const mode = this.room?.state?.mode ?? "ffa";
+    document.getElementById("death-agent-field")?.classList.toggle("hidden", !modeAllowsAgents(mode) || !modeRespawns(mode));
     this.death.show(this.pendingDeath);
     this.pendingDeath = null;
   }
@@ -2190,7 +2327,7 @@ export class Game {
     this.bestSubmitted = false;
     this.resetPrediction();
     this.onboarding.enterGame(performance.now());
-    this.room?.send("respawn", { name: this.myName });
+    this.room?.send("respawn", { name: this.myName, agent: getAgent() });
   }
 
   // Dernière équipe en vie : pas de réapparition pendant la manche. La
@@ -2242,6 +2379,9 @@ export class Game {
     this.hud.setRoomCode("");
     this.hud.clearEffects();
     this.powerUpToast.hide();
+    this.abilityHud.enabled = false;
+    this.abilityHud.hide();
+    this.spottedUntil = 0;
     this.chat.hide();
     this.nametags.clear();
     this.combatFeedback.clear();
@@ -2267,6 +2407,7 @@ export class Game {
     this.blades.clear();
     this.crates.clear();
     this.pulses.clear();
+    this.abilityView.clear();
     this.powerups.clear();
     this.flagsView.clear();
     this.flagHud.hide();
@@ -2315,13 +2456,104 @@ export class Game {
       // pendant le cooldown ne doit pas le prolonger à l'écran.
       const me = this.room.state?.players?.get(this.myId);
       const now = this.serverNow();
-      if (me?.alive && this.throwReady(me, now)) this.predictedThrowReadyAt = now + THROW_COOLDOWN_MS;
+      if (me?.alive && this.throwReady(me, now)) {
+        // Rafale (Sagaie) : des éclats, à la cadence de la Rafale.
+        this.predictedThrowReadyAt = now + (this.effectActive(me, AgentEffect.Barrage, now) ? BARRAGE_THROW_COOLDOWN_MS : THROW_COOLDOWN_MS);
+      }
+    }
+    // Capacité d'agent demandée depuis le dernier envoi (touche, bouton) :
+    // elle part avec cet input, et le serveur l'applique à son pas.
+    let impulse: { x: number; y: number } | null = null;
+    const req = this.abilityHud.consume();
+    if (req && !this.dead && !this.spectating) {
+      const me = this.room.state?.players?.get(this.myId);
+      const agent = me?.agent;
+      if (me?.alive && isAgentId(agent)) {
+        const aim = this.castVector(agent, req);
+        payload.cast = req.slot;
+        if (aim) {
+          payload.castX = aim.x;
+          payload.castY = aim.y;
+        }
+        impulse = this.predictCast(me, agent, req.slot, aim?.x ?? 0, aim?.y ?? 0, dx, dy);
+      }
+    }
+    // Après la capacité : le serveur la lance avec la direction retenue
+    // avant ce pas.
+    if (Math.hypot(dx, dy) > 0.05) {
+      this.lastMoveX = dx;
+      this.lastMoveY = dy;
+      this.lastMoveSet = true;
     }
     this.room.send("input", payload);
-    // Un pas de prédiction par input envoyé (le serveur en appliquera un).
-    this.predictor.push(this.inputSeq, { dx, dy, boost });
+    // Un pas de prédiction par input envoyé (le serveur en appliquera un),
+    // avec l'élan de l'Éclair s'il part à ce pas.
+    this.predictor.push(this.inputSeq, impulse ? { dx, dy, boost, impulseX: impulse.x, impulseY: impulse.y } : { dx, dy, boost });
     this.sound.setBoost(!!boost && (dx !== 0 || dy !== 0));
-    this.localBoosting = !!boost && (dx !== 0 || dy !== 0) && (this.room.state?.players?.get(this.myId)?.bladeCount ?? 0) > 0;
+    const meB = this.room.state?.players?.get(this.myId);
+    // Surtension (Volt) : le boost ne coûte rien, même sans lame.
+    const canBoost = (meB?.bladeCount ?? 0) > 0 || this.effectActive(meB, AgentEffect.Surge, this.serverNow());
+    this.localBoosting = !!boost && (dx !== 0 || dy !== 0) && canBoost;
+  }
+
+  // Effet d'agent en cours pour ce joueur (état reçu, heure du serveur).
+  private effectActive(p: any, effect: AgentEffect, serverNowMs: number): boolean {
+    return !!p && p.agentEffect === effect && (p.agentEffectUntil ?? 0) > serverNowMs;
+  }
+
+  // Visée d'une capacité, en u depuis le joueur : glisser depuis son bouton
+  // (tactile), curseur (touche, au clavier et à la souris) ; rien pour un
+  // clic sur le bouton (le curseur est sur le HUD) ou au clavier seul : elle
+  // part alors dans le sens de marche, ou se pose à ses pieds.
+  private castVector(agent: AgentId, req: CastRequest): { x: number; y: number } | null {
+    const v = this.rawCastVector(agent, req);
+    if (!v) return null;
+    // Même direction après la borne du serveur (CAST_VECTOR_MAX) : un
+    // curseur vers l'horizon (troisième personne) vise très loin.
+    const m = Math.max(Math.abs(v.x), Math.abs(v.y));
+    if (m <= CAST_VECTOR_MAX) return v;
+    return { x: (v.x * CAST_VECTOR_MAX) / m, y: (v.y * CAST_VECTOR_MAX) / m };
+  }
+
+  private rawCastVector(agent: AgentId, req: CastRequest): { x: number; y: number } | null {
+    if (req.drag) {
+      const d = this.input.dragToGround(req.drag.x, req.drag.y);
+      if (!d) return null;
+      // Placée (Nuée, Singularité) : la longueur du glisser règle la
+      // distance, jusqu'à la portée ; dirigée : seule la direction compte.
+      let reach = 10;
+      if (castIsPlaced(agent, req.slot)) {
+        const range = agent === "brume" ? SMOKE_RANGE : WELL_RANGE;
+        reach = Math.max(0.6, Math.min(1, Math.hypot(req.drag.x, req.drag.y) / CAST_DRAG_FULL_PX)) * range;
+      }
+      return { x: d.x * reach, y: d.y * reach };
+    }
+    if (req.source === "key") return this.input.castAim();
+    return null;
+  }
+
+  // Capacité prédite à l'envoi, si le serveur l'acceptera (recharge écoulée,
+  // de quoi la lancer) : recharge affichée tout de suite, et l'élan de
+  // l'Éclair, que la prédiction rejoue au même pas que le serveur. Renvoie
+  // cet élan (null sans).
+  private predictCast(me: any, agent: AgentId, slot: CastSlot, cx: number, cy: number, dx: number, dy: number): { x: number; y: number } | null {
+    if (slot !== CastSlot.Ability) return null;
+    const now = this.serverNow();
+    if (Math.max(me.abilityReadyAt ?? 0, this.predictedAbilityReadyAt) > now) return null;
+    if (agent === "sagaie" && (me.bladeCount ?? 0) <= 0) return null;
+    if (agent === "rempart" && this.effectActive(me, AgentEffect.Bastion, now)) return null;
+    let impulse: { x: number; y: number } | null = null;
+    if (agent === "volt") {
+      const fx = this.lastMoveSet ? this.lastMoveX : me.dirX ?? 0;
+      const fy = this.lastMoveSet ? this.lastMoveY : me.dirY ?? 0;
+      const dir = castDirection(cx, cy, dx, dy, fx, fy);
+      if (dir.x === 0 && dir.y === 0) return null;
+      impulse = { x: dir.x * DASH_IMPULSE, y: dir.y * DASH_IMPULSE };
+    }
+    const surging = this.effectActive(me, AgentEffect.Surge, now);
+    this.predictedAbilityReadyAt = now + abilityCooldownMs(agent, surging);
+    this.predictedAbilityAt = performance.now();
+    return impulse;
   }
 
   // Passe de l'arène ronde à une carte à murs, ou en revient : collisions
@@ -2347,6 +2579,8 @@ export class Game {
 
   private resetPrediction(): void {
     this.predictor.reset();
+    this.predictedAbilityReadyAt = 0;
+    this.lastMoveSet = false;
     this.errX = 0;
     this.errY = 0;
     this.needReconcile = false;
@@ -2403,7 +2637,15 @@ export class Game {
       speedUntil: me.speedUntil,
       hitlagUntil: me.hitlagUntil,
       bladeCount: me.bladeCount,
+      slowUntil: me.slowUntil ?? 0,
+      agentEffect: me.agentEffect ?? 0,
+      agentEffectUntil: me.agentEffectUntil ?? 0,
+      spawnProtectionUntil: me.spawnProtectionUntil ?? 0,
+      botSpareUntil: me.botSpareUntil ?? 0,
     };
+    // Puits de son équipe ignorés, comme au serveur (moveContextAt).
+    this.predictor.selfId = this.myId;
+    this.predictor.team = me.team ?? TEAM_NONE;
     const wasReady = this.predictor.ready;
     const c = this.predictor.reconcile(ack);
     if (!wasReady) return;
@@ -2467,8 +2709,148 @@ export class Game {
 
   // Lancer disponible pour le joueur local : des lames et le cooldown écoulé
   // à l'heure du serveur, celui prédit au dernier envoi compris.
+  // Rafale (Sagaie) : des éclats sans lame, à sa cadence.
   private throwReady(me: any, serverNowMs: number): boolean {
-    return me.bladeCount > 0 && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
+    const barrage = this.effectActive(me, AgentEffect.Barrage, serverNowMs);
+    return (me.bladeCount > 0 || barrage) && Math.max(me.throwCooldownUntil, this.predictedThrowReadyAt) <= serverNowMs;
+  }
+
+  // Agents, à chaque image : zones reçues (et puits pour la prédiction),
+  // auras des joueurs affichés, boutons des capacités, bandeau « repéré ».
+  private updateAbilities(localView: PlayerView | undefined, serverNowMs: number, dt: number): void {
+    const state = this.room?.state;
+    const zones = this.zoneList;
+    zones.length = 0;
+    let wells = 0;
+    state?.zones?.forEach((z: any) => {
+      zones.push(z);
+      if (z.kind !== ZoneKind.Well) return;
+      let w = this.wellPool[wells];
+      if (!w) this.wellPool[wells] = w = { x: 0, y: 0, radius: 0, startsAt: 0, endsAt: 0, ownerId: "", team: 0, bot: false };
+      wells++;
+      w.x = z.x;
+      w.y = z.y;
+      w.radius = z.radius;
+      w.startsAt = z.startsAt;
+      w.endsAt = z.endsAt;
+      w.ownerId = z.ownerId;
+      w.team = z.team ?? TEAM_NONE;
+      w.bot = !!z.bot;
+    });
+    this.wellList.length = 0;
+    for (let i = 0; i < wells; i++) this.wellList.push(this.wellPool[i]);
+    const viewer = localView && !this.dead ? localView : null;
+    this.abilityView.updateZones(zones, serverNowMs, dt, viewer?.renderX ?? Infinity, viewer?.renderY ?? Infinity);
+    const auras = this.auraList;
+    auras.length = 0;
+    for (const [id, v] of this.players) {
+      if (!v.root.visible || v.dissolving) continue;
+      const ps = this.playerState(id);
+      const fx = ps?.agentFx ?? 0;
+      if (!fx) continue;
+      let a = this.auraPool[auras.length];
+      if (!a) this.auraPool[auras.length] = a = { x: 0, z: 0, fx: 0, bladeCount: 0 };
+      a.x = v.renderX;
+      a.z = v.renderY;
+      a.fx = fx;
+      a.bladeCount = ps.bladeCount ?? 0;
+      auras.push(a);
+    }
+    this.abilityView.updateAuras(auras);
+    const me = state?.players?.get(this.myId);
+    // Recharge prédite : le serveur l'a confirmée, ou ne le fera plus.
+    if (this.predictedAbilityReadyAt > 0) {
+      const confirmed = (me?.abilityReadyAt ?? 0) >= this.predictedAbilityReadyAt - 250;
+      if (confirmed || performance.now() - this.predictedAbilityAt > (this.pingMs ?? 150) + CAST_PREDICT_GRACE_MS) {
+        this.predictedAbilityReadyAt = 0;
+      }
+    }
+    const alive = !!me?.alive && !this.dead && !this.spectating && !this.matchOver();
+    this.abilityHud.update({
+      agent: me?.agent ?? "",
+      alive,
+      serverNow: serverNowMs,
+      abilityReadyAt: Math.max(me?.abilityReadyAt ?? 0, this.predictedAbilityReadyAt),
+      ultCharge: me?.ultCharge ?? 0,
+      effect: me?.agentEffect ?? 0,
+      effectUntil: me?.agentEffectUntil ?? 0,
+    });
+    // Repéré (Sonar, piège) et ralenti (piège) : ce que l'écran ne dit pas.
+    const spotted = alive ? Math.ceil((this.spottedUntil - serverNowMs) / 1000) : 0;
+    const slowed = alive && (me?.slowUntil ?? 0) > serverNowMs;
+    let text = "";
+    if (spotted > 0) text = `${t("agent.spotted")}|${t("agent.spottedHint", { s: spotted })}${slowed ? ` · ${t("agent.snared")}` : ""}`;
+    else if (slowed) text = `${t("agent.snared")}|`;
+    if (text !== this.spottedShown && this.spottedEl) {
+      this.spottedShown = text;
+      const [title, hint] = text.split("|");
+      this.spottedEl.replaceChildren();
+      if (text) {
+        const b = document.createElement("b");
+        b.textContent = title;
+        this.spottedEl.append(b);
+        if (hint) {
+          const span = document.createElement("span");
+          span.textContent = hint;
+          this.spottedEl.append(span);
+        }
+      }
+      this.spottedEl.classList.toggle("hidden", text === "");
+    }
+  }
+
+  // Capacité lancée par un joueur visible (ou par soi, ou un piège posé par
+  // un allié) : effet à sa position dessinée, et son.
+  private abilityCastFx(msg: AbilityCastEvent): void {
+    const agent = msg.agent;
+    if (!isAgentId(agent)) return;
+    const ult = msg.slot === CastSlot.Ultimate;
+    const mine = msg.playerId === this.myId;
+    this.sound.ability(agent, ult, mine ? 1 : this.audibleGain(msg.x, msg.y));
+    const v = this.players.get(msg.playerId);
+    const x = v?.renderX ?? msg.x;
+    const y = v?.renderY ?? msg.y;
+    const tx = msg.tx ?? x;
+    const ty = msg.ty ?? y;
+    const color = AGENT_COLOR[agent];
+    switch (agent) {
+      case "volt":
+        if (!ult) {
+          this.combatFx.speedLines.burst(x, y, msg.dirX ?? 0, msg.dirY ?? 0, 30, color, 14);
+          this.particles.spawnSparks(x, 0.8, y, color, 12, 6);
+        } else {
+          this.combatFx.obeliskPulse(x, y, 4, color);
+          this.particles.spawnExplosion(x, 1.2, y, color, 26);
+        }
+        break;
+      case "sagaie":
+        if (!ult) this.particles.spawnSparks(x, 1, y, color, 14, 7);
+        else {
+          this.combatFx.obeliskPulse(x, y, 3.5, color);
+          this.particles.spawnExplosion(x, 1.2, y, color, 22);
+        }
+        break;
+      case "brume":
+        if (!ult) this.particles.spawnExplosion(tx, 1.2, ty, AGENT_FX.smokeCore, 18);
+        else this.particles.spawnExplosion(x, 1.2, y, AGENT_FX.smoke, 24);
+        break;
+      case "vortex":
+        if (!ult) this.particles.spawnSparks(tx, 0.4, ty, AGENT_FX.trap, 10, 3);
+        else this.particles.spawnExplosion(tx, 0.6, ty, AGENT_FX.well, 24);
+        break;
+      case "vigie":
+        if (!ult) {
+          this.combatFx.obeliskPulse(x, y, SONAR_RADIUS, AGENT_FX.sonar);
+          this.particles.spawnSparks(x, 1.4, y, AGENT_FX.sonar, 12, 4);
+        } else {
+          this.particles.spawnSparks(x, 1.2, y, color, 16, 5);
+        }
+        break;
+      case "rempart":
+        this.combatFx.obeliskPulse(x, y, ult ? 5 : 3, AGENT_FX.aegis);
+        this.particles.spawnExplosion(x, 1.2, y, AGENT_FX.aegis, ult ? 28 : 16);
+        break;
+    }
   }
 
   // Compte à rebours du redémarrage annoncé (tâche T.3).
@@ -2745,8 +3127,10 @@ export class Game {
     others.length = 0;
     const legendaries: Array<{ x: number; y: number; legendary: boolean }> = [];
     const mine = this.myTeam();
+    let used = 0;
+    const listed = this.minimapListed;
+    listed.clear();
     if (summary) {
-      let used = 0;
       for (const [i] of summary.map) {
         const row = summary.board[i];
         const id = row?.[0];
@@ -2768,9 +3152,29 @@ export class Game {
         dot.x = d.x;
         dot.y = d.y;
         dot.side = mine === TEAM_NONE ? undefined : sameTeam(mine, row[5] ?? TEAM_NONE) ? "ally" : "foe";
+        dot.spotted = false;
+        listed.add(id);
         others.push(dot);
       }
       for (const [x, y] of summary.legendaries) legendaries.push({ x, y, legendary: true });
+    }
+    // Joueurs que le résumé tait (cachés : buisson, Nuée, Éclipse) mais que
+    // ce client reçoit : au contact des orbites, alliés, ou révélés par un
+    // Sonar ou un piège. Cerclés, sauf les alliés.
+    for (const [id, view] of this.players) {
+      if (id === this.myId || listed.has(id) || !view.root.visible || view.dissolving) continue;
+      const ps = this.playerState(id);
+      if (!ps?.alive) continue;
+      let dot = this.minimapPool[used];
+      if (!dot) this.minimapPool[used] = dot = { id: "", x: 0, y: 0, isMe: false };
+      used++;
+      const ally = sameTeam(mine, ps.team ?? TEAM_NONE);
+      dot.id = id;
+      dot.x = view.renderX;
+      dot.y = view.renderY;
+      dot.side = mine === TEAM_NONE ? undefined : ally ? "ally" : "foe";
+      dot.spotted = !ally;
+      others.push(dot);
     }
     others.sort((a, b) => {
       const da = (a.x - meX) ** 2 + (a.y - meY) ** 2;
@@ -3037,6 +3441,7 @@ export class Game {
         this.corpses.splice(i, 1);
       }
       this.updateMagnetRing(localView, serverNowMs, dt);
+      this.updateAbilities(localView, serverNowMs, dt);
       this.blades.update(now, this.elapsed * 0.001, this.playerPositions);
       if (this.debugHitboxes) {
         // Étincelle vs milieu des deux lames là où elles sont dessinées à
@@ -3118,6 +3523,7 @@ export class Game {
         (id) => this.playerState(id)?.bladeCount ?? 0,
         (id) => this.playerState(id)?.level ?? 0,
         (id) => sameTeam(myTeam, this.playerState(id)?.team ?? TEAM_NONE),
+        (id) => this.playerState(id)?.agent ?? "",
         this.sceneStack.camera,
         window.innerWidth,
         window.innerHeight,

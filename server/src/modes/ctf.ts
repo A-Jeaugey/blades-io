@@ -20,6 +20,7 @@ import type { Player } from "../state/Player";
 import type { BotGoal } from "../systems/bots";
 import { updateScore } from "../systems/scoring";
 import { TeamMode } from "./teams";
+import { botSpareUntilOf } from "../systems/collisions";
 
 type BotRole = "attack" | "defend";
 // Un attaquant part chercher le drapeau à partir de ce nombre de lames.
@@ -157,6 +158,7 @@ export class CtfMode extends TeamMode {
     // pendant laquelle seuls les bots faciles s'en prennent à un humain.
     p.graceUntil = 0;
     p.graceRampUntil = 0;
+    p.botSpareUntil = botSpareUntilOf(p);
     this.announce("take", f.team, p);
   }
 

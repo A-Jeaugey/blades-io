@@ -86,7 +86,7 @@ import {
   recompactOwnerRing,
   recompactOwnerRings,
 } from "../systems/orbitPositions";
-import { resolveCollisions } from "../systems/collisions";
+import { botSpareUntilOf, resolveCollisions, sparedByBots } from "../systems/collisions";
 import { deathLootCount, recordLoss, recordRelease, resetBladePeak, trackBladePeak } from "../systems/bladePeak";
 import { applyWallDamage } from "../systems/wallDamage";
 import { PickupSystem, attachBladeToPlayer, ownerRingCounts } from "../systems/pickup";
@@ -103,6 +103,8 @@ import { PowerUpSystem } from "../systems/powerups";
 import { updateScore } from "../systems/scoring";
 import {
   processThrows,
+  launchOrbitBlade,
+  launchPhantom,
   resolveProjectileCollisions,
   updateProjectiles,
 } from "../systems/throws";
@@ -119,6 +121,17 @@ import {
   sameTeam,
 } from "@bladeio/shared";
 import { ChallengeOwner, advanceChallenges } from "../challenges";
+import {
+  AGENT_IDS,
+  DEFAULT_AGENT,
+  CAST_VECTOR_MAX,
+  SHOCKWAVE_RADIUS,
+  ShockwaveEvent,
+  isAgentId,
+  modeAllowsAgents,
+} from "@bladeio/shared";
+import { AbilitySystem } from "../systems/abilities";
+import { bladesProtected, immovable } from "../systems/agentEffects";
 import { Crate } from "../state/Crate";
 import { PowerUp } from "../state/PowerUp";
 import { randomId } from "../utils/ids";
@@ -229,6 +242,10 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private throwHitsCounted = new WeakSet<Blade>();
   // Règles du mode de jeu (tâche 7.3, cf. modes/), choisi à la création.
   private mode!: GameMode;
+  // Capacités des agents (systems/abilities.ts) ; créé dans onCreate, l'état
+  // posé.
+  private abilities!: AbilitySystem;
+  private agentsOn = false;
 
   onCreate(options: { code?: string; bots?: boolean; mode?: string } = {}): void {
     registerRoom(this);
@@ -272,6 +289,20 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (this.adaptiveArena) state.mapRadius = this.baseRadius = this.arenaSizer.current;
     this.mode = createMode(modeId, host);
     this.mapEventsOn = modeHasMapEvents(modeId);
+    this.agentsOn = modeAllowsAgents(modeId);
+    this.abilities = new AbilitySystem({
+      get state() { return room.state; },
+      playing: () => this.state.phase === MatchPhase.Playing,
+      emit: (type, payload, scope) => this.emit(type, payload, scope),
+      launchThrow: (p, dx, dy, now, phantom) => {
+        if (!phantom) return launchOrbitBlade(this.state, p, dx, dy, now, this.makeThrowCallbacks());
+        launchPhantom(this.state, p, dx, dy, now, this.makeThrowCallbacks(), false);
+        return true;
+      },
+      shockwave: (owner, x, y, now) => this.fireShockwave(owner, x, y, now),
+      endGrace: (p) => this.endGrace(p),
+    });
+    this.bots.setConcealment(this.abilities.conceal);
     // Objectifs des bots propres au mode (modes équipe : adversaires,
     // drapeaux) et aux évènements de carte, en balance avec leurs autres
     // envies : le plus pressant des deux.
@@ -390,6 +421,12 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       if (!this.mapEvents.force(this.state, Date.now(), kind)) return reply({ ok: false, reason: "noSpot" });
       return reply({ ok: true, event: msg.event });
     }
+    // /ult : essayer un ultime sans attendre sa charge.
+    if (msg?.ult) {
+      if (!p.agent) return reply({ ok: false, reason: "noAgent" });
+      this.abilities.refill(p);
+      return reply({ ok: true, ult: true });
+    }
     // Même plafond que le ramassage (bladeCount suit chaque ajout).
     const space = MAX_BLADES_PER_PLAYER - p.bladeCount;
     if (space <= 0) return reply({ ok: false, reason: "full" });
@@ -480,7 +517,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
 
   onJoin(
     client: Client,
-    options: { name?: string; token?: string; guestToken?: string; newcomer?: boolean; loadout?: unknown },
+    options: { name?: string; token?: string; guestToken?: string; newcomer?: boolean; loadout?: unknown; agent?: unknown },
     auth: { userId: string | null; username: string | null; guestId: string | null; name: string; xp?: number; owned?: string[] },
   ): void {
     const p = new Player();
@@ -496,6 +533,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.bladeSkin = loadout.bladeSkin;
     p.trail = loadout.trail;
     p.killFx = loadout.killFx;
+    // Agent choisi au lobby (tous gratuits) ; à défaut, celui des débuts.
+    if (this.agentsOn) this.abilities.setAgent(p, isAgentId(options?.agent) ? options.agent : DEFAULT_AGENT);
     // Améliorations des power-ups (QUÊTES › AMÉLIORATIONS) : niveaux tirés
     // de l'inventaire du compte lu à l'authentification, jamais d'un niveau
     // envoyé par le client. Aucune pour un invité (il n'achète rien) ni dans
@@ -650,6 +689,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       leaderMs: p.lifeLeaderMs,
       bounty,
       underdog,
+      agent: p.agent,
     });
   }
 
@@ -682,6 +722,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (leaving) this.mode.onLeave?.(leaving);
     this.debugOrbitClients.delete(sessionId);
     this.interest.removeViewer(sessionId);
+    this.abilities.removePlayer(sessionId);
     const toRemove: string[] = [];
     this.state.blades.forEach((b) => {
       if (b.ownerId === sessionId) toRemove.push(b.id);
@@ -794,7 +835,17 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (seq > p.lastQueuedSeq) {
       p.lastQueuedSeq = seq;
       if (p.alive) {
-        p.inputQueue.push({ dx: cdx, dy: cdy, boost: !!msg.boost, seq });
+        const item: Player["inputQueue"][number] = { dx: cdx, dy: cdy, boost: !!msg.boost, seq };
+        // Capacité d'agent : appliquée au pas de cet input (updateMovement),
+        // visée bornée (la portée de chaque capacité est appliquée ensuite).
+        if (msg.cast === 1 || msg.cast === 2) {
+          item.cast = msg.cast;
+          const cx = Number(msg.castX);
+          const cy = Number(msg.castY);
+          item.castX = Number.isFinite(cx) ? Math.max(-CAST_VECTOR_MAX, Math.min(CAST_VECTOR_MAX, cx)) : 0;
+          item.castY = Number.isFinite(cy) ? Math.max(-CAST_VECTOR_MAX, Math.min(CAST_VECTOR_MAX, cy)) : 0;
+        }
+        p.inputQueue.push(item);
         if (p.inputQueue.length > MAX_INPUT_QUEUE) p.inputQueue.splice(0, p.inputQueue.length - MAX_INPUT_QUEUE);
       } else {
         p.lastSeq = seq;
@@ -828,6 +879,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // Entracte d'un mode à fin, ou règle du mode (cf. GameMode.canRespawn).
     if (this.state.phase !== MatchPhase.Playing || !this.mode.canRespawn(p)) return;
     if (msg?.name) p.name = sanitizeName(msg.name);
+    // Agent changé sur l'écran de mort : il part avec cette vie.
+    if (this.agentsOn && isAgentId(msg?.agent)) this.abilities.setAgent(p, msg.agent);
     this.startLife(p);
   }
 
@@ -875,6 +928,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     p.lifeBiggerKills = 0; p.lifeLeaderKills = 0;
     p.spawnProtectionUntil = Date.now() + SPAWN_PROTECTION_MS;
     this.startGrace(p);
+    this.abilities.startLife(p);
     this.giveBlades(p, INITIAL_BLADE_COUNT);
   }
 
@@ -889,6 +943,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     const now = Date.now();
     p.graceUntil = now + SPAWN_GRACE_MS;
     p.graceRampUntil = p.graceUntil + SPAWN_GRACE_RAMP_MS;
+    p.botSpareUntil = botSpareUntilOf(p);
   }
 
   // Fin anticipée de la grâce et de sa rampe : le joueur a lancé, ou ses
@@ -897,6 +952,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (!p) return;
     p.graceUntil = 0;
     p.graceRampUntil = 0;
+    p.botSpareUntil = botSpareUntilOf(p);
   }
 
   // Clash entre p et other : p a touché quelqu'un, sauf si other est un bot
@@ -921,7 +977,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     // un tick sur deux (30 Hz). En 33 ms, rien ne parcourt la marge de la
     // zone (8 u) ni celle des buissons (3 u) ; le calcul coûtait ~2 ms par
     // tick à 60 clients.
-    if (this.state.tick % 2 === 0) this.interest.update(this.state);
+    if (this.state.tick % 2 === 0) this.interest.update(this.state, this.abilities.conceal);
     const now = Date.now();
     if (now >= this.nextSummaryAt) {
       this.nextSummaryAt = now + SUMMARY_INTERVAL_MS;
@@ -957,12 +1013,19 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
         p.tier = next;
       }
     });
-    updateMovement(dt, this.state, (player, count) => this.removePlayerBlades(player, count));
+    updateMovement(dt, this.state, (player, count) => this.removePlayerBlades(player, count), {
+      cast: (p, slot, cx, cy, mx, my) => this.abilities.cast(p, slot, cx, cy, mx, my, Date.now()),
+      wells: this.abilities.wells,
+    });
     // Lancer de lame : exécuté juste après le mouvement pour utiliser la
     // direction (dirX/dirY) actualisée. La lame extérieure est détachée et
     // mise en projectile. Le cooldown est imposé serveur-side.
     const throwCb = this.makeThrowCallbacks();
     processThrows(this.state, throwCb);
+    // Capacités : jauges, fins d'effets, zones (pièges, puits, Onde), après
+    // le mouvement (pièges sur les positions du tick) et avant les
+    // collisions (Égide et Bastion à jour).
+    this.abilities.update(dt, Date.now());
     // Temps d'orbite dérivé du numéro de tick (déterministe, identique
     // pour tous les clients), pas de la somme des dt réels.
     updateBladePositions(dt, this.state.tick, this.state, this.orbitCache);
@@ -1118,6 +1181,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     this.bots.cleanupDead(this.state);
     this.state.phase = MatchPhase.Playing;
     this.state.phaseEndsAt = 0;
+    this.abilities.resetMatch();
     this.state.players.forEach((p) => this.startLife(p));
     this.mode.onMatchStart(Date.now());
     this.mapEvents.reset(this.state);
@@ -1130,7 +1194,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private buildSummary(): RoomSummary {
     const summary: RoomSummary = { board: [], map: [], legendaries: [], leader: null };
     this.state.players.forEach((p) => {
-      if (p.alive && (p.revealed || this.state.map !== null || !isInBush(p.x, p.y))) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
+      // Caché (buisson, nuage, Éclipse) : absent de la minimap de tous.
+      if (p.alive && !this.abilities.conceal.isConcealed(p)) summary.map.push([summary.board.length, Math.round(p.x), Math.round(p.y)]);
       if (p.id === this.leaderId) summary.leader = [summary.board.length, bountyFor(p.score)];
       summary.board.push([p.id, p.name, this.mode.standing(p).score, p.bladeCount, p.isBot, p.team]);
     });
@@ -1231,6 +1296,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
   private handlePowerUpPickup(player: Player, pu: PowerUp, durationMs: number): void {
     player.powerupsCollected++;
     updateScore(player);
+    this.abilities.onPowerUp(player);
     const ev: PowerUpPickupEvent = {
       playerId: player.id,
       type: pu.type,
@@ -1265,7 +1331,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       if (pulse) {
         const armed: Omit<ObeliskArmedEvent, "tick"> = { x: pulse.x, y: pulse.y, delayMs: PULSE_WARNING_MS, radius: PULSE_RADIUS };
         // Comme pour une caisse : son auteur n'est pas nommé s'il est caché.
-        if (attacker && !isInBush(attacker.x, attacker.y)) armed.byId = attacker.id;
+        if (attacker && !this.abilities.conceal.isConcealed(attacker)) armed.byId = attacker.id;
         this.emit("obeliskArmed", armed, { to: [attacker?.id], at: { x: pulse.x, y: pulse.y } });
       }
       this.crates.destroyCrate(this.state, crate);
@@ -1274,11 +1340,12 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (attacker) {
       attacker.cratesDestroyed++;
       updateScore(attacker);
+      this.abilities.onCrate(attacker);
     }
     const ev: CrateDestroyedEvent = { crateId: crate.id, x: crate.x, y: crate.y };
-    // L'auteur n'est pas nommé s'il est caché dans un buisson : l'évènement
-    // part à tous les clients proches de la caisse.
-    if (attacker && (this.state.map !== null || !isInBush(attacker.x, attacker.y))) ev.byId = attacker.id;
+    // L'auteur n'est pas nommé s'il est caché (buisson, nuage, Éclipse) :
+    // l'évènement part à tous les clients proches de la caisse.
+    if (attacker && !this.abilities.conceal.isConcealed(attacker)) ev.byId = attacker.id;
     this.emit("crateDestroyed", ev, { to: [attacker?.id], at: { x: crate.x, y: crate.y } });
     this.crates.destroyCrate(this.state, crate);
   }
@@ -1294,6 +1361,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     };
     while (bots < want) {
       const p = this.bots.spawnBot(this.state, place);
+      this.giveBotAgent(p);
       this.giveBlades(p, INITIAL_BLADE_COUNT);
       bots++;
     }
@@ -1304,8 +1372,48 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
     if (isTeamMode(this.mode.id)) return;
     while (this.bots.championDue(this.state, Date.now())) {
       const p = this.bots.spawnBot(this.state, place, true);
+      this.giveBotAgent(p);
       this.giveChampionBlades(p, this.bots.championBlades(this.state));
     }
+  }
+
+  // Agent d'un bot : au hasard, à parts égales ; le banc d'équilibrage
+  // (tools/bench-agents.js) les répartit lui-même.
+  private giveBotAgent(p: Player): void {
+    if (!this.agentsOn) return;
+    this.abilities.setAgent(p, AGENT_IDS[Math.floor(Math.random() * AGENT_IDS.length)]);
+    this.abilities.startLife(p);
+  }
+
+  // Onde de Vigie (agents) : la mécanique des obélisques portée par un
+  // joueur. Tout adversaire en vie dans le rayon est repoussé (sauf sous
+  // Bastion) et perd une part de ses lames (sauf sous Égide ou Bastion),
+  // qui tombent au sol vers l'extérieur. Épargnés : alliés, protection
+  // d'apparition, et débutants en grâce si Vigie est un bot.
+  private fireShockwave(owner: Player, x: number, y: number, now: number): void {
+    const hit: string[] = [];
+    this.state.players.forEach((p) => {
+      if (!p.alive || p.id === owner.id) return;
+      if (sameTeam(owner.team, p.team)) return;
+      if (p.spawnProtectionUntil > now) return;
+      if (owner.isBot && p.botSpareUntil > now) return;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      const d = Math.hypot(dx, dy);
+      if (d > SHOCKWAVE_RADIUS) return;
+      const ux = d > 1e-3 ? dx / d : 1;
+      const uy = d > 1e-3 ? dy / d : 0;
+      if (!immovable(p, now)) {
+        p.knockbackVx = ux * PULSE_KNOCKBACK;
+        p.knockbackVy = uy * PULSE_KNOCKBACK;
+      }
+      const shed = bladesProtected(p, now) ? 0 : pulseShedCount(p.bladeCount);
+      if (shed > 0) this.removePlayerBlades(p, shed, (rarity) => this.dropShedBlade(p, rarity, ux, uy, now));
+      this.endGraceOnContact(p, owner);
+      hit.push(p.id);
+    });
+    const ev: Omit<ShockwaveEvent, "tick"> = { x, y, radius: SHOCKWAVE_RADIUS, playerId: owner.id, hit };
+    this.emit("shockwave", ev, { to: [owner.id], players: [owner.id, ...hit], at: { x, y } });
   }
 
   // Orbite d'un champion à son apparition : ses raretés suivent
@@ -1372,9 +1480,12 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       // Un joueur pile sur l'axe de l'obélisque part vers +x.
       const ux = d > 1e-3 ? dx / d : 1;
       const uy = d > 1e-3 ? dy / d : 0;
-      p.knockbackVx = ux * PULSE_KNOCKBACK;
-      p.knockbackVy = uy * PULSE_KNOCKBACK;
-      const shed = pulseShedCount(p.bladeCount);
+      // Agents : Bastion ignore le recul, Égide et Bastion gardent les lames.
+      if (!immovable(p, now)) {
+        p.knockbackVx = ux * PULSE_KNOCKBACK;
+        p.knockbackVy = uy * PULSE_KNOCKBACK;
+      }
+      const shed = bladesProtected(p, now) ? 0 : pulseShedCount(p.bladeCount);
       if (shed > 0) this.removePlayerBlades(p, shed, (rarity) => this.dropShedBlade(p, rarity, ux, uy, now));
       hit.push(p.id);
     });
@@ -1578,7 +1689,9 @@ export class ArenaRoom extends Room<{ state: ArenaState; metadata: ArenaMetadata
       nb.expiresAt = now + GROUND_BLADE_TTL_MS;
       this.state.blades.set(nb.id, nb);
     }
+    this.abilities.onDeath(victim);
     if (killer) {
+      this.abilities.onKill(killer);
       killer.kills++;
       if (killerBlades !== null && victimBlades > killerBlades) killer.lifeBiggerKills++;
       if (bounty > 0) killer.lifeLeaderKills++;

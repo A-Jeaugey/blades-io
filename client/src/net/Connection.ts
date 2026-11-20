@@ -37,6 +37,8 @@ export interface JoinOptions {
   // Mode de jeu (tâche 7.3) : une file d'attente par mode. Absent pour
   // rejoindre un salon par son code, qui garde le sien.
   mode?: GameModeId;
+  // Agent choisi au lobby (agents/agentStore.ts), validé par le serveur.
+  agent?: string;
 }
 
 export class Connection {
@@ -126,6 +128,7 @@ export class Connection {
     else if (opts.guestToken) joinOpts.guestToken = opts.guestToken;
     if (opts.newcomer) joinOpts.newcomer = true;
     if (opts.loadout) joinOpts.loadout = opts.loadout;
+    if (opts.agent) joinOpts.agent = opts.agent;
     if (opts.mode) joinOpts.mode = opts.mode;
     return joinOpts;
   }

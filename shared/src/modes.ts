@@ -30,33 +30,37 @@ export interface GameModeInfo {
   upgrades: boolean;
   // Carte à murs du mode (shared/src/maps.ts) ; sans elle, l'arène ronde.
   map?: MapId;
+  // Agents et leurs capacités (agents.ts) : gratuits et égaux, ils sont
+  // permis partout, classé compris ; le drapeau permet de les retirer d'un
+  // mode sans toucher au reste.
+  agents: boolean;
 }
 
 // L'arène sans fin, le jeu d'origine.
 export const DEFAULT_GAME_MODE: GameModeId = "ffa";
 
 export const GAME_MODES: readonly GameModeInfo[] = [
-  { id: "ffa", quickPlay: true, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: true },
+  { id: "ffa", quickPlay: true, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: true, agents: true },
   // Manches chronométrées (tâche 7.1). Décision D5 : en salon privé et dans
   // une file publique à part, en attendant la télémétrie
   // (life_stats_by_mode, migration 0011).
-  { id: "rounds", quickPlay: true, privateRoom: true, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: true },
+  { id: "rounds", quickPlay: true, privateRoom: true, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: true, agents: true },
   // Modes équipe (tâche 7.2) : en salon privé, entre amis, bots en option
   // (le remplissage par des bots rééquilibre les équipes). La partie rapide
   // garde l'arène et les manches, pour ne pas disperser les joueurs.
-  { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: false, upgrades: true },
-  { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false, mapEvents: false, adaptiveArena: false, upgrades: true },
-  { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true },
+  { id: "tdm", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: true, adaptiveArena: false, upgrades: true, agents: true },
+  { id: "lts", quickPlay: false, privateRoom: true, shrinks: true, respawns: false, mapEvents: false, adaptiveArena: false, upgrades: true, agents: true },
+  { id: "ctf", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true, agents: true },
   // Classé (retours du 2026-10-12) : des manches, qui rapportent des points
   // de rang (shared/src/ranked.ts). Partie rapide seulement, dans sa file :
   // rien ne compte en salon privé. Sans améliorations, tout le monde à
   // égalité.
-  { id: "ranked", quickPlay: true, privateRoom: false, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: false },
+  { id: "ranked", quickPlay: true, privateRoom: false, shrinks: true, respawns: true, mapEvents: true, adaptiveArena: true, upgrades: false, agents: true },
   // Quartier (2026-11-19, essai) : les règles de l'arène sur une carte à
   // murs, vue à la troisième personne. En salon privé tant qu'il s'essaie :
   // sans le rendu v2, la carte n'est faite que de blocs. Ni évènements de
   // carte ni décor interactif, placés pour l'arène ronde.
-  { id: "district", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true, map: "district" },
+  { id: "district", quickPlay: false, privateRoom: true, shrinks: false, respawns: true, mapEvents: false, adaptiveArena: false, upgrades: true, agents: true, map: "district" },
 ];
 
 // Carte à murs d'un mode ; null : l'arène ronde et son décor (decor.ts).
@@ -79,6 +83,10 @@ export function modeHasMapEvents(id: string): boolean {
 
 export function modeAllowsUpgrades(id: string): boolean {
   return GAME_MODES.some((m) => m.id === id && m.upgrades);
+}
+
+export function modeAllowsAgents(id: string): boolean {
+  return GAME_MODES.some((m) => m.id === id && m.agents);
 }
 
 export function modeRespawns(id: string): boolean {

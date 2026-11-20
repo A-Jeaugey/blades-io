@@ -3,12 +3,12 @@ import { StateView } from "@colyseus/schema";
 import {
   BUSH_REVEAL_MARGIN,
   MAX_BLADES_PER_PLAYER,
+  ZoneKind,
   VIEW_RADIUS_DEFAULT,
   VIEW_RADIUS_MARGIN,
   VIEW_RADIUS_MIN,
   BladeRarity,
   bladeBodyReach,
-  isInBush,
   outerOrbitRadius,
   sameTeam,
   viewRadiusLimit,
@@ -16,6 +16,8 @@ import {
 import { ArenaState } from "../state/ArenaState";
 import { Blade } from "../state/Blade";
 import { OWNER_VIEW_TAG, Player } from "../state/Player";
+import { Zone } from "../state/Zone";
+import { Concealment } from "./agentEffects";
 
 // Zone d'intérêt (tâche 2.4) : chaque client ne reçoit que les joueurs et
 // les lames proches de lui (StateView de Colyseus), et jamais un
@@ -59,10 +61,12 @@ interface Viewer {
   // moins coûteuse que par id), et les ids des joueurs pour les évènements.
   players: Set<Player>;
   blades: Set<Blade>;
+  zones: Set<Zone>;
   playerIds: Set<string>;
   // Ensembles de travail, échangés avec les précédents à chaque calcul.
   nextPlayers: Set<Player>;
   nextBlades: Set<Blade>;
+  nextZones: Set<Zone>;
 }
 
 // Fiche d'un joueur, calculée une fois par tick pour tous les clients.
@@ -71,7 +75,8 @@ interface PlayerEntry {
   x: number;
   y: number;
   reach: number;
-  inBush: boolean;
+  // Caché : buisson, nuage de Brume, Éclipse (agentEffects.ts).
+  hidden: boolean;
   alive: boolean;
   team: number;
 }
@@ -91,6 +96,11 @@ export class InterestManager {
   private entries: PlayerEntry[] = [];
   private entryById = new Map<string, PlayerEntry>();
   private bladeById = new Map<string, Blade>();
+  private zoneById = new Map<string, Zone>();
+  private zoneList: Zone[] = [];
+  // Nuages, Éclipse et révélations du tick, tenus par les capacités : sans
+  // elles (tests), les buissons seuls.
+  private conceal = new Concealment();
 
   addViewer(client: Client, player: Player): void {
     const view = new StateView();
@@ -109,9 +119,11 @@ export class InterestManager {
       cy: player.y,
       players: new Set([player]),
       blades: new Set(),
+      zones: new Set(),
       playerIds: new Set([player.id]),
       nextPlayers: new Set(),
       nextBlades: new Set(),
+      nextZones: new Set(),
     });
   }
 
@@ -138,8 +150,16 @@ export class InterestManager {
     v.radius = Math.max(VIEW_RADIUS_MIN, Math.min(RADIUS_CAP, r));
   }
 
-  update(state: ArenaState): void {
+  update(state: ArenaState, conceal?: Concealment): void {
     if (this.viewers.size === 0) return;
+    if (conceal) this.conceal = conceal;
+    else this.conceal.refresh(state, Date.now());
+    this.zoneById.clear();
+    this.zoneList.length = 0;
+    state.zones.forEach((z) => {
+      this.zoneById.set(z.id, z);
+      this.zoneList.push(z);
+    });
     for (const list of this.bladesByOwner.values()) list.length = 0;
     for (const list of this.grid.values()) list.length = 0;
     this.bladeById.clear();
@@ -159,9 +179,10 @@ export class InterestManager {
     this.entries.length = 0;
     this.entryById.clear();
     state.players.forEach((p) => {
-      // Les buissons sont ceux de l'arène ronde : une carte à murs n'en a pas.
-      const inBush = !state.map && !p.revealed && isInBush(p.x, p.y);
-      const e: PlayerEntry = { p, x: p.x, y: p.y, reach: reachOf(p), inBush, alive: p.alive, team: p.team };
+      // Buissons (ceux de l'arène ronde : une carte à murs n'en a pas),
+      // nuages et Éclipse ; un porteur de drapeau ne se cache pas.
+      const hidden = this.conceal.isConcealed(p);
+      const e: PlayerEntry = { p, x: p.x, y: p.y, reach: reachOf(p), hidden, alive: p.alive, team: p.team };
       this.entries.push(e);
       this.entryById.set(p.id, e);
     });
@@ -185,8 +206,10 @@ export class InterestManager {
     const r = v.effective + VIEW_RADIUS_MARGIN;
     const players = v.nextPlayers;
     const blades = v.nextBlades;
+    const zones = v.nextZones;
     players.clear();
     blades.clear();
+    zones.clear();
     v.playerIds.clear();
     players.add(me.p);
     v.playerIds.add(me.p.id);
@@ -198,10 +221,11 @@ export class InterestManager {
       // Un joueur juste hors zone dont l'orbite y entre reste visible.
       const lim = r + e.reach;
       if (d2 > lim * lim) continue;
-      // Caché dans un buisson tant que les orbites ne peuvent pas se
-      // toucher (même règle que isHiddenFrom, qui sert aux bots), sauf
-      // pour ses alliés (modes équipe).
-      if (e.inBush && !sameTeam(me.team, e.team)) {
+      // Caché (buisson, nuage, Éclipse) tant que les orbites ne peuvent
+      // pas se toucher (même règle que isHiddenFrom, qui sert aux bots),
+      // sauf pour ses alliés (modes équipe) et pour qui l'a révélé (Sonar,
+      // piège).
+      if (e.hidden && !sameTeam(me.team, e.team) && !this.conceal.revealedTo(e.p, me.p.id, me.team)) {
         const reveal = me.reach + e.reach + BUSH_REVEAL_MARGIN;
         if (d2 > reveal * reveal) continue;
       }
@@ -229,6 +253,16 @@ export class InterestManager {
       }
     }
 
+    // Zones des capacités : à portée de vue ; un piège, à son poseur et à
+    // ses alliés seulement.
+    for (const z of this.zoneList) {
+      if (z.kind === ZoneKind.Trap && z.ownerId !== me.p.id && !sameTeam(z.team, me.team)) continue;
+      const dx = z.x - cx;
+      const dy = z.y - cy;
+      const lim = r + z.radius;
+      if (dx * dx + dy * dy <= lim * lim) zones.add(z);
+    }
+
     // Un joueur qui revient dans la vue repart avec ses seuls champs publics :
     // ceux réservés à son propriétaire (OWNER_VIEW_TAG) n'y sont pas, même
     // après des changements manqués (cf. tests de zone d'intérêt).
@@ -241,10 +275,16 @@ export class InterestManager {
     for (const b of v.blades) {
       if (!blades.has(b) && this.bladeById.get(b.id) === b) v.view.remove(b);
     }
+    for (const z of zones) if (!v.zones.has(z)) v.view.add(z);
+    for (const z of v.zones) {
+      if (!zones.has(z) && this.zoneById.get(z.id) === z) v.view.remove(z);
+    }
     v.nextPlayers = v.players;
     v.nextBlades = v.blades;
+    v.nextZones = v.zones;
     v.players = players;
     v.blades = blades;
+    v.zones = zones;
   }
 
   // Le joueur de ce client voit-il ce joueur ?

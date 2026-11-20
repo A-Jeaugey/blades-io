@@ -85,6 +85,8 @@ client/src/
 ├── themes/              ★ Système de thèmes — voir section dédiée plus bas
 ├── cosmetics/           Cosmétiques visibles par tous (looks.ts : apparence,
 │                        loadout.ts : équipement de l'appareil)
+├── agents/              Agents (docs/AGENTS.md) : choix (lobby, fin de vie),
+│                        boutons des capacités, zones et auras dans la scène
 ├── boutique/            Boutique : thèmes de carte (Boutique.ts), onglets
 │                        À LA UNE, SKINS, LAMES, EFFETS (cosmeticsShop.ts,
 │                        aperçus CSS), vitrine du jour (offer.ts), aperçu
@@ -691,11 +693,11 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   langue change à chaud, sans rechargement. Les pseudos et autres textes de
   joueurs s'échappent avant d'entrer dans un `data-i18n-html` ou un `t()`
   inséré en HTML.
-- **Couleurs** : ne **jamais** hardcoder un hex en dehors de `themes/*.ts`
-  et `cosmetics/looks.ts` (apparence des cosmétiques, des données comme
-  les thèmes).
+- **Couleurs** : ne **jamais** hardcoder un hex en dehors de `themes/*.ts`,
+  `cosmetics/looks.ts` (apparence des cosmétiques, des données comme
+  les thèmes) et `agents/looks.ts` (couleurs des agents et de leurs effets).
   Tous les modules de rendu lisent via `getActiveTheme()`. Si vous voyez un
-  `0xff2ea8` en dehors de ces deux endroits, c'est un bug à corriger.
+  `0xff2ea8` en dehors de ces endroits, c'est un bug à corriger.
 - **Accessibilité** (tâche 3.8) : une information ne passe jamais par la
   seule couleur (forme, symbole ou taille en plus : formes des power-ups,
   ▲/▼ des nametags, taille des raretés). Toute secousse passe par
@@ -969,6 +971,90 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   - Ciel, sol mouillé et matières : « Passe réaliste » de la section
     « Rendu v2 ». Pas encore : ambiance sonore, modes équipe ou manches
     sur cette carte, partie rapide.
+- **Agents (2026-11-20)** : six personnages jouables (Volt, Sagaie, Brume,
+  Vortex, Vigie, Rempart), chacun une capacité à recharge (touche E) et un
+  ultime à charge (R). Design, chiffres et contre-jeux : `docs/AGENTS.md` ;
+  réglages : `shared/src/agents.ts` (`AGENTS`, constantes par agent) ;
+  permis mode par mode (`GameModeInfo.agents`, tous pour l'instant).
+  Gratuits et égaux : rien à acheter ni à débloquer, jamais.
+  - **Une capacité voyage avec son input** (`InputMessage.cast` : 1
+    capacité, 2 ultime ; `castX/castY` : vecteur visé depuis le joueur,
+    borné à ±100) : `updateMovement` l'applique au pas de cet input, avant
+    le déplacement (`MovementHooks.cast` → `AbilitySystem.cast`,
+    `server/src/systems/abilities.ts`). L'élan d'Éclair est
+    l'`impulseX/impulseY` du `MoveInput` de ce pas, que la prédiction du
+    client rejoue au même pas (`predictCast`, `main.ts`) : zéro correction
+    (test « prédiction de l'Éclair »). Bots : `p.botCast`, posé par
+    `planBotCast` (`systems/botAbilities.ts`).
+  - **Déplacement** : ralentissement du piège, Bastion et attraction des
+    puits passent par `moveContextAt` (shared), qui donne le même
+    `MoveContext` au serveur (`applyStep`) et à la prédiction (état
+    acquitté : `slowUntil`, `agentEffect`, `agentEffectUntil` ; puits :
+    `predictor.wells`, tirés de `state.zones`). Toute nouvelle règle de
+    déplacement d'un agent y va, jamais d'un seul côté. `stepMovement`
+    découpe un pas de plus de 0,45 u en sous-pas : un bond ne traverse pas
+    un mur.
+  - **Zones** (`ArenaState.zones`, `@view`, `server/src/state/Zone.ts`) :
+    Nuée, Piège, Singularité, préavis d'Onde. Un piège ne va qu'à son
+    poseur et à ses alliés (`interest.ts`) ; les autres zones, à qui est à
+    portée. Le préavis de l'Onde se dessine depuis sa zone (`PulseView`,
+    comme un obélisque) : reçu même quand Vigie est caché.
+  - **Caché, révélé** (`Concealment`, `systems/agentEffects.ts`) : caché
+    dans un buisson, une Nuée ou sous Éclipse (`isConcealed`), un joueur
+    n'est visible qu'au contact des orbites, de son équipe, ou de qui l'a
+    révélé (Sonar, piège : `Player.reveals`, et son équipe). Zones
+    d'intérêt, résumé (minimap), nom du casseur d'une caisse et bots
+    (`hiddenFrom`) passent tous par lui : une nouvelle façon de se cacher
+    s'y ajoute, nulle part ailleurs. Côté client, un adversaire reçu mais
+    absent du résumé est cerclé sur la minimap.
+  - **Évènements** : `abilityCast` à l'auteur et aux clients qui le voient
+    (un joueur caché ne se trahit pas), au poseur et à ses alliés pour un
+    piège ; `revealed` au seul joueur repéré (bandeau « REPÉRÉ ») ;
+    `shockwave` et `trapSprung` à portée. Tous estampillés du tick, joués
+    par `atTick`.
+  - **Lames** : Égide (`bladesProtected`) : aucun dégât aux lames en
+    orbite (clash, projectile, Onde, obélisque) ; Bastion (`immovable`) :
+    en plus ni recul, ni gel, ni ralentissement, ni attraction. Éclats de
+    la Salve et de la Rafale (`Blade.phantom`) : sans lame d'orbite, ils
+    disparaissent en retombant, ni perte ni butin (`recordLoss` et
+    `recordRelease` sautés), et ne tombent pas au pied du coffre-fort.
+  - **Protections** : rien d'hostile ne touche un allié ni un joueur sous
+    protection d'apparition, et rien de ce qu'un bot lance ne touche un
+    nouveau venu (débutant, ou dans les 50 s après son apparition :
+    `botSpareUntilOf`, `Player.botSpareUntil`, envoyé à lui seul, tenu avec
+    la grâce : `startGrace`, `endGrace`, prise d'un drapeau) : un bot ne
+    lance rien vers lui (`planCast`, `BotCastContext.spares`), et ni piège,
+    ni puits, ni Onde, ni Sonar de bot ne le touche. Une capacité
+    offensive met fin à la grâce de son auteur (`endGrace`), comme un
+    lancer. **Toute nouvelle capacité hostile suit ces règles.**
+    L'attraction d'un puits se calcule dans le pas partagé : la prédiction
+    lit `spawnProtectionUntil`, `botSpareUntil` et `Zone.bot`. Bancs du
+    débutant inchangés par les agents (`docs/AGENTS.md`, §7).
+  - **Charge de l'ultime** : +1 par seconde en vie, +20 par élimination,
+    +5 par caisse, +3 par power-up (`ULT_CHARGE_*`) ; elle survit à la
+    mort, pas à un changement d'agent (à la réapparition :
+    `RespawnMessage.agent`, carte de fin de vie), ni à une nouvelle partie
+    (`resetMatch`).
+  - **Équilibre** : `node tools/bench-agents.js [minutes] [graines,…]`
+    (après `npm test`) : rooms de bots seuls, agents répartis à parts
+    égales ; critère : score par minute de chaque agent à ±15 % de la
+    moyenne, éliminations / morts entre 0,8 et 1,25. `BENCH_NOCAST=1` :
+    même banc sans capacités, le bruit de la mesure (écart de 5 %).
+    Référence (32 graines × 10 min) : écart de 7 % (Brume et Rempart
+    −5 %, Sagaie +7 %), éliminations / morts de 0,90 à 1,09.
+    Un réglage d'agent se vérifie aussi aux bancs du débutant
+    (`bench-survival.js`, `first`).
+  - **Client** (`client/src/agents/`) : `agentStore.ts` (choix retenu,
+    `blade.agent`), `info.ts` (emblèmes, une forme par agent ; textes),
+    `looks.ts` (couleurs, des données comme les thèmes), `AgentPicker.ts`
+    (lobby, carte de fin de vie), `AbilityHud.ts` (boutons ; E et R ont la
+    même place en AZERTY et QWERTY ; au toucher, glisser depuis un bouton
+    pour viser), `AbilityView.ts` (nuages, puits, pièges, auras : dans la
+    scène dès le lobby, « +0 en partie »). Le lobby n'importe que
+    `AgentPicker`, `info` et `agentStore` (pas de three.js).
+  - **Télémétrie** : `life_stats.agent` (migration 0015 ; sans elle, la
+    ligne est réécrite sans la colonne), vue `life_stats_by_agent`.
+    Tests : `server/test/agents.test.ts`.
 - **Modération (tâche 5.6)** : le filtre de mots vit dans
   `shared/src/moderation.ts` (`censorChat`, `nameProblem`), utilisé par le
   serveur (chat masqué, pseudos remplacés, classements) et par le client
@@ -979,7 +1065,8 @@ diffère (vitrine tournée à minuit pendant l'achat), l'achat est refusé en
   `ArenaRoom`, table `reports` (migration 0010).
 - **Triche de test** : `/blades [nombre] [rareté]` (alias `/lames`, absente
   de `/help`) dans le chat ajoute des lames en orbite, 50 par défaut, dans
-  la limite de `MAX_BLADES_PER_PLAYER`. Le serveur (`handleCheat`,
+  la limite de `MAX_BLADES_PER_PLAYER` ; `/ult` (alias `/ulti`) charge
+  l'ultime de son agent et rend sa capacité prête. Le serveur (`handleCheat`,
   `ArenaRoom`) ne l'accepte qu'avec `CHEATS=1` dans son environnement
   (absent par défaut), en salon privé, où rien ne compte (ni trophées, ni
   classement, ni défis, ni record local, télémétrie marquée

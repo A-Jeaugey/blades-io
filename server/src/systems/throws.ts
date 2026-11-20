@@ -1,5 +1,7 @@
 import { mapSegmentHit } from "@bladeio/shared";
 import {
+  AgentEffect,
+  BARRAGE_THROW_COOLDOWN_MS,
   BladeRarity,
   BladeThrownEvent,
   ProjectileImpactEvent,
@@ -32,6 +34,8 @@ import { recordLoss, recordRelease } from "./bladePeak";
 import { sparedByBots } from "./collisions";
 import { damageCrate } from "./crateDamage";
 import { closestOnSegment, pointSegmentDist2, segmentSegmentDist2 } from "./geometry";
+import { bladesProtected } from "./agentEffects";
+import { randomId } from "../utils/ids";
 import { OrbitPositionCache, recompactOwnerRing } from "./orbitPositions";
 
 // Demi-largeur minimale d'une lame en orbite face à un projectile (petites
@@ -82,7 +86,9 @@ export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
     p.aimY = 0;
     if (!p.alive) return;
     if (p.throwCooldownUntil > now) return;
-    if (p.bladeCount <= 0) return;
+    // Rafale (Sagaie) : un éclat, sans lame d'orbite, deux fois plus vite.
+    const barrage = p.agentEffect === AgentEffect.Barrage && p.agentEffectUntil > now;
+    if (p.bladeCount <= 0 && !barrage) return;
     // Visée libre (souris, glisser mobile, bots) ; à défaut, direction de
     // déplacement.
     const aiming = aimX * aimX + aimY * aimY > 0.01;
@@ -90,11 +96,18 @@ export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
     const dy = aiming ? aimY : p.dirY;
     const mag = Math.hypot(dx, dy);
     if (mag < 1e-3) return; // pas de direction → on n'envoie pas dans le néant
-    const ndx = dx / mag;
-    const ndy = dy / mag;
+    if (barrage) launchPhantom(state, p, dx / mag, dy / mag, now, cb);
+    else launchOrbitBlade(state, p, dx / mag, dy / mag, now, cb);
+  });
+}
 
+// Lance la lame extérieure de l'orbite de p dans la direction (ndx, ndy),
+// normalisée : un lancer, ou l'un des trois d'une Salve. Faux s'il n'a plus
+// de lame en orbite.
+export function launchOrbitBlade(state: ArenaState, p: Player, ndx: number, ndy: number, now: number, cb: ThrowCallbacks): boolean {
+  {
     const target = pickOutermostBlade(state, p);
-    if (!target) return;
+    if (!target) return false;
 
     // Détache la lame du joueur. Position de départ = bord extérieur du
     // joueur dans la direction du throw (trajectoire affichée par le client
@@ -137,6 +150,42 @@ export function processThrows(state: ArenaState, cb: ThrowCallbacks): void {
       dirX: ndx,
       dirY: ndy,
     });
+  }
+  return true;
+}
+
+// Éclat de la Rafale : un projectile Commun à un impact, créé sans lame
+// d'orbite, qui part du bord de l'orbite comme un lancer. Disparaît en
+// retombant (updateProjectiles), ne compte ni comme perte ni comme butin.
+// setCooldown : un éclat de Rafale règle la recharge des lancers ; ceux
+// d'une Salve, non (la lame du centre l'a déjà fait).
+export function launchPhantom(state: ArenaState, p: Player, ndx: number, ndy: number, now: number, cb: ThrowCallbacks, setCooldown = true): void {
+  const startR = throwStartRadius(p.bladeCount);
+  const b = new Blade();
+  b.id = randomId();
+  b.rarity = BladeRarity.Common;
+  b.hp = RARITY_HP[BladeRarity.Common];
+  b.phantom = true;
+  b.isProjectile = true;
+  b.thrownBy = p.id;
+  b.thrownTeam = p.team;
+  b.pierceLeft = THROW_PIERCE[BladeRarity.Common] ?? 1;
+  b.x = b.originX = p.x + ndx * startR;
+  b.y = b.originY = p.y + ndy * startR;
+  b.vx = ndx * THROW_PROJECTILE_SPEED;
+  b.vy = ndy * THROW_PROJECTILE_SPEED;
+  b.pickupLockUntil = now + 60_000;
+  b.expiresAt = now + THROW_PROJECTILE_TTL_MS;
+  state.blades.set(b.id, b);
+  if (setCooldown) p.throwCooldownUntil = now + BARRAGE_THROW_COOLDOWN_MS;
+  cb.onBladeThrown({
+    bladeId: b.id,
+    thrownBy: p.id,
+    rarity: BladeRarity.Common,
+    x: b.x,
+    y: b.y,
+    dirX: ndx,
+    dirY: ndy,
   });
 }
 
@@ -193,6 +242,12 @@ export function updateProjectiles(dt: number, state: ArenaState, cb: ThrowCallba
     cb.onBladeDestroyed(b, null);
   }
   for (const b of toLand) {
+    // Un éclat de Rafale ne devient pas une lame : il s'éteint.
+    if (b.phantom) {
+      cb.onProjectileImpact({ bladeId: b.id, rarity: b.rarity as BladeRarity, x: b.x, y: b.y, kind: 3, destroyed: true });
+      cb.onBladeDestroyed(b, null);
+      continue;
+    }
     landProjectile(b, now, cb);
   }
 }
@@ -323,7 +378,7 @@ export function resolveProjectileCollisions(
       const t = closestOnSegment(crate.x, crate.y, x0, y0, x1, y1);
       const hx = x0 + (x1 - x0) * t;
       const hy = y0 + (y1 - y0) * t;
-      if (crate.kind === CrateKind.Vault) {
+      if (crate.kind === CrateKind.Vault && !proj.phantom) {
         // Coffre-fort : la lame y fait ses dégâts puis retombe à son pied,
         // du côté d'où elle venait, ramassable comme un lancer retombé
         // (retours du 2026-10-12). Consommée comme sur une caisse, le
@@ -421,13 +476,14 @@ export function resolveProjectileCollisions(
         // Le projectile inflige son damage à la lame orbitante. Si elle
         // casse, c'est le butin classique et il perd un perçant ; si elle
         // tient, elle l'arrête.
-        const dmg = RARITY_DAMAGE[proj.rarity as BladeRarity];
+        // Égide (agents) : la lame ne subit rien, elle arrête le projectile.
+        const dmg = bladesProtected(target, now) ? 0 : RARITY_DAMAGE[proj.rarity as BladeRarity];
         orbBlade.hp = Math.max(0, orbBlade.hp - dmg);
         const broken = orbBlade.hp <= 0;
         proj.pierceLeft = broken ? Math.max(0, proj.pierceLeft - 1) : 0;
         // Lame lancée consommée sur la cible : perdue contre elle (son
-        // lanceur la récupère s'il la tue).
-        if (proj.pierceLeft <= 0 && attacker) recordLoss(attacker, proj.rarity, target.id, now, true);
+        // lanceur la récupère s'il la tue). Un éclat n'était pas une lame.
+        if (proj.pierceLeft <= 0 && attacker && !proj.phantom) recordLoss(attacker, proj.rarity, target.id, now, true);
         cb.onProjectileImpact({
           bladeId: proj.id,
           rarity: proj.rarity as BladeRarity,
@@ -446,7 +502,7 @@ export function resolveProjectileCollisions(
         proj.pierceLeft = Math.max(0, proj.pierceLeft - 1);
         const consumed = proj.pierceLeft <= 0;
         // Avant le kill : la lame qui l'a tué revient aussi au lanceur.
-        if (consumed && attacker) recordLoss(attacker, proj.rarity, target.id, now, true);
+        if (consumed && attacker && !proj.phantom) recordLoss(attacker, proj.rarity, target.id, now, true);
         cb.onProjectileImpact({
           bladeId: proj.id,
           rarity: proj.rarity as BladeRarity,
